@@ -6,6 +6,33 @@ A local reviewer can produce a structurally valid `APPROVED` while still inspect
 
 PowerPack now treats that situation as a measurable review escape instead of assuming the first approval was complete.
 
+## Review scope: defect versus capability expansion
+
+SpecKit PowerPack is a personal project under continuous evolution. The project deliberately grows as its author expands practical experience, technical knowledge and expectations for what a reusable Spec Kit enhancement layer should provide. The long-term direction is to make PowerPack an effective plugin that can be reused across projects from different domains, architectures, languages, frameworks and delivery environments.
+
+That evolution must not distort the review gate. Sol and ChatGPT Web must distinguish **an implementation defect** from **a newly imagined or newly desired capability**.
+
+A review finding is valid when there is concrete evidence that the reviewed snapshot violates the current contract, for example:
+
+- an active SPEC requirement or acceptance criterion is not satisfied;
+- documented behavior or an explicit contract is broken;
+- a non-weakenable PowerPack invariant is violated;
+- behavior expected to be preserved has regressed;
+- an already-supported capability behaves incorrectly, inconsistently or unsafely.
+
+The following are normally **capability/enhancement proposals**, not defects by themselves:
+
+- support for an additional provider, platform, architecture, language or workflow not currently promised;
+- broader automation or generalization beyond the documented scope;
+- new convenience, discovery, observability or UX behavior;
+- a product or architectural requirement that exists only as a new idea or Project conversation and has not yet been promoted into the active SPEC or durable repository policy.
+
+A reviewer MUST NOT block approval solely because a broader design would be useful. To create a finding, it must identify the current requirement, contract, invariant or preserved behavior that is actually being violated and provide a concrete failure scenario and impact.
+
+If a newly discovered capability is considered important enough to become mandatory, first promote it into the appropriate durable artifact (`spec.md`, `plan.md`, `research.md`, ADR, architecture documentation or project policy). From that point forward, failure to satisfy the accepted requirement may legitimately become SPEC non-compliance or a defect.
+
+This distinction prevents AI-assisted review from turning unrestricted product ideation into an ever-expanding set of blocking bugs while still preserving strict treatment of genuine defects.
+
 ## Immutable review context
 
 Before each fresh review round, generate:
@@ -88,6 +115,8 @@ If the Web reviewer knows a material architectural/product constraint from Proje
 ```
 
 An approval is forbidden while `context_gaps` is non-empty. Promote that knowledge into `spec.md`, `research.md`, an ADR, architecture docs or project policy so every supported agent receives the same durable context.
+
+A `context_gap` identifies missing durable context. It does not automatically prove a bug. The missing information must first be evaluated against the current contract and, when it represents a genuinely new requirement, deliberately incorporated into the appropriate repository artifact.
 
 ## Review escape tracking
 
