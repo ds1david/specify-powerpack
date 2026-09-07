@@ -22,8 +22,7 @@ Repository = "https://github.com/ds1david/speckit-powerpack"
 Issues = "https://github.com/ds1david/speckit-powerpack/issues"
 
 [project.scripts]
-speckit-powerpack = "speckit_powerpack.cli_account_binding:main"
-speckit-powerpack-web-review = "speckit_powerpack.web_review_runner:main"
+speckit-powerpack = "speckit_powerpack.cli_user_state:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -37,3 +36,4 @@ speckit_powerpack = ["assets/**/*.json", "assets/**/*.yml", "assets/**/*.md", "a
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
