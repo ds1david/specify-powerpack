@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import datetime as dt
 import json
+import os
 from pathlib import Path
+import platform
+import shutil
 import subprocess
 import sys
 
@@ -15,6 +19,57 @@ COPILOT_REVIEW_2_MARKER = "POWERPACK_COPILOT_REVIEW_2_OK"
 
 class BindingAwareHarness(Harness):
     """WSL-first homologation harness with fail-fast bindings and clean config starts."""
+
+    def capture_environment(self) -> None:
+        """Capture environment without touching Codex in Copilot-only H5."""
+        if self.args.scenario.upper() != "H5":
+            super().capture_environment()
+            return
+
+        commands: list[tuple[str, list[str]]] = [
+            ("python", [sys.executable, "--version"]),
+            ("uv", ["uv", "--version"]),
+            ("specify", ["specify", "version"]),
+            ("git", ["git", "--version"]),
+        ]
+        for name in ("node", "copilot"):
+            if shutil.which(name):
+                commands.append((name, [name, "--version"]))
+
+        payload = {
+            "captured_at": dt.datetime.now().astimezone().isoformat(),
+            "system": platform.system(),
+            "platform": platform.platform(),
+            "release": platform.release(),
+            "is_wsl": "microsoft" in platform.release().casefold(),
+            "python_executable": sys.executable,
+            "project": str(self.project),
+            "powerpack_repo": str(Path(self.args.powerpack_repo).expanduser()),
+            "powerpack_ref": self.args.powerpack_ref,
+            "scenario_isolation": {
+                "codex_invoked": False,
+                "chatgpt_project_used": False,
+                "reviewer": "copilot",
+            },
+            "commands": {},
+        }
+        text: list[str] = []
+        for name, cmd in commands:
+            cp = subprocess.run(cmd, text=True, capture_output=True, shell=False)
+            output = (cp.stdout + cp.stderr).strip()
+            payload["commands"][name] = {
+                "returncode": cp.returncode,
+                "output": output,
+            }
+            text.extend([f"=== {name.upper()} ===", output, ""])
+
+        (self.current_dir / "environment.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (self.current_dir / "environment.txt").write_text(
+            "\n".join(text), encoding="utf-8"
+        )
 
     def materialize(self, integration: str) -> None:
         """Install managed assets, then overwrite stale PowerPack project config."""
