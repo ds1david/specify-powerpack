@@ -13,7 +13,11 @@ SCRIPT_DIR = SCRIPT.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-SPEC = importlib.util.spec_from_file_location("powerpack_homologate", SCRIPT)
+# Load homologate.py under the same module name used by run.py.  Loading the
+# file twice under different names creates distinct Harness/HarnessError class
+# objects and makes monkeypatch/pytest.raises assertions observe the wrong
+# class hierarchy.
+SPEC = importlib.util.spec_from_file_location("homologate", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
@@ -168,7 +172,7 @@ def test_h2_bind_failure_is_recorded_and_stops_before_smoke(tmp_path, monkeypatc
 
     monkeypatch.setattr(harness, "command", fake_command)
 
-    with pytest.raises(MODULE.HarnessError, match="bind failed"):
+    with pytest.raises(MODULE.HarnessError, match="ChatGPT Project bind failed"):
         harness.run_h2()
 
     assert "project-bind" in labels
@@ -285,8 +289,11 @@ def test_h5_environment_probe_never_invokes_codex(tmp_path, monkeypatch):
     invoked: list[str] = []
 
     monkeypatch.setattr(RUN_MODULE.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(RUN_MODULE.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(RUN_MODULE.platform, "platform", lambda: "Linux-test")
+    monkeypatch.setattr(RUN_MODULE.platform, "release", lambda: "6.0-microsoft-standard-WSL2")
 
-    def fake_run(cmd, *, text, capture_output, shell):
+    def fake_run(cmd, **kwargs):
         invoked.append(cmd[0])
         return subprocess.CompletedProcess(cmd, 0, stdout=f"{cmd[0]} version", stderr="")
 
