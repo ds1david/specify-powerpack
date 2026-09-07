@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from dataclasses import dataclass
+import io
 import os
 from pathlib import Path
 import re
@@ -191,8 +193,17 @@ github_plugin_authorization: USER_CONFIRMED
 Use the ChatGPT/GitHub plugin or connector to open and inspect exactly this pull request.
 The pull request parameter is authoritative: do not substitute another PR and do not perform a generic repository review.
 Inspect the PR base/head identity, changed files and relevant SPEC evidence before producing a verdict.
-If the GitHub plugin cannot access this exact pull request, stop with BLOCKED_CONFIGURATION and state that GitHub access must be granted or repaired.
+If this session exposes no GitHub plugin/connector/tool at all, stop with BLOCKED_CAPABILITY and state that the current Web transport did not provide the required GitHub capability.
+If a GitHub plugin/connector/tool is available but cannot access this exact repository or pull request, stop with BLOCKED_CONFIGURATION and state that GitHub access must be granted or repaired.
 Do not infer approval from Project memory, PR description, prior reviews, or green CI alone."""
+
+
+def _blocked_review_status(text: str) -> str | None:
+    match = re.search(
+        r"(?im)^\s*#?\s*(BLOCKED_(?:CAPABILITY|CONFIGURATION|REVIEW_CONTEXT))\b",
+        text or "",
+    )
+    return match.group(1).upper() if match else None
 
 
 def install_review_context_contract(provider_cli) -> None:
@@ -232,7 +243,27 @@ def install_review_context_contract(provider_cli) -> None:
         user_prompt = provider_cli._prompt_from_args(args)
         args.prompt = context_prompt + "\n\nUSER REVIEW INSTRUCTION\n" + user_prompt
         args.prompt_file = None
-        original_cmd_review_run(args)
+
+        requested_output = getattr(args, "output", None)
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            original_cmd_review_run(args)
+        rendered = captured.getvalue()
+        if rendered:
+            print(rendered, end="")
+
+        review_text = rendered
+        if requested_output:
+            try:
+                review_text = Path(requested_output).read_text(encoding="utf-8")
+            except OSError:
+                review_text = rendered
+
+        blocked = _blocked_review_status(review_text)
+        if blocked:
+            raise provider_cli.core.PowerPackError(
+                f"Web code review did not complete: {blocked}. The blocked reviewer response above is preserved as evidence."
+            )
 
     def prepare_parser() -> argparse.ArgumentParser:
         parser = original_prepare_parser()
