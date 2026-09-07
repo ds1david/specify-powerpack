@@ -7,6 +7,7 @@ import pytest
 
 from speckit_powerpack.review_context_contract import (
     ReviewContextError,
+    _blocked_review_status,
     local_context_prompt,
     resolve_local_review_context,
     resolve_web_review_context,
@@ -95,3 +96,23 @@ def test_web_review_requires_github_plugin_permission_attestation(tmp_path: Path
     assert "pull_request_url: https://github.com/example/project/pull/42" in prompt
     assert "github_plugin_authorization: USER_CONFIRMED" in prompt
     assert "exactly this pull request" in prompt
+    assert "BLOCKED_CAPABILITY" in prompt
+    assert "BLOCKED_CONFIGURATION" in prompt
+
+
+def test_web_prompt_distinguishes_missing_tool_from_missing_permission(tmp_path: Path) -> None:
+    project = _repo(tmp_path)
+
+    prompt = web_context_prompt(project, "42", github_plugin_authorized=True)
+
+    assert "no GitHub plugin/connector/tool at all" in prompt
+    assert "BLOCKED_CAPABILITY" in prompt
+    assert "available but cannot access this exact repository or pull request" in prompt
+    assert "BLOCKED_CONFIGURATION" in prompt
+
+
+def test_blocked_review_status_detects_fail_closed_verdicts() -> None:
+    assert _blocked_review_status("# BLOCKED_CAPABILITY\nNo GitHub tool") == "BLOCKED_CAPABILITY"
+    assert _blocked_review_status("BLOCKED_CONFIGURATION\nPermission denied") == "BLOCKED_CONFIGURATION"
+    assert _blocked_review_status("## BLOCKED_REVIEW_CONTEXT\nNo SPEC") == "BLOCKED_REVIEW_CONTEXT"
+    assert _blocked_review_status("APPROVED\nNo findings") is None
