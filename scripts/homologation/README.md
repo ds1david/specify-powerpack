@@ -75,38 +75,52 @@ H1 captures environment/repository evidence, installs the browserless baseline, 
 
 ## H2 on WSL
 
-Provide a ChatGPT Project id, URL or unique name:
+H2 is the automated provider-context homologation. For unattended execution it can still receive a Project id, URL or unique name through `--chatgpt-project` or `POWERPACK_CHATGPT_PROJECT`.
+
+For human-driven work, however, **do not manually discover/copy the Project id**. The preferred PowerPack workflow is the interactive browserless selector described below: `review setup --path ...` discovers the Projects visible to the authenticated ChatGPT account, prints a numbered list and asks the user to select the intended Project.
+
+The H2 bind remains a first-class fail-fast gate: bind failure or invalid persisted state stops execution before strict doctor and smoke tests.
+
+## Preferred interactive ChatGPT Project binding
+
+The normal human workflow must let the PowerPack CLI discover and present the available ChatGPT Projects. Do not require an environment variable, Project id, URL or copied Project name.
+
+From the target repository, run:
 
 ```bash
-export POWERPACK_CHATGPT_PROJECT='g-p-XXXXXXXX'
+cd /home/david/workspace/autonomous-trading-strategy-evolution-lab
 
-sh scripts/homologation/homologate.sh H2 \
-  --project-path /home/david/workspace/autonomous-trading-strategy-evolution-lab
+speckit-powerpack review setup --path .
 ```
 
-Or:
+Expected interaction:
+
+```text
+Codex/ChatGPT authorization validated via ~/.codex/auth.json.
+Deseja vincular este repositório local a um ChatGPT Project existente? [y/N]: s
+ 1. <Project name> | <project-id> | <project-url>
+ 2. <Project name> | <project-id> | <project-url>
+ ...
+Select Project number: <number>
+Repository linked to ChatGPT Project '<Project name>' (...) using ChatGPTProjectProvider.
+```
+
+The selector is browserless: Project discovery uses the authenticated ChatGPT account backed by Codex auth and does not launch Playwright or Chromium.
+
+If the user declines the Project prompt, PowerPack configures local Codex review instead. If discovery returns no Projects or the selected index is invalid, binding fails and review must stop.
+
+For automation/non-interactive execution only, explicit selectors remain available:
 
 ```bash
-sh scripts/homologation/homologate.sh H2 \
-  --project-path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
-  --chatgpt-project 'g-p-XXXXXXXX'
+speckit-powerpack review setup \
+  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
+  --yes-project \
+  --project 'g-p-XXXXXXXX'
 ```
 
-H2 first overwrites old managed configuration and then performs an explicit Project bind using `review setup --yes-project --project ...`.
+or `--index N` after a previously inspected discovery list.
 
-The bind is a first-class fail-fast gate:
-
-1. execute the bind and save stdout/stderr in `project-bind.txt`;
-2. require exit code zero;
-3. reload `review.json`;
-4. require `provider=chatgpt-project`, `required=true`, `enabled=true`, `mode=backend-api`, `project_id` and `project_url`;
-5. only then run strict doctor and smoke tests.
-
-Any bind command failure or invalid persisted state ends H2 immediately as `FAIL`; no doctor or smoke runs afterward.
-
-After a valid bind, H2 requires non-empty Project response, expected Project name, `1 + 1 = 2`, and at most 100 words. The harness then asks for human confirmation that the returned mission matches the intended Project. In `--non-interactive` mode this semantic step remains `BLOCKED` rather than being fabricated as verified.
-
-## Manual Web review: bind first, then review an explicit PR
+## Manual Web review: interactive bind first, then review an explicit PR
 
 A real Web code review is separate from the H2 provider-context smoke. Before `review run --provider web`, bind the target repository to the intended ChatGPT Project with the PowerPack itself.
 
@@ -132,43 +146,18 @@ The help must advertise both:
 --github-plugin-authorized
 ```
 
-### 2. Select the ChatGPT Project
-
-The selector may be a Project id, Project URL or unique Project name. Using an environment variable keeps the command reusable:
+### 2. Let PowerPack discover and bind the ChatGPT Project
 
 ```bash
-export POWERPACK_CHATGPT_PROJECT='g-p-XXXXXXXX'
+cd /home/david/workspace/autonomous-trading-strategy-evolution-lab
+speckit-powerpack review setup --path .
 ```
 
-Confirm that it is set before binding:
+Answer `s`/`y` when asked whether to bind a ChatGPT Project. PowerPack then lists the Projects visible to the authenticated account and asks for the Project number. This interactive selection is the preferred human workflow.
 
-```bash
-env | grep POWERPACK_CHATGPT_PROJECT
-```
+A bind failure is a hard stop: do not continue to `doctor` or `review run`.
 
-You may also skip the environment variable and pass the selector literally to `--project` in the next step.
-
-### 3. Bind the repository to the ChatGPT Project through PowerPack
-
-```bash
-speckit-powerpack review setup \
-  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
-  --yes-project \
-  --project "$POWERPACK_CHATGPT_PROJECT"
-```
-
-Equivalent form without an environment variable:
-
-```bash
-speckit-powerpack review setup \
-  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
-  --yes-project \
-  --project 'g-p-XXXXXXXX'
-```
-
-The bind must finish successfully. A bind failure is a hard stop: do not continue to `doctor` or `review run`.
-
-### 4. Validate the persisted binding and provider readiness
+### 3. Validate the persisted binding and provider readiness
 
 ```bash
 speckit-powerpack doctor \
@@ -178,13 +167,13 @@ speckit-powerpack doctor \
 
 The strict doctor must succeed before the review begins. The effective repository configuration should resolve to `provider=chatgpt-project`, Project enabled/required, backend API mode, and a non-empty bound Project identity.
 
-### 5. Confirm GitHub permission in ChatGPT
+### 4. Confirm GitHub permission in ChatGPT
 
 For Web PR review, grant the ChatGPT/GitHub plugin or connector access to the target GitHub repository. PowerPack cannot grant this permission on the user's behalf; `--github-plugin-authorized` is the user's attestation that the permission was granted.
 
 If the ChatGPT/GitHub integration cannot access the exact PR, the review must fail closed as `BLOCKED_CONFIGURATION`; Project memory or a PR description alone is not proof of PR inspection.
 
-### 6. Run the Web review against an explicit PR
+### 5. Run the Web review against an explicit PR
 
 Example for `autonomous-trading-strategy-evolution-lab` PR #92:
 
@@ -199,13 +188,14 @@ speckit-powerpack review run \
 
 For Web mode, `--pr` is mandatory and is part of the authoritative review identity. The PR must belong to the repository configured as `origin`; a PR URL from another repository is rejected.
 
-The Web review sequence is therefore:
+The preferred human Web review sequence is:
 
 ```text
 install candidate CLI
-  -> select ChatGPT Project
-  -> speckit-powerpack review setup (bind)
-  -> validate persisted bind
+  -> speckit-powerpack review setup
+  -> PowerPack discovers Projects
+  -> user selects Project number
+  -> PowerPack persists binding
   -> doctor --strict-review
   -> confirm ChatGPT/GitHub permission
   -> review run --provider web --pr ...
