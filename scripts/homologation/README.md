@@ -4,6 +4,17 @@ This harness automates repeatable functional homologation of SpecKit PowerPack a
 
 The implementation is Python-first so the same orchestration can be used on WSL/Linux and Windows. The current first-class validation target is **WSL/Linux**. Windows uses the same Python harness through `homologate.ps1` and will receive the same scenario validation after the WSL baseline is approved.
 
+## Harness self-tests
+
+Do not require `pytest` to be installed globally. The project declares it in the `dev` optional dependency set, so run the harness tests through `uv`:
+
+```bash
+cd /home/david/workspace/speckit-powerpack
+uv run --extra dev python -m pytest -q tests/test_homologation_harness.py
+```
+
+This is the canonical developer/self-test command for the harness on WSL. The runtime homologation scripts themselves do not require a globally installed `pytest`.
+
 ## WSL baseline
 
 Expected local PowerPack clone:
