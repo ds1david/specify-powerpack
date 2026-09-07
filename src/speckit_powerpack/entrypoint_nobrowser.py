@@ -31,6 +31,7 @@ ChatGPTBackendClient.list_projects = _list_projects_backend_compatible
 
 from . import cli_project_provider as provider_cli  # noqa: E402
 from .project_context_smoke import install_project_context_smoke  # noqa: E402
+from .review_context_contract import install_review_context_contract  # noqa: E402
 
 
 def _live_auth_ready() -> bool:
@@ -44,4 +45,5 @@ def _live_auth_ready() -> bool:
 
 provider_cli._auth_ready = _live_auth_ready
 install_project_context_smoke(provider_cli)
+install_review_context_contract(provider_cli)
 main = provider_cli.main
