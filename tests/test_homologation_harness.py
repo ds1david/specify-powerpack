@@ -270,6 +270,33 @@ def test_h2_bind_success_records_command_and_state(tmp_path, monkeypatch):
     )
 
 
+def test_h5_environment_probe_never_invokes_codex(tmp_path, monkeypatch):
+    args = MODULE.parse_args(
+        [
+            "H5",
+            "--project-path",
+            str(tmp_path),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+        ]
+    )
+    harness = RUN_MODULE.BindingAwareHarness(args)
+    harness.scenario = "common"
+    invoked: list[str] = []
+
+    monkeypatch.setattr(RUN_MODULE.shutil, "which", lambda name: f"/bin/{name}")
+
+    def fake_run(cmd, *, text, capture_output, shell):
+        invoked.append(cmd[0])
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"{cmd[0]} version", stderr="")
+
+    monkeypatch.setattr(RUN_MODULE.subprocess, "run", fake_run)
+    harness.capture_environment()
+
+    assert "copilot" in invoked
+    assert "codex" not in invoked
+
+
 def test_copilot_review_is_programmatic_read_only_and_has_no_codex_or_chatgpt(tmp_path, monkeypatch):
     spec_dir = tmp_path / "specs" / "demo"
     spec_dir.mkdir(parents=True)
