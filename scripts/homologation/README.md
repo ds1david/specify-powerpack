@@ -10,7 +10,9 @@ Do not require `pytest` to be installed globally. Run the harness tests through 
 
 ```bash
 cd /home/david/workspace/speckit-powerpack
-uv run --extra dev python -m pytest -q tests/test_homologation_harness.py
+uv run --extra dev python -m pytest -q \
+  tests/test_homologation_harness.py \
+  tests/test_review_context_contract.py
 ```
 
 ## WSL baseline
@@ -103,6 +105,126 @@ The bind is a first-class fail-fast gate:
 Any bind command failure or invalid persisted state ends H2 immediately as `FAIL`; no doctor or smoke runs afterward.
 
 After a valid bind, H2 requires non-empty Project response, expected Project name, `1 + 1 = 2`, and at most 100 words. The harness then asks for human confirmation that the returned mission matches the intended Project. In `--non-interactive` mode this semantic step remains `BLOCKED` rather than being fabricated as verified.
+
+## Manual Web review: bind first, then review an explicit PR
+
+A real Web code review is separate from the H2 provider-context smoke. Before `review run --provider web`, bind the target repository to the intended ChatGPT Project with the PowerPack itself.
+
+### 1. Install the candidate CLI you intend to exercise
+
+For local development of the current harness/candidate branch:
+
+```bash
+uv tool install --force \
+  /home/david/workspace/speckit-powerpack
+```
+
+Confirm that the Web PR contract is present:
+
+```bash
+speckit-powerpack review run --help
+```
+
+The help must advertise both:
+
+```text
+--pr PR
+--github-plugin-authorized
+```
+
+### 2. Select the ChatGPT Project
+
+The selector may be a Project id, Project URL or unique Project name. Using an environment variable keeps the command reusable:
+
+```bash
+export POWERPACK_CHATGPT_PROJECT='g-p-XXXXXXXX'
+```
+
+Confirm that it is set before binding:
+
+```bash
+env | grep POWERPACK_CHATGPT_PROJECT
+```
+
+You may also skip the environment variable and pass the selector literally to `--project` in the next step.
+
+### 3. Bind the repository to the ChatGPT Project through PowerPack
+
+```bash
+speckit-powerpack review setup \
+  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
+  --yes-project \
+  --project "$POWERPACK_CHATGPT_PROJECT"
+```
+
+Equivalent form without an environment variable:
+
+```bash
+speckit-powerpack review setup \
+  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
+  --yes-project \
+  --project 'g-p-XXXXXXXX'
+```
+
+The bind must finish successfully. A bind failure is a hard stop: do not continue to `doctor` or `review run`.
+
+### 4. Validate the persisted binding and provider readiness
+
+```bash
+speckit-powerpack doctor \
+  --strict-review \
+  /home/david/workspace/autonomous-trading-strategy-evolution-lab
+```
+
+The strict doctor must succeed before the review begins. The effective repository configuration should resolve to `provider=chatgpt-project`, Project enabled/required, backend API mode, and a non-empty bound Project identity.
+
+### 5. Confirm GitHub permission in ChatGPT
+
+For Web PR review, grant the ChatGPT/GitHub plugin or connector access to the target GitHub repository. PowerPack cannot grant this permission on the user's behalf; `--github-plugin-authorized` is the user's attestation that the permission was granted.
+
+If the ChatGPT/GitHub integration cannot access the exact PR, the review must fail closed as `BLOCKED_CONFIGURATION`; Project memory or a PR description alone is not proof of PR inspection.
+
+### 6. Run the Web review against an explicit PR
+
+Example for `autonomous-trading-strategy-evolution-lab` PR #92:
+
+```bash
+speckit-powerpack review run \
+  --provider web \
+  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
+  --pr 92 \
+  --github-plugin-authorized \
+  --prompt-file /tmp/atsel-033-soak-002-review.md
+```
+
+For Web mode, `--pr` is mandatory and is part of the authoritative review identity. The PR must belong to the repository configured as `origin`; a PR URL from another repository is rejected.
+
+The Web review sequence is therefore:
+
+```text
+install candidate CLI
+  -> select ChatGPT Project
+  -> speckit-powerpack review setup (bind)
+  -> validate persisted bind
+  -> doctor --strict-review
+  -> confirm ChatGPT/GitHub permission
+  -> review run --provider web --pr ...
+```
+
+A provider/context smoke passing does **not** by itself mean a Web PR review is homologated. The real PR review must preserve its own PR/base/head/prompt/response evidence.
+
+## Local review contract
+
+Local review intentionally does not require a PR. It resolves the current Git branch to exactly one Spec Kit SPEC and reviews that branch/SPEC pair using the local repository as evidence.
+
+```bash
+speckit-powerpack review run \
+  --provider codex \
+  --path /home/david/workspace/autonomous-trading-strategy-evolution-lab \
+  --prompt-file /tmp/local-review.md
+```
+
+Passing `--pr` or `--github-plugin-authorized` to a local Codex review is invalid. If the current branch cannot be tied to exactly one SPEC, the local review fails closed instead of reviewing the repository generically.
 
 ## H5 Copilot-only on WSL
 
