@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Harness = Join-Path $ScriptDir "homologate.py"
+$Harness = Join-Path $ScriptDir "run.py"
 
 if (Get-Command py -ErrorAction SilentlyContinue) {
     & py -3 $Harness @args
