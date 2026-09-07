@@ -50,6 +50,98 @@ def test_strict_clean_mode_is_opt_in():
     assert MODULE.parse_args(["H1", "--require-clean"]).require_clean is True
 
 
+def test_materialize_resets_managed_config_before_scenario_setup(tmp_path, monkeypatch):
+    args = MODULE.parse_args(
+        [
+            "H1",
+            "--project-path",
+            str(tmp_path),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+        ]
+    )
+    harness = RUN_MODULE.BindingAwareHarness(args)
+    monkeypatch.setattr(MODULE.Harness, "materialize", lambda self, integration: None)
+
+    seen: list[list[str]] = []
+
+    def fake_command(cmd, *, label, cwd=None, expected_codes=(0,)):
+        seen.append(list(cmd))
+        assert label == "powerpack-config-reset"
+        return subprocess.CompletedProcess(cmd, 0, stdout='{"status":"PROJECT_REFRESHED"}', stderr="")
+
+    monkeypatch.setattr(harness, "command", fake_command)
+    monkeypatch.setattr(
+        harness,
+        "read_review",
+        lambda: {
+            "provider": "codex",
+            "chatgpt_web": {
+                "required": False,
+                "enabled": False,
+                "mode": "disabled",
+                "project_alias": None,
+                "project_id": None,
+                "project_name": None,
+                "project_url": None,
+                "account_label": None,
+                "authorization": None,
+            },
+        },
+    )
+
+    harness.materialize("codex")
+
+    assert seen
+    reset = seen[0]
+    assert "update" in reset
+    assert "--project-only" in reset
+    assert "--force" in reset
+    assert "--yes" in reset
+    assert "--reset-config" in reset
+    assert "--integration" in reset
+    assert "codex" in reset
+    assert any(
+        check.name == "powerpack-config-reset-state" and check.status == MODULE.PASS
+        for check in harness.checks
+    )
+
+
+def test_materialize_fails_if_reset_leaves_stale_project_binding(tmp_path, monkeypatch):
+    args = MODULE.parse_args(
+        [
+            "H1",
+            "--project-path",
+            str(tmp_path),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+        ]
+    )
+    harness = RUN_MODULE.BindingAwareHarness(args)
+    monkeypatch.setattr(MODULE.Harness, "materialize", lambda self, integration: None)
+    monkeypatch.setattr(
+        harness,
+        "command",
+        lambda cmd, *, label, cwd=None, expected_codes=(0,): subprocess.CompletedProcess(
+            cmd, 0, stdout="reset", stderr=""
+        ),
+    )
+    monkeypatch.setattr(
+        harness,
+        "read_review",
+        lambda: {
+            "provider": "chatgpt-project",
+            "chatgpt_web": {
+                "project_id": "g-p-stale",
+                "project_url": "https://chatgpt.com/g/g-p-stale/project",
+            },
+        },
+    )
+
+    with pytest.raises(MODULE.HarnessError, match="stale Project binding"):
+        harness.materialize("codex")
+
+
 def test_h2_bind_failure_is_recorded_and_stops_before_smoke(tmp_path, monkeypatch):
     evidence_root = tmp_path / "evidence"
     args = MODULE.parse_args(
@@ -176,3 +268,47 @@ def test_h2_bind_success_records_command_and_state(tmp_path, monkeypatch):
         check.name == "chatgpt-project-bind-state" and check.status == MODULE.PASS
         for check in harness.checks
     )
+
+
+def test_copilot_review_is_programmatic_read_only_and_has_no_codex_or_chatgpt(tmp_path, monkeypatch):
+    spec_dir = tmp_path / "specs" / "demo"
+    spec_dir.mkdir(parents=True)
+    (spec_dir / "spec.md").write_text("# Demo\n", encoding="utf-8")
+    args = MODULE.parse_args(
+        [
+            "H5",
+            "--project-path",
+            str(tmp_path),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+        ]
+    )
+    harness = RUN_MODULE.BindingAwareHarness(args)
+    harness.scenario = "H5"
+    captured: list[str] = []
+
+    def fake_command(cmd, *, label, cwd=None, expected_codes=(0,)):
+        captured.extend(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="No blocking findings.\nPOWERPACK_COPILOT_REVIEW_1_OK\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(harness, "command", fake_command)
+    harness._copilot_review(
+        number=1,
+        branch="spec/demo",
+        spec_dir=spec_dir,
+        marker=RUN_MODULE.COPILOT_REVIEW_1_MARKER,
+    )
+
+    assert captured[0] == "copilot"
+    assert "-p" in captured
+    assert "-s" in captured
+    assert "--no-ask-user" in captured
+    assert any(arg.startswith("--allow-tool=read,") for arg in captured)
+    assert any("--deny-tool=write,memory,url" in arg for arg in captured)
+    assert "codex" not in captured
+    assert "chatgpt" not in [item.casefold() for item in captured if not item.startswith("/review")]
