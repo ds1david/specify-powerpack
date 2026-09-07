@@ -16,6 +16,19 @@ core.enforce_mandatory_web_review = lambda review_path: None
 # account-scoped Codex /wham/usage probe and applies Codex-compatible headers.
 install_backend_compat()
 
+# ChatGPT's gizmos/snorlax/sidebar endpoint currently accepts at most 50 items
+# per request. Clamp the provider discovery request so the default CLI path does
+# not fail with HTTP 422. Cursor pagination can later lift this cap without
+# changing the public CLI contract.
+_original_list_projects = ChatGPTBackendClient.list_projects
+
+
+def _list_projects_backend_compatible(self, *, limit: int = 100):
+    return _original_list_projects(self, limit=max(1, min(limit, 50)))
+
+
+ChatGPTBackendClient.list_projects = _list_projects_backend_compatible
+
 from . import cli_project_provider as provider_cli  # noqa: E402
 
 
