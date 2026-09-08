@@ -34,6 +34,8 @@ CANONICAL_CLI = "specify-powerpack"
 PROJECT_AUTHORIZATION = "codex-backend-api"
 PROJECT_PROVIDER = "chatgpt-project"
 REVIEW_BACKEND = "codex-apps-github"
+REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4})\b", re.IGNORECASE)
+CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
 
 
 class BrowserlessReviewError(RuntimeError):
@@ -105,6 +107,10 @@ def _extract_json(text: str) -> dict[str, Any]:
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
 
 
+def _requirement_ids(spec_context: str) -> tuple[str, ...]:
+    return tuple(sorted({match.group(1).upper() for match in REQUIREMENT_ID.finditer(spec_context or "")}))
+
+
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
@@ -145,6 +151,7 @@ def _review_prompt(
     previous_review: str,
 ) -> str:
     previous_block = previous_review.strip() or "NONE — first review round"
+    requirements = list(_requirement_ids(spec_context))
     return f"""You are the mandatory independent browserless code-review gate for {PRODUCT_NAME}.
 
 Use exclusively the installed GitHub App selected by this explicit Codex App mention for PR/repository evidence:
@@ -152,6 +159,9 @@ Use exclusively the installed GitHub App selected by this explicit Codex App men
 
 IMMUTABLE REVIEW SNAPSHOT — authoritative; do not substitute another PR or snapshot:
 {json.dumps(snapshot.as_dict(), ensure_ascii=False, indent=2)}
+
+EXPECTED REQUIREMENT IDS — coverage.requirements must contain exactly this set when non-empty:
+{json.dumps(requirements, ensure_ascii=False)}
 
 The local implementation HEAD has already been verified by {PRODUCT_NAME} to equal the PR head SHA. Use GitHub tools to inspect the exact PR, complete diff, every changed file and all related source/tests/contracts needed to establish blast radius. Follow pagination. Do not rely on the PR description or CI as proof.
 
@@ -186,6 +196,10 @@ Rules:
 - Return one schema 2.0 review JSON object only, no Markdown fences or prose before/after it.
 - review_context MUST exactly equal the immutable snapshot fields spec_id/base_ref/base_sha/merge_base/head_sha/snapshot_sha256 above.
 - coverage.changed_files MUST exactly equal the immutable snapshot changed_files list.
+- coverage.requirements MUST contain exactly the EXPECTED REQUIREMENT IDS above when that list is non-empty; do not silently omit requirements.
+- coverage.inspection_evidence MUST contain one object per changed file with fields file and evidence describing what was inspected.
+- coverage.verdict_challenge MUST contain strongest_counterexample, result and non-empty evidence. APPROVED requires result SURVIVED or evidence-backed NOT_APPLICABLE.
+- coverage.context_gaps MUST be a list. If material Project-only knowledge is absent from durable repository evidence, describe it there and do not APPROVE.
 - Add this extra top-level object so {PRODUCT_NAME} can prove Project context was actually consumed:
   "project_context_evidence": {{
     "project_name": "{project_name}",
@@ -229,6 +243,73 @@ def _validate_snapshot_contract(review: dict[str, Any], snapshot: ReviewSnapshot
     changed = coverage.get("changed_files")
     if not isinstance(changed, list) or set(map(str, changed)) != set(snapshot.changed_files):
         raise BrowserlessReviewError("coverage.changed_files does not exactly match the immutable PR changed-file list.")
+
+
+def _validate_hardened_review_contract(
+    review: dict[str, Any],
+    *,
+    snapshot: ReviewSnapshot,
+    spec_context: str,
+) -> None:
+    coverage = review.get("coverage")
+    if not isinstance(coverage, dict):
+        raise BrowserlessReviewError("Review is missing coverage.")
+
+    expected_requirements = set(_requirement_ids(spec_context))
+    actual_requirements = {
+        str(item.get("id") or "").upper()
+        for item in coverage.get("requirements", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    if expected_requirements and actual_requirements != expected_requirements:
+        missing = sorted(expected_requirements - actual_requirements)
+        extra = sorted(actual_requirements - expected_requirements)
+        raise BrowserlessReviewError(
+            "coverage.requirements does not exactly match active SPEC requirement IDs; "
+            f"missing={missing}, extra={extra}."
+        )
+
+    raw_inspection = coverage.get("inspection_evidence")
+    if not isinstance(raw_inspection, list):
+        raise BrowserlessReviewError("coverage.inspection_evidence must be a list.")
+    evidence_by_file: set[str] = set()
+    for index, item in enumerate(raw_inspection):
+        if not isinstance(item, dict):
+            raise BrowserlessReviewError(f"coverage.inspection_evidence[{index}] must be an object.")
+        path = str(item.get("file") or "").strip()
+        evidence = str(item.get("evidence") or "").strip()
+        if not path or len(evidence) < 8:
+            raise BrowserlessReviewError(
+                f"coverage.inspection_evidence[{index}] requires file and concrete evidence."
+            )
+        evidence_by_file.add(path)
+    missing_evidence = sorted(set(snapshot.changed_files) - evidence_by_file)
+    if missing_evidence:
+        raise BrowserlessReviewError(
+            "Every changed file requires inspection evidence: " + ", ".join(missing_evidence)
+        )
+
+    challenge = coverage.get("verdict_challenge")
+    if not isinstance(challenge, dict):
+        raise BrowserlessReviewError("coverage.verdict_challenge is required.")
+    challenge_result = str(challenge.get("result") or "").strip()
+    if challenge_result not in CHALLENGE_RESULTS:
+        raise BrowserlessReviewError("coverage.verdict_challenge.result is invalid.")
+    if not str(challenge.get("strongest_counterexample") or "").strip():
+        raise BrowserlessReviewError("coverage.verdict_challenge.strongest_counterexample is required.")
+    challenge_evidence = challenge.get("evidence")
+    if not isinstance(challenge_evidence, list) or not challenge_evidence:
+        raise BrowserlessReviewError("coverage.verdict_challenge.evidence must not be empty.")
+    if review.get("verdict") == "APPROVED" and challenge_result not in {"SURVIVED", "NOT_APPLICABLE"}:
+        raise BrowserlessReviewError(
+            "APPROVED requires verdict challenge SURVIVED or evidence-backed NOT_APPLICABLE."
+        )
+
+    context_gaps = coverage.get("context_gaps")
+    if not isinstance(context_gaps, list):
+        raise BrowserlessReviewError("coverage.context_gaps must be a list.")
+    if review.get("verdict") == "APPROVED" and context_gaps:
+        raise BrowserlessReviewError("APPROVED is forbidden while coverage.context_gaps is non-empty.")
 
 
 def _validate_protocol(project: Path, review_path: Path, previous: Path | None) -> None:
@@ -343,6 +424,7 @@ def run_browserless_code_review(
         raise BrowserlessReviewError(f"Deep review GitHub evidence failed: {exc}") from exc
     review = _extract_json(str(review_events.get("assistant_text") or ""))
     _validate_snapshot_contract(review, snapshot)
+    _validate_hardened_review_contract(review, snapshot=snapshot, spec_context=spec.serialized)
     _validate_project_evidence(review, project_name=binding.project_name, project_context=project_context)
 
     output_path = (output or _default_output(project_path, snapshot)).resolve()
