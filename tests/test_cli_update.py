@@ -51,12 +51,12 @@ def test_full_update_uses_effective_source_then_refreshes_project(monkeypatch, t
     calls = []
     (tmp_path / ".specify").mkdir()
     monkeypatch.setattr(cli, "effective_source", lambda: {
-        "repository": "https://github.com/ds1david/speckit-powerpack.git",
+        "repository": "https://github.com/ds1david/specify-powerpack.git",
         "ref": "main",
     })
     monkeypatch.setattr(cli, "apply_self_update", lambda repository, ref: calls.append((repository, ref)))
     monkeypatch.setattr(cli, "project_integration", lambda project: "claude")
     monkeypatch.setattr(cli, "install_powerpack", lambda *args, **kwargs: calls.append((args, kwargs)))
     cli.cmd_update(_args(tmp_path))
-    assert calls[0] == ("https://github.com/ds1david/speckit-powerpack.git", "main")
+    assert calls[0] == ("https://github.com/ds1david/specify-powerpack.git", "main")
     assert calls[1][1]["initialize"] is False
