@@ -11,7 +11,7 @@ import subprocess
 from urllib.parse import urlparse
 
 
-GITHUB_PLUGIN_MENTION = "@github"
+GITHUB_PLUGIN_MENTION = "@GitHub"
 
 
 @dataclass(frozen=True)
@@ -205,6 +205,16 @@ If a GitHub plugin/connector/tool is available but cannot access this exact repo
 Do not infer approval from Project memory, PR description, prior reviews, or green CI alone."""
 
 
+def _without_leading_github_mention(prompt: str) -> str:
+    """Remove one user-supplied leading GitHub mention before canonical composition."""
+    return re.sub(
+        r"(?is)^\s*@github\b[ \t]*(?:\r?\n)?",
+        "",
+        prompt or "",
+        count=1,
+    ).lstrip()
+
+
 def _blocked_review_status(text: str) -> str | None:
     match = re.search(
         r"(?im)^\s*#*\s*(BLOCKED_(?:CAPABILITY|CONFIGURATION|REVIEW_CONTEXT))\b",
@@ -218,7 +228,7 @@ def install_review_context_contract(provider_cli) -> None:
 
     Web/ChatGPT Project reviews require an explicit PR, an installed/connected
     GitHub app/plugin with repository access, a user-confirmed permission grant,
-    and an explicit @github invocation. Local Codex reviews derive their context
+    and an explicit @GitHub invocation. Local Codex reviews derive their context
     from the current Git branch and its current Spec Kit SPEC.
     """
 
@@ -249,6 +259,8 @@ def install_review_context_contract(provider_cli) -> None:
             raise provider_cli.core.PowerPackError(str(exc)) from exc
 
         user_prompt = provider_cli._prompt_from_args(args)
+        if provider != provider_cli.PROVIDER_CODEX:
+            user_prompt = _without_leading_github_mention(user_prompt)
         args.prompt = context_prompt + "\n\nUSER REVIEW INSTRUCTION\n" + user_prompt
         args.prompt_file = None
 
@@ -286,7 +298,7 @@ def install_review_context_contract(provider_cli) -> None:
             "--github-plugin-authorized",
             action="store_true",
             help=(
-                "Required attestation that the GitHub app/plugin is installed and connected in ChatGPT Web/Desktop and authorized for this repository; Web prompts invoke @github automatically"
+                "Required attestation that the GitHub app/plugin is installed and connected in ChatGPT Web/Desktop and authorized for this repository; Web prompts invoke @GitHub automatically"
             ),
         )
         run.set_defaults(func=cmd_review_run)
