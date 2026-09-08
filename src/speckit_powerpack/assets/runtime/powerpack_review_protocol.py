@@ -23,6 +23,7 @@ REQUIREMENT_STATUSES = {"PASS", "PARTIAL", "FAIL", "NOT_APPLICABLE"}
 BASELINE_RESULTS = {"PRESERVED", "CHANGED_AS_SPECIFIED", "REGRESSION", "NOT_APPLICABLE"}
 PREVIOUS_FINDING_STATUSES = {"RESOLVED", "PARTIALLY_RESOLVED", "NOT_RESOLVED", "REGRESSED"}
 VERDICTS = {"APPROVED", "CHANGES_REQUIRED", "BLOCKED"}
+CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
 FINDING_FIELDS = {
     "id", "severity", "category", "title", "file", "line", "evidence",
     "failure_scenario", "behavioral_impact", "required_change", "acceptance_criteria",
@@ -108,6 +109,43 @@ def validate_review(review: dict[str, Any], previous: dict[str, Any] | None = No
     if not baselines:
         errors.append("coverage.baseline_scenarios must not be empty")
 
+    inspection = coverage.get("inspection_evidence")
+    evidence_by_file: set[str] = set()
+    if not isinstance(inspection, list):
+        errors.append("coverage.inspection_evidence must be a list")
+    else:
+        for index, item in enumerate(inspection):
+            if not isinstance(item, dict):
+                errors.append(f"coverage.inspection_evidence[{index}] must be an object")
+                continue
+            raw_file = str(item.get("file") or "").strip()
+            evidence = str(item.get("evidence") or "").strip()
+            if raw_file:
+                evidence_by_file.add(raw_file)
+            if not raw_file or len(evidence) < 8:
+                errors.append(f"coverage.inspection_evidence[{index}] requires file and concrete evidence")
+        missing_evidence = sorted(set(map(str, changed)) - evidence_by_file)
+        if missing_evidence:
+            errors.append("every changed file requires inspection evidence: " + ", ".join(missing_evidence))
+
+    challenge = coverage.get("verdict_challenge")
+    challenge_result = None
+    if not isinstance(challenge, dict):
+        errors.append("coverage.verdict_challenge is required")
+    else:
+        challenge_result = challenge.get("result")
+        if challenge_result not in CHALLENGE_RESULTS:
+            errors.append("coverage.verdict_challenge.result is invalid")
+        if not str(challenge.get("strongest_counterexample") or "").strip():
+            errors.append("coverage.verdict_challenge.strongest_counterexample is required")
+        if not _list(challenge.get("evidence")):
+            errors.append("coverage.verdict_challenge.evidence must not be empty")
+
+    context_gaps = coverage.get("context_gaps")
+    if not isinstance(context_gaps, list):
+        errors.append("coverage.context_gaps must be a list")
+        context_gaps = []
+
     for index, item in enumerate(requirements):
         if not isinstance(item, dict) or item.get("status") not in REQUIREMENT_STATUSES:
             errors.append(f"coverage.requirements[{index}].status is invalid")
@@ -126,7 +164,7 @@ def validate_review(review: dict[str, Any], previous: dict[str, Any] | None = No
             continue
         name, status = item.get("name"), item.get("status")
         if name:
-            front_names.append(name)
+            front_names.append(str(name))
         if status not in FRONT_STATUSES:
             errors.append(f"coverage.fronts[{index}].status is invalid")
         if not _list(item.get("evidence")):
@@ -194,6 +232,10 @@ def validate_review(review: dict[str, Any], previous: dict[str, Any] | None = No
             errors.append("APPROVED requires every previous finding to be RESOLVED")
         if front_statuses - {"PASS", "NOT_APPLICABLE"}:
             errors.append("APPROVED requires every review front to PASS or be NOT_APPLICABLE")
+        if challenge_result not in {"SURVIVED", "NOT_APPLICABLE"}:
+            errors.append("APPROVED requires verdict challenge SURVIVED or NOT_APPLICABLE")
+        if context_gaps:
+            errors.append("APPROVED is forbidden while coverage.context_gaps is non-empty")
     elif verdict == "CHANGES_REQUIRED":
         if not findings:
             errors.append("CHANGES_REQUIRED requires at least one finding")
