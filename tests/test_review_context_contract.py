@@ -100,19 +100,24 @@ def test_web_review_requires_github_plugin_permission_attestation(tmp_path: Path
     assert "pull_request_url: https://github.com/example/project/pull/42" in prompt
     assert "github_plugin_authorization: USER_CONFIRMED" in prompt
     assert "github_plugin_invocation: @GitHub" in prompt
+    assert "github_tool_activation: mention-requested" in prompt
+    assert "github_tool_evidence: REQUIRED" in prompt
+    assert "web_transport: chatgpt-backend-codex-responses" in prompt
     assert "exactly this pull request" in prompt
     assert "BLOCKED_CAPABILITY" in prompt
     assert "BLOCKED_CONFIGURATION" in prompt
 
 
-def test_web_prompt_invokes_github_and_documents_web_desktop_prerequisite(tmp_path: Path) -> None:
+def test_web_prompt_requests_github_but_does_not_claim_tool_materialization(tmp_path: Path) -> None:
     project = _repo(tmp_path)
 
     prompt = web_context_prompt(project, "42", github_plugin_authorized=True)
 
     assert prompt.splitlines()[0] == "@GitHub"
     assert "installed and connected in ChatGPT Web or Desktop" in prompt
-    assert "leading @GitHub mention is intentional and required" in prompt
+    assert "activates GitHub in the homologated interactive ChatGPT Web/Desktop product flow" in prompt
+    assert "only a capability request hint" in prompt
+    assert "not proof that the GitHub tool was materialized" in prompt
     assert "access to this repository" in prompt
 
 
