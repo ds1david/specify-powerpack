@@ -22,6 +22,38 @@ def _load():
     return module
 
 
+def _write_binding(tmp_path: Path) -> None:
+    review_dir = tmp_path / ".specify" / "powerpack"
+    review_dir.mkdir(parents=True)
+    (review_dir / "review.json").write_text(
+        json.dumps(
+            {
+                "provider": "chatgpt-project",
+                "chatgpt_web": {
+                    "mode": "backend-api",
+                    "authorization": "codex-backend-api",
+                    "project_id": "g-p-test123",
+                    "project_name": "Projeto Exemplo",
+                    "project_url": "https://chatgpt.com/g/g-p-test123/project",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _args(tmp_path: Path, *, discover_github: bool = False):
+    return SimpleNamespace(
+        path=str(tmp_path),
+        model="gpt-5.6-sol",
+        effort="high",
+        max_conversations=2,
+        discover_github=discover_github,
+        locale="pt-BR",
+        include_assistant_text=False,
+    )
+
+
 def test_smoke_reuses_recovered_project_context_prompt() -> None:
     text = SMOKE.read_text(encoding="utf-8")
     assert "PROJECT_CONTEXT_SMOKE_PROMPT" in text
@@ -46,23 +78,7 @@ def test_smoke_is_strictly_browserless_backend_flow() -> None:
 
 def test_smoke_requires_existing_repository_project_binding(tmp_path: Path) -> None:
     module = _load()
-    review_dir = tmp_path / ".specify" / "powerpack"
-    review_dir.mkdir(parents=True)
-    (review_dir / "review.json").write_text(
-        json.dumps(
-            {
-                "provider": "chatgpt-project",
-                "chatgpt_web": {
-                    "mode": "backend-api",
-                    "authorization": "codex-backend-api",
-                    "project_id": "g-p-test123",
-                    "project_name": "Projeto Exemplo",
-                    "project_url": "https://chatgpt.com/g/g-p-test123/project",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_binding(tmp_path)
 
     binding = module._load_binding(tmp_path)
     assert binding["project_id"] == "g-p-test123"
@@ -86,22 +102,7 @@ def test_response_contract_checks_name_arithmetic_and_100_words() -> None:
 
 def test_run_calls_existing_project_provider_without_browser(monkeypatch, tmp_path: Path) -> None:
     module = _load()
-    review_dir = tmp_path / ".specify" / "powerpack"
-    review_dir.mkdir(parents=True)
-    (review_dir / "review.json").write_text(
-        json.dumps(
-            {
-                "provider": "chatgpt-project",
-                "chatgpt_web": {
-                    "mode": "backend-api",
-                    "authorization": "codex-backend-api",
-                    "project_id": "g-p-test123",
-                    "project_name": "Projeto Exemplo",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_binding(tmp_path)
     captured = {}
 
     def fake_run_project_review(**kwargs):
@@ -115,14 +116,7 @@ def test_run_calls_existing_project_provider_without_browser(monkeypatch, tmp_pa
         )
 
     monkeypatch.setattr(module, "run_project_review", fake_run_project_review)
-    args = SimpleNamespace(
-        path=str(tmp_path),
-        model="gpt-5.6-sol",
-        effort="high",
-        max_conversations=2,
-        include_assistant_text=False,
-    )
-    report = module.run(args)
+    report = module.run(_args(tmp_path))
 
     assert report["ok"] is True
     assert captured["prompt"] == module.PROJECT_CONTEXT_SMOKE_PROMPT
@@ -130,3 +124,46 @@ def test_run_calls_existing_project_provider_without_browser(monkeypatch, tmp_pa
     assert report["request"]["browser_used"] is False
     assert report["request"]["cdp_used"] is False
     assert report["request"]["web2api_used"] is False
+    assert report["request"]["github_plugin_discovery_requested"] is False
+    assert report["evidence"]["github_discovery"] is None
+
+
+def test_optional_github_discovery_runs_before_same_project_prompt(monkeypatch, tmp_path: Path) -> None:
+    module = _load()
+    _write_binding(tmp_path)
+    order: list[str] = []
+
+    class FakeGithubState:
+        def safe_report(self):
+            return {
+                "ok": True,
+                "github_plugin": {"resolved": True, "status": "ENABLED"},
+                "authorization": {"auth_status": "ACTIVE"},
+                "availability": {"installed": True, "available": True},
+                "raw_secrets_included": False,
+            }
+
+    def fake_discover(client, *, locale):
+        order.append(f"github:{locale}")
+        return FakeGithubState()
+
+    def fake_run_project_review(**kwargs):
+        order.append("project-review")
+        return SimpleNamespace(
+            provider="chatgpt-project",
+            text="Projeto Exemplo tem a missão de validar contexto. 1 + 1 = 2.",
+            project_id="g-p-test123",
+            project_name="Projeto Exemplo",
+            response_id="resp_test",
+        )
+
+    monkeypatch.setattr(module, "discover_github_connector", fake_discover)
+    monkeypatch.setattr(module, "run_project_review", fake_run_project_review)
+
+    report = module.run(_args(tmp_path, discover_github=True))
+
+    assert report["ok"] is True
+    assert order == ["github:pt-BR", "project-review"]
+    assert report["request"]["github_plugin_discovery_requested"] is True
+    assert report["request"]["github_plugin_requested_in_prompt"] is False
+    assert report["evidence"]["github_discovery"]["ok"] is True
