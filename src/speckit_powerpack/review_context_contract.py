@@ -200,7 +200,7 @@ Do not infer approval from Project memory, PR description, prior reviews, or gre
 
 def _blocked_review_status(text: str) -> str | None:
     match = re.search(
-        r"(?im)^\s*#?\s*(BLOCKED_(?:CAPABILITY|CONFIGURATION|REVIEW_CONTEXT))\b",
+        r"(?im)^\s*#*\s*(BLOCKED_(?:CAPABILITY|CONFIGURATION|REVIEW_CONTEXT))\b",
         text or "",
     )
     return match.group(1).upper() if match else None
