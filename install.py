@@ -8,7 +8,10 @@ import subprocess
 import sys
 
 
-DEFAULT_REPOSITORY = "https://github.com/ds1david/speckit-powerpack.git"
+PRODUCT_NAME = "Specify PowerPack"
+CANONICAL_CLI = "specify-powerpack"
+LEGACY_CLI = "speckit-powerpack"
+DEFAULT_REPOSITORY = "https://github.com/ds1david/specify-powerpack.git"
 DEFAULT_REF = "main"
 
 
@@ -53,23 +56,32 @@ def uv_command() -> list[str]:
     )
 
 
+def _candidate_binary_names() -> tuple[str, ...]:
+    suffix = ".exe" if sys.platform == "win32" else ""
+    return (f"{CANONICAL_CLI}{suffix}", f"{LEGACY_CLI}{suffix}")
+
+
 def resolve_powerpack_binary(uv: list[str]) -> str:
-    binary = shutil.which("speckit-powerpack")
-    if binary:
-        return binary
+    for command in (CANONICAL_CLI, LEGACY_CLI):
+        binary = shutil.which(command)
+        if binary:
+            return binary
     proc = subprocess.run([*uv, "tool", "dir", "--bin"], text=True, capture_output=True, check=False)
     if proc.returncode == 0 and proc.stdout.strip():
-        candidate = Path(proc.stdout.strip()) / ("speckit-powerpack.exe" if sys.platform == "win32" else "speckit-powerpack")
-        if candidate.is_file():
-            return str(candidate)
+        bin_dir = Path(proc.stdout.strip())
+        for name in _candidate_binary_names():
+            candidate = bin_dir / name
+            if candidate.is_file():
+                return str(candidate)
     raise InstallError(
-        "PowerPack was installed by uv but the executable is not on PATH. Run 'uv tool update-shell', restart the shell, then run 'speckit-powerpack init'."
+        f"{PRODUCT_NAME} was installed by uv but the executable is not on PATH. "
+        f"Run 'uv tool update-shell', restart the shell, then run '{CANONICAL_CLI} init'."
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Bootstrap SpecKit PowerPack and optionally initialize it in one repository."
+        description=f"Bootstrap {PRODUCT_NAME} and optionally initialize it in one repository."
     )
     parser.add_argument("--repository", default=DEFAULT_REPOSITORY)
     parser.add_argument("--ref", default=DEFAULT_REF)
@@ -85,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         source = f"git+{args.repository}@{args.ref}"
         run([*uv, "tool", "install", "--force", source])
         powerpack = resolve_powerpack_binary(uv)
-        print(f"SpecKit PowerPack CLI installed: {powerpack}")
+        print(f"{PRODUCT_NAME} CLI installed: {powerpack}")
         if args.project:
             command = [powerpack, "init", str(Path(args.project).expanduser()), "--integration", args.integration]
             if args.reset_config:
@@ -93,8 +105,11 @@ def main(argv: list[str] | None = None) -> int:
             run(command)
         else:
             print("Next step:")
-            print("  speckit-powerpack init <project-directory> --integration codex")
-        print("After project installation, run 'codex login' and 'speckit-powerpack review setup --path <project>'.")
+            print(f"  {CANONICAL_CLI} init <project-directory> --integration codex")
+        print(
+            "After project installation, run 'codex login' and "
+            f"'{CANONICAL_CLI} review setup --path <project>'."
+        )
         return 0
     except InstallError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
