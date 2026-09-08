@@ -2,13 +2,16 @@
 
 ## Capture scope
 
-A Microsoft Edge HAR was captured while a ChatGPT Web conversation successfully invoked the connected GitHub app with:
+Two Microsoft Edge HAR captures now cover complementary parts of the ChatGPT Web GitHub flow:
+
+1. selecting **Plugins → GitHub → Use in chat** while GitHub is already installed/authenticated; and
+2. successfully sending:
 
 ```text
 @GitHub LISTE TDOS OS MEUS REPOSITORIOS
 ```
 
-This document contains only redacted structural findings. The raw HAR may contain sensitive session material and must not be committed.
+This document contains only redacted structural findings. Raw HAR files may contain sensitive session material and must not be committed.
 
 ## Primary finding
 
@@ -22,7 +25,114 @@ plugin:connector_<github-connector-id>
 
 The connector identifier observed in the HAR matched the GitHub connector available through the authenticated ChatGPT plugin environment used during the investigation.
 
-## Request sequence
+## Plugin discovery and selection
+
+The second HAR captured the UI path **Plugins → GitHub → Use in chat** before a message was sent. It establishes how the Web client resolves the GitHub plugin/app into the connector identifier later injected into a conversation.
+
+### 1. Installed plugin catalog
+
+```http
+GET /backend-api/ps/plugins/installed?limit=1000
+```
+
+The GitHub record had this structural relationship:
+
+```text
+plugin id:          plugin_connector_1p_<redacted>
+name/display name:  github / GitHub
+canonical_app_id:   connector_<github-connector-id>
+connector_id:       connector_<github-connector-id>
+release.app_ids:    [connector_<github-connector-id>]
+status:              ENABLED
+enabled:             true
+authentication:      ON_INSTALL
+```
+
+This is currently the strongest candidate for **dynamic GitHub connector discovery**. PowerPack should not hard-code a connector id when the authenticated account can resolve it from the installed-plugin catalog.
+
+### 2. Specific plugin detail
+
+After the GitHub plugin was selected, the Web client requested:
+
+```http
+GET /backend-api/ps/plugins/plugin_connector_1p_<redacted>
+```
+
+The response repeated the mapping:
+
+```text
+plugin_connector_1p_<redacted>
+  -> canonical_app_id = connector_<github-connector-id>
+  -> connector_id     = connector_<github-connector-id>
+  -> release.app_ids  = [connector_<github-connector-id>]
+```
+
+For the captured GitHub plugin, the release was an OpenAI-provided Developer Tools plugin with interactive/write capability metadata. Those descriptive fields are useful for validation but are not part of the minimum connector identity contract.
+
+### 3. App metadata
+
+The client then requested app metadata:
+
+```http
+POST /backend-api/apps/content?detail=full&platform=chat&locale=<locale>
+```
+
+with a body equivalent to:
+
+```json
+{
+  "app_ids": [
+    "connector_<github-connector-id>"
+  ]
+}
+```
+
+The response identified the app as GitHub, status `ENABLED`, connector type `SERVICE`, and OAuth-capable.
+
+### 4. Accessible account links
+
+The client queried:
+
+```http
+POST /backend-api/aip/connectors/links/list_accessible
+```
+
+The captured response contained a GitHub link associated with the same connector id and reported an active OAuth authorization state. Sensitive user/account/link identifiers are intentionally omitted here.
+
+This provides a stronger preflight signal than the user attestation flag alone: a future experimental provider can check that the authenticated ChatGPT account has an active accessible GitHub link without reading or persisting OAuth credentials.
+
+### 5. Connector/app availability
+
+The client also queried:
+
+```http
+GET /backend-api/aip/connectors/connector_<github-connector-id>/siwc
+POST /backend-api/apps/availability?platform=chat&locale=<locale>
+```
+
+The app-availability response for GitHub reported the connector as installed, available and enabled.
+
+The `/siwc` response is recorded as an observation only. Its exact semantics are not yet understood and it must not become a PowerPack requirement without an ablation test.
+
+### 6. What “Use in chat” did not do
+
+Because GitHub was already installed and authenticated, the captured **Use in chat** interaction did not show an installation mutation, OAuth exchange or new connector creation. The relevant traffic was discovery/detail/availability state.
+
+The best current interpretation is:
+
+```text
+installed plugin catalog
+  -> resolve plugin_connector_1p_<id>
+  -> resolve canonical connector_<github-id>
+  -> verify app metadata
+  -> verify accessible OAuth link
+  -> verify app availability
+  -> composer can reference connector_<github-id>
+```
+
+The later conversation HAR proves how that resolved connector id is actually attached to the turn.
+
+## Request sequence for a GitHub-enabled conversation
 
 ### 1. Conversation initialization
 
@@ -36,8 +146,8 @@ Relevant request body shape:
 {
   "requested_default_model": null,
   "conversation_id": null,
-  "timezone": "America/Sao_Paulo",
-  "timezone_offset_min": 180,
+  "timezone": "<timezone>",
+  "timezone_offset_min": "<offset>",
   "conversation_origin": null,
   "system_hints": [
     "plugin:connector_<github-connector-id>"
@@ -81,9 +191,7 @@ Relevant request shape:
 }
 ```
 
-The prepare response included a conduit token. The token value is credential/session material and must never be logged or committed.
-
-A second prepare call was observed later during composer state change, retaining the same connector `system_hints`.
+The prepare response included a conduit token. The token value is session material and must never be logged or committed.
 
 ### 3. Conversation submission
 
@@ -167,7 +275,7 @@ The final conversation endpoint returned:
 Content-Type: text/event-stream
 ```
 
-The Edge HAR preserved 32 Server-Sent Events with event names including:
+The Edge HAR preserved multiple Server-Sent Events with event names including:
 
 ```text
 delta_encoding
@@ -181,7 +289,7 @@ A future capture should use a method that preserves SSE data while redacting sec
 
 ## Surrounding turn orchestration
 
-The HAR also contained normal ChatGPT turn infrastructure including:
+The conversation HAR also contained normal ChatGPT turn infrastructure including:
 
 ```text
 /backend-api/sentinel/chat-requirements/prepare
@@ -198,17 +306,9 @@ PowerPack must not fabricate or bypass sentinel/proof mechanisms.
 
 ## Authentication-header observation
 
-The exported HAR did not expose header names for:
+The HAR captures exposed some non-secret header names, including ChatGPT account/session metadata, but sensitive authentication values are not suitable evidence.
 
-```text
-Authorization
-Cookie
-ChatGPT-Account-ID
-```
-
-on the successful conversation requests.
-
-This is inconclusive because browser HAR exports may omit sensitive authentication headers. Do not infer either that cookies are mandatory or that they are unnecessary from this capture alone.
+Do not infer that browser cookies are mandatory from these captures. Likewise, do not infer that cookies are unnecessary merely because a HAR exporter omitted them. Authentication requirements must be established through controlled browserless requests using the already supported Codex-derived ChatGPT authentication.
 
 ## Comparison with current PowerPack transport
 
@@ -225,6 +325,11 @@ no ecosystemMention metadata
 Observed successful Web product flow:
 
 ```text
+plugins/installed
+  -> GitHub plugin_connector_1p_<id>
+  -> canonical connector_<github-id>
+apps/content + accessible links + availability
+  -> connector installed/authenticated/available
 conversation/init
   + connector system_hint
 prepare
@@ -250,18 +355,25 @@ Interactive ChatGPT connector-aware conversation
 
 Do not jump directly to a full browser-clone transport. Reproduce capability activation with controlled ablation experiments.
 
-Priority fields/endpoints to investigate:
+Priority discovery and transport pieces now supported by HAR evidence:
 
 ```text
-1. /backend-api/f/conversation transport
-2. connector system_hints
-3. message metadata.system_hints
-4. ecosystemMention custom_symbol_offsets
-5. /conversation/init connector hint
-6. /f/conversation/prepare and conduit lifecycle
+1. GET /backend-api/ps/plugins/installed
+   -> resolve GitHub plugin record
+   -> canonical_app_id / connector_id
+2. optionally GET /backend-api/ps/plugins/<plugin-id> to confirm mapping
+3. POST /backend-api/apps/content for connector metadata
+4. POST /backend-api/aip/connectors/links/list_accessible for active authorization state
+5. POST /backend-api/apps/availability for installed/available/enabled state
+6. /backend-api/f/conversation transport
+7. connector system_hints
+8. message metadata.system_hints
+9. ecosystemMention custom_symbol_offsets
+10. /conversation/init connector hint
+11. /f/conversation/prepare and conduit lifecycle
 ```
 
-`plugin_ids`, `gizmo_id`, browser cookies and exact tool-event schemas remain secondary/unproven for this path.
+`plugin_ids`, `gizmo_id`, browser cookies and exact tool-event schemas are now lower-priority/unproven for this observed path.
 
 ## Security rules
 
