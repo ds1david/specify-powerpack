@@ -1,6 +1,6 @@
 # Customization
 
-PowerPack is intended to be reused across projects with different languages, frameworks and build systems. Customize policy and capability inputs, not generated provider internals.
+**Specify PowerPack** is intended to be reused across projects with different languages, frameworks and build systems. Customize policy and capability inputs, not generated provider internals.
 
 ## Safe project customization
 
@@ -39,7 +39,7 @@ Project-specific quality commands should be expressed through capability/custom-
 }
 ```
 
-Project identity fields are normally written by `speckit-powerpack review setup`; do not hand-copy Project IDs when interactive discovery is available.
+Project identity fields are normally written by `specify-powerpack review setup`; do not hand-copy Project IDs when interactive discovery is available.
 
 ## Non-customizable safety floor
 
@@ -59,4 +59,4 @@ Projects may make gates stricter, but should not weaken these invariants:
 
 `install` and `update` refresh packaged runtime/preset/extension assets. Mutable config is preserved unless `--reset-config` is explicitly supplied.
 
-Avoid editing files under `.specify/powerpack/bin/` because they are managed copies. Contribute reusable runtime changes to the PowerPack source package instead.
+Avoid editing files under `.specify/powerpack/bin/` because they are managed copies. Contribute reusable runtime changes to the Specify PowerPack source package instead.
