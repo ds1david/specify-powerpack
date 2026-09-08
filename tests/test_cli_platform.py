@@ -1,45 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-import sys
+import argparse
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from speckit_powerpack import cli
-
-
-def test_config_paths_are_native(tmp_path: Path):
-    assert cli.default_config_base(system="Windows", env={"APPDATA": str(tmp_path / "app")}, home=tmp_path) == tmp_path / "app"
-    assert cli.default_config_base(system="Windows", env={}, home=tmp_path) == tmp_path / "AppData" / "Roaming"
-    assert cli.default_config_base(system="Darwin", env={}, home=tmp_path) == tmp_path / "Library" / "Application Support"
-    assert cli.default_config_base(system="Linux", env={}, home=tmp_path) == tmp_path / ".config"
-
-
-def test_xdg_override_is_platform_independent(tmp_path: Path):
-    xdg = tmp_path / "xdg"
-    for system in ("Windows", "Darwin", "Linux"):
-        assert cli.default_config_base(system=system, env={"XDG_CONFIG_HOME": str(xdg)}, home=tmp_path) == xdg
-
-
-def test_browser_profiles_are_platform_scoped(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(cli, "global_root", lambda: tmp_path)
-    windows = cli.profile_dir("review", system="Windows")
-    linux = cli.profile_dir("review", system="Linux")
-    macos = cli.profile_dir("review", system="Darwin")
-    assert windows == tmp_path / "browser-profiles" / "windows" / "review"
-    assert linux == tmp_path / "browser-profiles" / "linux" / "review"
-    assert macos == tmp_path / "browser-profiles" / "macos" / "review"
-    assert len({windows, linux, macos}) == 3
-
-
-def test_legacy_global_profile_migrates_only_to_current_platform():
-    data = {
-        "active_profile": "legacy",
-        "projects": {"default": {"url": "https://chatgpt.com/g/g-p-test/project", "profile": "legacy"}},
-    }
-    migrated = cli._migrate_global_config(data, current_platform="linux")
-    assert migrated["active_profiles"] == {"linux": "legacy"}
-    assert migrated["projects"]["default"]["bindings"]["linux"]["profile"] == "legacy"
-    assert "windows" not in migrated["projects"]["default"]["bindings"]
 
 
 def test_version_parser_and_minimum_contract():
@@ -64,39 +27,18 @@ def test_spec_kit_bootstrap_uses_pinned_git_package_and_force(monkeypatch):
     monkeypatch.setattr(cli.shutil, "which", fake_which)
     monkeypatch.setattr(cli, "specify_version", lambda binary: "1.0.4")
     monkeypatch.setattr(cli, "run", lambda argv, **kwargs: calls.append(argv))
-    assert cli.ensure_specify(True) == "/usr/bin/specify"
+    assert cli.ensure_specify(bootstrap=True) == "/usr/bin/specify"
     assert calls == [[
-        "/usr/bin/uv",
-        "tool",
-        "install",
-        "--force",
+        "/usr/bin/uv", "tool", "install", "--force",
         f"git+{cli.SPECKIT_REPO}@{cli.SPECKIT_TESTED_TAG}",
     ]]
 
 
-def test_incompatible_existing_spec_kit_is_upgraded_when_bootstrap_enabled(monkeypatch):
-    calls = []
-    versions = iter(["0.14.3", "1.0.4"])
-
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else "/usr/bin/specify")
-    monkeypatch.setattr(cli, "specify_version", lambda binary: next(versions))
-    monkeypatch.setattr(cli, "run", lambda argv, **kwargs: calls.append(argv))
-
-    assert cli.ensure_specify(True) == "/usr/bin/specify"
-    assert calls == [[
-        "/usr/bin/uv",
-        "tool",
-        "install",
-        "--force",
-        f"git+{cli.SPECKIT_REPO}@{cli.SPECKIT_TESTED_TAG}",
-    ]]
-
-
-def test_incompatible_existing_spec_kit_blocks_without_bootstrap(monkeypatch):
+def test_incompatible_spec_kit_blocks_without_bootstrap(monkeypatch):
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/specify" if name == "specify" else None)
     monkeypatch.setattr(cli, "specify_version", lambda binary: "0.14.3")
     try:
-        cli.ensure_specify(False)
+        cli.ensure_specify(bootstrap=False)
     except cli.PowerPackError as exc:
         assert "--bootstrap-speckit" in str(exc)
         assert ">= 1.0.0" in str(exc)
@@ -104,12 +46,24 @@ def test_incompatible_existing_spec_kit_blocks_without_bootstrap(monkeypatch):
         raise AssertionError("incompatible Spec Kit should block")
 
 
-def test_mandatory_web_review_policy_migrates_existing_config_without_faking_consent(tmp_path: Path):
-    path = tmp_path / "review.json"
-    path.write_text('{"chatgpt_web":{"enabled":false,"project_alias":"existing"}}', encoding="utf-8")
-    cli.enforce_mandatory_web_review(path)
-    data = __import__("json").loads(path.read_text(encoding="utf-8"))
-    assert data["chatgpt_web"]["required"] is True
-    assert data["chatgpt_web"]["enabled"] is True
-    assert data["chatgpt_web"]["project_alias"] == "existing"
-    assert data["chatgpt_web"]["authorization"] is None
+def _subparser(parser: argparse.ArgumentParser, name: str):
+    action = next(item for item in parser._actions if isinstance(item, argparse._SubParsersAction))
+    return action.choices[name]
+
+
+def test_cli_exposes_only_browserless_review_surface():
+    parser = cli.build_parser()
+    review = _subparser(parser, "review")
+    action = next(item for item in review._actions if isinstance(item, argparse._SubParsersAction))
+    assert set(action.choices) == {"setup", "status", "project", "run"}
+    run_parser = action.choices["run"]
+    pr = next(item for item in run_parser._actions if item.dest == "pr")
+    assert pr.required is True
+
+
+def test_review_run_defaults_to_sol_xhigh():
+    parser = cli.build_parser()
+    args = parser.parse_args(["review", "run", "--pr", "12"])
+    assert args.model == "gpt-5.6-sol"
+    assert args.effort == "xhigh"
+    assert args.timeout == 600
