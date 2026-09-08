@@ -81,5 +81,7 @@ def test_entrypoint_is_web2api_only_and_requires_explicit_project_id() -> None:
     assert 'parser.add_argument("--project-id", required=True)' in text
     assert '"web2api_only": True' in text
     assert "ChatGPTBackendClient" not in text
-    assert "codex" not in text.casefold()
+    assert "chatgpt_project_provider" not in text
+    assert "~/.codex" not in text
+    assert "_resolve_connector" not in text
     assert "probe_chatgpt_github" not in text
