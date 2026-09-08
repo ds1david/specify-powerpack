@@ -1,29 +1,29 @@
 ---
-description: "Check/update SpecKit PowerPack and rematerialize project-managed assets without destructive Git operations."
+description: "Check/update Specify PowerPack and rematerialize project-managed assets without destructive Git operations."
 ---
 
-# SpecKit PowerPack Update
+# Specify PowerPack Update
 
-This command manages the installed PowerPack CLI and its managed project assets.
+This command manages the installed Specify PowerPack CLI and its managed project assets.
 
 ## Check current source
 
 ```bash
-speckit-powerpack update . --check
+specify-powerpack update . --check
 ```
 
-The result reports the effective VCS source/ref and installed/remote commit when they can be resolved. Explicit commit-SHA installations remain pinned; PowerPack does not silently reinterpret a pinned build as `main`.
+The result reports the effective VCS source/ref and installed/remote commit when they can be resolved. Explicit commit-SHA installations remain pinned; Specify PowerPack does not silently reinterpret a pinned build as `main`.
 
 ## Normal update
 
 ```bash
-speckit-powerpack update .
+specify-powerpack update .
 ```
 
 A normal update:
 
-1. reinstalls the `speckit-powerpack` CLI through `uv` from the effective Git source/ref;
-2. rematerializes PowerPack-managed runtime/preset/extension assets in the current repository;
+1. reinstalls the `specify-powerpack` CLI through `uv` from the effective Git source/ref;
+2. rematerializes Specify PowerPack-managed runtime/preset/extension assets in the current repository;
 3. preserves mutable PowerPack project configuration by default;
 4. performs no destructive Git operation on application/source history.
 
@@ -32,7 +32,7 @@ A normal update:
 When the installed CLI is already correct and only managed project assets need refresh:
 
 ```bash
-speckit-powerpack update . --project-only
+specify-powerpack update . --project-only
 ```
 
 This is the preferred recovery path for missing/corrupted `.specify/powerpack/bin/*`, presets or extensions when the CLI itself does not need reinstalling.
@@ -40,7 +40,7 @@ This is the preferred recovery path for missing/corrupted `.specify/powerpack/bi
 ## Bootstrap/upgrade Spec Kit while refreshing
 
 ```bash
-speckit-powerpack update . --project-only --bootstrap-speckit
+specify-powerpack update . --project-only --bootstrap-speckit
 ```
 
 Use this when the project needs the tested compatible official Spec Kit release as part of rematerialization.
@@ -48,8 +48,8 @@ Use this when the project needs the tested compatible official Spec Kit release 
 ## Explicit source/ref override
 
 ```bash
-speckit-powerpack update . \
-  --repository https://github.com/ds1david/speckit-powerpack.git \
+specify-powerpack update . \
+  --repository https://github.com/ds1david/specify-powerpack.git \
   --ref <branch-tag-or-commit>
 ```
 
@@ -60,12 +60,16 @@ A feature-branch or immutable-SHA install therefore remains explicit and reprodu
 Resetting mutable PowerPack configuration is a separate, explicit operation:
 
 ```bash
-speckit-powerpack update . --project-only --reset-config
+specify-powerpack update . --project-only --reset-config
 ```
 
-This may recreate `review.json`, model routing, full-cycle, technical-debt and other packaged defaults. It can remove the current ChatGPT Project binding, so `speckit-powerpack review setup --path .` may be required afterward.
+This may recreate `review.json`, model routing, full-cycle, technical-debt and other packaged defaults. It can remove the current ChatGPT Project binding, so `specify-powerpack review setup --path .` may be required afterward.
 
 Never add `--reset-config` merely to fix a managed runtime file.
+
+## Compatibility
+
+The legacy `speckit-powerpack` command remains a compatibility alias. New automation and documentation should use `specify-powerpack`.
 
 ## Safety boundary
 
@@ -77,4 +81,4 @@ Update/rematerialization does not authorize:
 - GitHub PR mutation;
 - deletion/copying of Codex/ChatGPT credentials.
 
-The browserless reviewer keeps authentication in the user's Codex auth store; there are no PowerPack-managed browser profiles to preserve or migrate.
+The browserless reviewer keeps authentication in the user's Codex auth store; no browser automation state is part of Specify PowerPack readiness or migration.
