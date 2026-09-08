@@ -29,6 +29,8 @@ from .review_context import (
 
 install_backend_compat()
 
+PRODUCT_NAME = "Specify PowerPack"
+CANONICAL_CLI = "specify-powerpack"
 PROJECT_AUTHORIZATION = "codex-backend-api"
 PROJECT_PROVIDER = "chatgpt-project"
 REVIEW_BACKEND = "codex-apps-github"
@@ -59,7 +61,7 @@ def load_project_binding(project: Path) -> ProjectBinding:
     path = project / ".specify" / "powerpack" / "review.json"
     if not path.is_file():
         raise BrowserlessReviewError(
-            "PowerPack review config is missing. Install PowerPack and run 'speckit-powerpack review setup --path .' first."
+            f"PowerPack review config is missing. Install {PRODUCT_NAME} and run '{CANONICAL_CLI} review setup --path .' first."
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -67,7 +69,7 @@ def load_project_binding(project: Path) -> ProjectBinding:
         raise BrowserlessReviewError(f"Cannot read {path}: {exc}") from exc
     if not isinstance(data, dict) or data.get("provider") != PROJECT_PROVIDER:
         raise BrowserlessReviewError(
-            "Repository is not bound to a ChatGPT Project. Run 'speckit-powerpack review setup --path .' and select one."
+            f"Repository is not bound to a ChatGPT Project. Run '{CANONICAL_CLI} review setup --path .' and select one."
         )
     binding = data.get("chatgpt_project") if isinstance(data.get("chatgpt_project"), dict) else {}
     if not binding:
@@ -104,7 +106,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
-    return f"""This is phase 1 of a read-only SpecKit PowerPack code review.
+    return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
 Use exclusively the installed GitHub App selected by this explicit Codex App mention:
 [$github](app://{connector_id})
@@ -143,7 +145,7 @@ def _review_prompt(
     previous_review: str,
 ) -> str:
     previous_block = previous_review.strip() or "NONE — first review round"
-    return f"""You are the mandatory independent browserless code-review gate for SpecKit PowerPack.
+    return f"""You are the mandatory independent browserless code-review gate for {PRODUCT_NAME}.
 
 Use exclusively the installed GitHub App selected by this explicit Codex App mention for PR/repository evidence:
 [$github](app://{connector_id})
@@ -151,7 +153,7 @@ Use exclusively the installed GitHub App selected by this explicit Codex App men
 IMMUTABLE REVIEW SNAPSHOT — authoritative; do not substitute another PR or snapshot:
 {json.dumps(snapshot.as_dict(), ensure_ascii=False, indent=2)}
 
-The local implementation HEAD has already been verified by PowerPack to equal the PR head SHA. Use GitHub tools to inspect the exact PR, complete diff, every changed file and all related source/tests/contracts needed to establish blast radius. Follow pagination. Do not rely on the PR description or CI as proof.
+The local implementation HEAD has already been verified by {PRODUCT_NAME} to equal the PR head SHA. Use GitHub tools to inspect the exact PR, complete diff, every changed file and all related source/tests/contracts needed to establish blast radius. Follow pagination. Do not rely on the PR description or CI as proof.
 
 CHATGPT PROJECT CONTEXT — serialized read-only background memory:
 <project_context>
@@ -184,7 +186,7 @@ Rules:
 - Return one schema 2.0 review JSON object only, no Markdown fences or prose before/after it.
 - review_context MUST exactly equal the immutable snapshot fields spec_id/base_ref/base_sha/merge_base/head_sha/snapshot_sha256 above.
 - coverage.changed_files MUST exactly equal the immutable snapshot changed_files list.
-- Add this extra top-level object so PowerPack can prove Project context was actually consumed:
+- Add this extra top-level object so {PRODUCT_NAME} can prove Project context was actually consumed:
   "project_context_evidence": {{
     "project_name": "{project_name}",
     "literal_evidence": "3 to 20 consecutive words copied literally from the serialized Project context, not merely the Project name"
