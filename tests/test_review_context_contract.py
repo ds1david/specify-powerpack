@@ -9,6 +9,7 @@ from speckit_powerpack.review_context_contract import (
     GITHUB_PLUGIN_MENTION,
     ReviewContextError,
     _blocked_review_status,
+    _without_leading_github_mention,
     local_context_prompt,
     resolve_local_review_context,
     resolve_web_review_context,
@@ -93,11 +94,12 @@ def test_web_review_requires_github_plugin_permission_attestation(tmp_path: Path
         web_context_prompt(project, "42", github_plugin_authorized=False)
 
     prompt = web_context_prompt(project, "42", github_plugin_authorized=True)
+    assert GITHUB_PLUGIN_MENTION == "@GitHub"
     assert prompt.startswith(GITHUB_PLUGIN_MENTION + "\n")
     assert "review_mode: web-pull-request" in prompt
     assert "pull_request_url: https://github.com/example/project/pull/42" in prompt
     assert "github_plugin_authorization: USER_CONFIRMED" in prompt
-    assert "github_plugin_invocation: @github" in prompt
+    assert "github_plugin_invocation: @GitHub" in prompt
     assert "exactly this pull request" in prompt
     assert "BLOCKED_CAPABILITY" in prompt
     assert "BLOCKED_CONFIGURATION" in prompt
@@ -108,10 +110,16 @@ def test_web_prompt_invokes_github_and_documents_web_desktop_prerequisite(tmp_pa
 
     prompt = web_context_prompt(project, "42", github_plugin_authorized=True)
 
-    assert prompt.splitlines()[0] == "@github"
+    assert prompt.splitlines()[0] == "@GitHub"
     assert "installed and connected in ChatGPT Web or Desktop" in prompt
-    assert "leading @github mention is intentional and required" in prompt
+    assert "leading @GitHub mention is intentional and required" in prompt
     assert "access to this repository" in prompt
+
+
+def test_manual_github_mention_is_removed_before_canonical_composition() -> None:
+    assert _without_leading_github_mention("@GitHub\nReview PR 92") == "Review PR 92"
+    assert _without_leading_github_mention(" @github Review PR 92") == "Review PR 92"
+    assert _without_leading_github_mention("Review PR 92 with @GitHub") == "Review PR 92 with @GitHub"
 
 
 def test_web_prompt_distinguishes_missing_tool_from_missing_permission(tmp_path: Path) -> None:
@@ -119,7 +127,7 @@ def test_web_prompt_distinguishes_missing_tool_from_missing_permission(tmp_path:
 
     prompt = web_context_prompt(project, "42", github_plugin_authorized=True)
 
-    assert "no GitHub plugin/connector/tool after the @github invocation" in prompt
+    assert "no GitHub plugin/connector/tool after the @GitHub invocation" in prompt
     assert "BLOCKED_CAPABILITY" in prompt
     assert "available but cannot access this exact repository or pull request" in prompt
     assert "BLOCKED_CONFIGURATION" in prompt
