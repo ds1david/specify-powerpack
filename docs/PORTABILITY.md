@@ -1,81 +1,40 @@
-# Portability and Agnostic Execution Contract
+# Portability
 
-SpecKit PowerPack preserves the same workflow semantics across operating systems, programming languages, frameworks and build tools.
-
-## Core invariant
-
-Workflow skills MUST NOT contain product logic such as `if Windows`, `if Java`, `if Maven`, `if Node`, or equivalent ecosystem branches. They ask the runtime for capabilities and strategies instead.
-
-```mermaid
-flowchart LR
-    E[Environment] --> D[Capability discovery]
-    D --> P[Platform capabilities]
-    D --> B[Build capabilities]
-    D --> A[Agent capabilities]
-    P --> R[PowerPack runtime]
-    B --> R
-    A --> R
-    R --> W[Spec Kit workflow]
-```
-
-The invariant is:
+PowerPack's project workflow follows:
 
 ```text
-DISCOVER CAPABILITY -> SELECT STRATEGY -> EXECUTE CONTRACT
+DISCOVER CAPABILITY → SELECT STRATEGY → EXECUTE CONTRACT
 ```
 
-Equivalent projects with equivalent capabilities must receive equivalent workflow decisions regardless of host OS, source language or framework.
+It avoids assuming a language, framework, build tool or operating system.
 
-## Operating systems
+## Supported host model
 
-Windows, Linux and macOS are first-class design targets. Platform-specific details are centralized in `PlatformCapabilities`.
+The CLI is Python-based and intended for Linux, WSL, macOS and Windows. CI exercises multiple Python versions on Ubuntu, Windows and macOS.
 
-Examples:
+First-install wrappers are deliberately thin:
 
-- wrapper suffix resolution (`mvnw` vs `mvnw.cmd`, `gradlew` vs `gradlew.cmd`);
-- Spec Kit prerequisite runner priority (PowerShell first on Windows, Bash first on POSIX);
-- native global config roots in the Python bootstrap CLI;
-- executable discovery through `shutil.which`.
+- `install.sh` → `install.py`
+- `install.ps1` → `install.py`
 
-No review/checklist/implementation skill selects an OS-specific command directly.
+Python owns the cross-platform bootstrap logic.
 
-## Languages, frameworks and build tools
+## Browserless review portability
 
-Quality gates are selected from a strategy registry based on reproducible project descriptors, not source-file language guesses.
+The supported review path has no Chrome/Chromium/Playwright/CDP/Web2API dependency. It requires Codex CLI plus account/network access to ChatGPT backend and the GitHub App.
 
-Current strategies include Maven, Gradle, Node package scripts, tox, explicitly configured pytest, .NET, Go and Rust. Projects may always define an explicit `custom_command` argv list.
+This removes browser-profile and cross-OS browser-session coupling, particularly the former Windows/WSL split.
 
-Fail-closed rules:
+## Project execution portability
 
-- `pyproject.toml` alone does not imply pytest;
-- Eclipse metadata does not imply Maven;
-- a detected build descriptor with a missing executable is `BLOCKED_CONFIGURATION`;
-- multiple detected build strategies are ambiguous and require an explicit gate;
-- unknown architectures require an explicit custom gate;
-- documentation-only implementation rounds are `NOT_APPLICABLE` independently of OS/framework/language.
+Quality gates are discovered from the consuming project. PowerPack does not embed one universal Maven/Gradle/npm/pytest command.
 
-## Cross-platform CI
+Unknown or ambiguous capability resolution fails closed unless the project defines a deterministic custom gate.
 
-Every pull request executes unit tests and wheel validation on six environments:
+## External-service boundary
 
-- Ubuntu + Python 3.11;
-- Ubuntu + Python 3.13;
-- Windows + Python 3.11;
-- Windows + Python 3.13;
-- macOS + Python 3.11;
-- macOS + Python 3.13.
+Browserless does not mean offline. Project discovery/context and GitHub connector discovery require ChatGPT backend access; PR evidence requires GitHub through Codex Apps.
 
-Tests also inject platform contexts so wrapper selection is deterministic and testable independent of the runner host.
+These account-scoped backend and connector surfaces are not treated as stable public OpenAI API contracts. PowerPack therefore keeps them isolated behind provider modules and fails closed when observed behavior changes.
 
-## Adding another ecosystem
-
-Add a gate strategy to the capability registry. Do not modify `speckit-implement-review` semantics.
-
-A strategy must provide:
-
-1. deterministic capability detection;
-2. a reproducible argv list, not a shell-concatenated command;
-3. fail-closed behavior when its executable is unavailable;
-4. tests proving unrelated strategies keep the same behavior.
-
-This keeps PowerPack OS-agnostic, language-agnostic, framework-agnostic, build-tool-agnostic and extensible.
+See [`DECISIONS_AND_TRADEOFFS.md`](DECISIONS_AND_TRADEOFFS.md).
