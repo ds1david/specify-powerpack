@@ -11,10 +11,10 @@ The transport uses the authenticated ChatGPT account derived from `~/.codex/auth
 The following combined unit suite passed:
 
 ```text
-26 passed in 0.17s
+28 passed in 0.17s
 ```
 
-The read-only GitHub connector preflight had already proven:
+The read-only GitHub connector preflight has proven:
 
 ```text
 GitHub plugin dynamically resolved          PASS
@@ -29,7 +29,9 @@ app installed                               PASS
 app available                               PASS
 ```
 
-The next probe was then executed successfully:
+### Conversation init
+
+The connector-aware initialization probe succeeded:
 
 ```bash
 uv run python \
@@ -50,6 +52,35 @@ default model metadata returned          true
 raw secrets included                     false
 ```
 
+### Conversation prepare
+
+The connector-aware prepare probe also succeeded:
+
+```bash
+uv run python \
+  scripts/homologation/probe_chatgpt_github_conversation_prepare.py
+```
+
+Observed redacted result:
+
+```text
+stage                                    conversation-prepare
+ok                                       true
+POST /backend-api/f/conversation/prepare PASS
+connector system_hint present            true
+conversation_mode.kind                    primary_assistant
+model resolved from init                 true
+parent/root message id generated         true
+partial query sent                       true
+final user message sent                  false
+GitHub tool invoked                      false
+prepare response received                true
+prepare response keys                    conduit_token, status
+conduit token present                    true
+conduit token exposed                    false
+raw secrets included                     false
+```
+
 Therefore this boundary is now proven:
 
 ```text
@@ -58,7 +89,12 @@ Codex-derived ChatGPT auth
   -> active connector authorization preflight
   -> POST /backend-api/conversation/init
        system_hints = [plugin:connector_<resolved-id>]
-  -> successful response
+  -> successful response + default model
+  -> POST /backend-api/f/conversation/prepare
+       same connector hint
+       generated root/parent message id
+       partial GitHub query
+  -> successful response + legitimate conduit_token
 ```
 
 ## Important interpretation
@@ -71,47 +107,61 @@ Current separation:
 
 ```text
 experimental probe transport
-  conversation/init + connector hint        PASS
+  connector discovery                         PASS
+  conversation/init + connector hint           PASS
+  conversation/prepare + legitimate conduit    PASS
 
 production Web review transport
-  codex/responses + textual @GitHub          BLOCKED_CAPABILITY
+  codex/responses + textual @GitHub             BLOCKED_CAPABILITY
 ```
 
 Do not classify that blocked production review as a GitHub authorization failure.
 
-## Next probe: conversation prepare
+## Next probe: final conversation submission
 
 The next controlled stage is:
 
 ```text
-POST /backend-api/f/conversation/prepare
+POST /backend-api/f/conversation
 ```
 
-using:
-
-```text
-model resolved from conversation/init
-client-generated parent/root message id
-conversation_mode.kind = primary_assistant
-system_hints = [plugin:connector_<resolved-id>]
-partial_query = GitHub ...
-supports_buffering = true
-```
-
-The probe must only check whether the response contains a conduit token. The token value is transient secret/session material and must never be printed, logged, committed, or included in homologation evidence.
-
-The prepare probe does **not** submit the final user message and does **not** invoke the GitHub tool.
-
-Only after `prepare` succeeds legitimately should the experiment consider a final `/f/conversation` submission with:
+The probe may use only material already obtained legitimately from the authenticated flow:
 
 ```text
 literal @GitHub
++ dynamically resolved plugin:connector_<id>
 + top-level connector system_hint
 + message-level connector system_hint
 + ecosystemMention serialization metadata
++ model from conversation/init
++ parent/root message id used in prepare
++ conduit token returned by prepare
 ```
 
-No experiment may fabricate Sentinel, proof-of-work, Turnstile, conduit, or other anti-abuse/session material.
+The Edge HAR showed that the interactive product also sends Sentinel/proof/Turnstile-related headers on the final request. The browserless probe must **not** fabricate, derive, bypass, or replay those security values. It intentionally omits them.
+
+The final-submit probe therefore has two acceptable outcomes:
+
+```text
+1. backend accepts the request without fabricated security material
+   -> inspect SSE structurally for real GitHub tool evidence
+
+2. backend rejects the request because product turn-security material is required
+   -> BLOCKED_CAPABILITY
+   -> record the architectural boundary
+   -> do not attempt to bypass the protection
+```
+
+A textual answer mentioning GitHub is not sufficient proof. Full success requires structural GitHub tool evidence in the streamed events plus the expected completion marker.
+
+Probe:
+
+```bash
+uv run python \
+  scripts/homologation/probe_chatgpt_github_conversation_submit.py
+```
+
+The probe never prints the connector id, conduit token, OAuth credentials, Sentinel/proof values, or raw backend security diagnostics.
 
 ## Current H2 classification
 
@@ -125,7 +175,7 @@ GitHub connector dynamic resolution       PASS
 GitHub OAuth ACTIVE                       PASS
 GitHub app installed/available            PASS
 conversation/init + connector hint        PASS
-conversation/prepare                      PENDING
+conversation/prepare + conduit            PASS
 connector materialized in final turn      PENDING
 GitHub tool-call evidence                 PENDING
 exact PR inspection                       PENDING
