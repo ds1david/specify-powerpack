@@ -51,7 +51,7 @@ Expected classification:
 CHATGPT_PROJECT_IDENTITY_SMOKE_PASSED
 ```
 
-## Smoke B — Project identity + GitHub repository listing in the same turn
+## Smoke B — Project context proof + GitHub repository listing in the same turn
 
 Script:
 
@@ -63,14 +63,17 @@ Purpose:
 
 - require the same repository → ChatGPT Project binding;
 - serialize the bound Project context;
+- prove that the Codex turn is actually consuming that serialized context, not merely recognizing the Project name;
 - resolve the installed GitHub connector and active OAuth state;
 - explicitly select GitHub in the Codex prompt through `[$github](app://<connector-id>)`;
-- ask for the exact ChatGPT Project name and all repositories accessible through the GitHub connector in the same Codex turn.
+- ask for Project name, abbreviated Project description, literal Project-context evidence, and all repositories accessible through the GitHub connector in the same Codex turn.
 
 Expected final format:
 
 ```text
 PROJECT_NAME: <exact Project name>
+PROJECT_DESCRIPTION: <one-line Project description, <=100 words>
+PROJECT_CONTEXT_EVIDENCE: <literal 3-20 word excerpt copied from serialized Project context>
 REPO owner/name
 REPO owner/name
 ...
@@ -78,13 +81,20 @@ TOTAL N
 POWERPACK_PROJECT_GITHUB_OK
 ```
 
-PASS requires both feature families to succeed simultaneously:
+PASS requires both feature families to succeed simultaneously.
 
 ### Project context
 
 - repository binding is valid;
 - the serialized Project object matches the configured binding;
-- `PROJECT_NAME` exactly matches the configured ChatGPT Project name.
+- `PROJECT_NAME` exactly matches the configured ChatGPT Project name;
+- `PROJECT_DESCRIPTION` is non-empty and contains at most 100 words;
+- `PROJECT_CONTEXT_EVIDENCE` contains 3-20 words;
+- that evidence is found literally in the serialized `project_context` after whitespace normalization;
+- the evidence is not merely the Project name;
+- all of the above are summarized by `project_context.project_context_contract_passed=true`.
+
+The literal-evidence assertion is intentionally stronger than checking the Project name alone. A model could potentially infer a familiar repository/project name from other local information; requiring a short exact excerpt that is present in the serialized ChatGPT Project material proves that the Project context reached the same Codex turn that also used GitHub.
 
 ### GitHub connector
 
@@ -113,6 +123,22 @@ Expected classification:
 CHATGPT_PROJECT_GITHUB_LIST_REPOS_SMOKE_PASSED
 ```
 
+Relevant Project evidence in the JSON report now includes:
+
+```text
+project_context.project_name_exact_match
+project_context.project_description_returned
+project_context.description_present
+project_context.description_word_count
+project_context.description_max_100_words
+project_context.context_evidence_returned
+project_context.context_evidence_word_count
+project_context.context_evidence_length_valid
+project_context.context_evidence_in_serialized_context
+project_context.context_evidence_distinct_from_name
+project_context.project_context_contract_passed
+```
+
 ## Timing
 
 Both smokes print step timing to stderr and include a structured `timing` block in the final JSON report. The combined smoke exposes separate timing for:
@@ -139,5 +165,7 @@ uv run --extra dev python -m pytest -q \
   tests/test_chatgpt_project_identity_smoke_contract.py \
   tests/test_chatgpt_project_github_list_repos_smoke_contract.py
 ```
+
+The combined contract tests include negative cases proving that GitHub success is not enough: the smoke fails if the Project name is wrong, the Project description is missing, the literal context evidence is not actually present in the serialized Project context, or shell/web fallback occurs.
 
 These are contract/unit tests only. Functional PASS must be established separately by running the two real smokes against the repository and the connected ChatGPT/GitHub account.
