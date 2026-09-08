@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-import subprocess
 from typing import Any, Iterable
 import urllib.error
 import urllib.parse
@@ -12,7 +11,6 @@ import urllib.request
 
 
 BACKEND_API = "https://chatgpt.com/backend-api"
-CODEX_RESPONSES_URL = f"{BACKEND_API}/codex/responses"
 DEFAULT_AUTH_PATH = Path.home() / ".codex" / "auth.json"
 PROJECT_ID_RE = re.compile(r"g-p-[A-Za-z0-9]+")
 
@@ -34,15 +32,6 @@ class ChatGPTProject:
     name: str
     url: str
     raw: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class ReviewResult:
-    provider: str
-    text: str
-    project_id: str | None = None
-    project_name: str | None = None
-    response_id: str | None = None
 
 
 def load_codex_auth(path: Path | None = None) -> CodexAuth:
@@ -147,6 +136,12 @@ def _project_from_dict(item: dict[str, Any]) -> ChatGPTProject | None:
 
 
 class ChatGPTBackendClient:
+    """Account-scoped ChatGPT backend reader used for auth, Project context and connector discovery.
+
+    This class deliberately does not generate reviewer responses. Review generation
+    belongs to the Codex Apps runtime so GitHub MCP tool evidence is observable.
+    """
+
     def __init__(self, auth_path: Path | None = None, *, timeout: int = 30):
         self.auth_path = auth_path or DEFAULT_AUTH_PATH
         self.timeout = timeout
@@ -190,8 +185,8 @@ class ChatGPTBackendClient:
         payload = self.request_json("GET", "/me")
         return payload if isinstance(payload, dict) else {"response": payload}
 
-    def list_projects(self, *, limit: int = 100) -> list[ChatGPTProject]:
-        payload = self.request_json("GET", f"/gizmos/snorlax/sidebar?limit={max(1, min(limit, 100))}")
+    def list_projects(self, *, limit: int = 50) -> list[ChatGPTProject]:
+        payload = self.request_json("GET", f"/gizmos/snorlax/sidebar?limit={max(1, min(limit, 50))}")
         projects: dict[str, ChatGPTProject] = {}
         for item in _walk_dicts(payload):
             project = _project_from_dict(item)
@@ -208,7 +203,12 @@ class ChatGPTBackendClient:
         project = next((candidate for candidate in candidates if candidate and candidate.id == project_id), None)
         if project:
             return ChatGPTProject(project.id, project.name, project.url, payload if isinstance(payload, dict) else project.raw)
-        return ChatGPTProject(project_id, project_id, f"https://chatgpt.com/g/{project_id}/project", payload if isinstance(payload, dict) else {})
+        return ChatGPTProject(
+            project_id,
+            project_id,
+            f"https://chatgpt.com/g/{project_id}/project",
+            payload if isinstance(payload, dict) else {},
+        )
 
     def list_project_conversations(self, project_id_or_url: str, *, limit: int = 12) -> list[dict[str, Any]]:
         project_id = project_id_from_url_or_id(project_id_or_url)
@@ -231,8 +231,8 @@ class ChatGPTBackendClient:
         self,
         project_id_or_url: str,
         *,
-        max_conversations: int = 6,
-        max_chars: int = 48_000,
+        max_conversations: int = 2,
+        max_chars: int = 32_000,
     ) -> tuple[ChatGPTProject, str]:
         project = self.get_project(project_id_or_url)
         sections: list[str] = [
@@ -261,81 +261,6 @@ class ChatGPTBackendClient:
                 break
         bundle = "\n\n".join(sections)
         return project, bundle[:max_chars]
-
-    def codex_response(
-        self,
-        *,
-        prompt: str,
-        instructions: str = "",
-        model: str = "gpt-5.6-sol",
-        effort: str = "high",
-    ) -> tuple[str, str | None]:
-        body: dict[str, Any] = {
-            "model": model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": prompt}],
-                }
-            ],
-            "instructions": instructions,
-            "stream": True,
-            "store": False,
-        }
-        if effort:
-            body["reasoning"] = {"effort": effort}
-        try:
-            return self._codex_response_once(body)
-        except ChatGPTProjectError as exc:
-            if "HTTP 400" not in str(exc) or "reasoning" not in str(exc).casefold():
-                raise
-            body.pop("reasoning", None)
-            return self._codex_response_once(body)
-
-    def _codex_response_once(self, body: dict[str, Any]) -> tuple[str, str | None]:
-        raw_body = json.dumps(body).encode("utf-8")
-        headers = self._headers(accept="text/event-stream")
-        headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(CODEX_RESPONSES_URL, data=raw_body, method="POST", headers=headers)
-        text_parts: list[str] = []
-        response_id: str | None = None
-        try:
-            with urllib.request.urlopen(req, timeout=max(self.timeout, 120)) as response:
-                for raw_line in response:
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if not data or data == "[DONE]":
-                        continue
-                    try:
-                        event = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    event_type = event.get("type")
-                    if event_type == "response.output_text.delta" and isinstance(event.get("delta"), str):
-                        text_parts.append(event["delta"])
-                    elif event_type == "response.completed" and isinstance(event.get("response"), dict):
-                        response_id = str(event["response"].get("id") or "") or None
-                    elif event_type == "response.failed":
-                        response_data = event.get("response") if isinstance(event.get("response"), dict) else {}
-                        error = response_data.get("error") if isinstance(response_data.get("error"), dict) else {}
-                        raise ChatGPTProjectError(
-                            f"ChatGPT Codex response failed: {error.get('code') or 'unknown'}: {error.get('message') or event}"
-                        )
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 401:
-                raise ChatGPTProjectError(
-                    "ChatGPT Codex endpoint rejected ~/.codex/auth.json (401). Run 'codex login' again."
-                ) from exc
-            raise ChatGPTProjectError(f"ChatGPT Codex endpoint failed: HTTP {exc.code}: {detail[:1500]}") from exc
-        except urllib.error.URLError as exc:
-            raise ChatGPTProjectError(f"Cannot reach ChatGPT Codex endpoint: {exc}") from exc
-        text = "".join(text_parts).strip()
-        if not text:
-            raise ChatGPTProjectError("ChatGPT Codex endpoint returned no assistant text.")
-        return text, response_id
 
 
 def _extract_project_metadata(payload: dict[str, Any]) -> str:
@@ -390,80 +315,3 @@ def _conversation_transcript(payload: dict[str, Any], *, max_chars: int) -> str:
         rows.append((order, f"{role.upper()}: {rendered}"))
     rows.sort(key=lambda row: row[0])
     return "\n\n".join(text for _, text in rows)[-max_chars:]
-
-
-def run_codex_cli_review(
-    *,
-    prompt: str,
-    cwd: Path,
-    timeout: int = 180,
-    runner=subprocess.run,
-) -> ReviewResult:
-    argv = ["codex", "exec", "--json", "--sandbox", "read-only", "--cd", str(cwd), prompt]
-    try:
-        proc = runner(argv, text=True, capture_output=True, timeout=timeout)
-    except FileNotFoundError as exc:
-        raise ChatGPTProjectError("Codex CLI is not installed or not visible on PATH.") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ChatGPTProjectError(f"Codex CLI review timed out after {timeout}s.") from exc
-    if proc.returncode != 0:
-        raise ChatGPTProjectError((proc.stderr or proc.stdout or "codex exec failed").strip())
-    text = _extract_codex_cli_text(proc.stdout)
-    if not text:
-        text = proc.stdout.strip()
-    if not text:
-        raise ChatGPTProjectError("Codex CLI completed without reviewer output.")
-    return ReviewResult(provider="codex", text=text)
-
-
-def _extract_codex_cli_text(stdout: str) -> str:
-    messages: list[str] = []
-    for line in (stdout or "").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        item = event.get("item") if isinstance(event, dict) else None
-        if isinstance(item, dict) and item.get("type") in {"agent_message", "message"}:
-            text = item.get("text") or item.get("content")
-            if isinstance(text, str) and text.strip():
-                messages.append(text.strip())
-        message = event.get("message") if isinstance(event, dict) else None
-        if isinstance(message, str) and message.strip():
-            messages.append(message.strip())
-    return "\n".join(messages)
-
-
-def run_project_review(
-    *,
-    prompt: str,
-    project_id_or_url: str,
-    auth_path: Path | None = None,
-    model: str = "gpt-5.6-sol",
-    effort: str = "high",
-    max_conversations: int = 6,
-) -> ReviewResult:
-    client = ChatGPTBackendClient(auth_path=auth_path)
-    project, context = client.build_project_context(
-        project_id_or_url,
-        max_conversations=max_conversations,
-    )
-    instructions = (
-        "You are the independent ChatGPT Project-aware code-review gate for SpecKit PowerPack. "
-        "Use the supplied ChatGPT Project context as historical/project memory, but treat the current review prompt and repository evidence as authoritative. "
-        "Do not invent files, findings, or prior decisions.\n\n"
-        + context
-    )
-    text, response_id = client.codex_response(
-        prompt=prompt,
-        instructions=instructions,
-        model=model,
-        effort=effort,
-    )
-    return ReviewResult(
-        provider="chatgpt-project",
-        text=text,
-        project_id=project.id,
-        project_name=project.name,
-        response_id=response_id,
-    )
