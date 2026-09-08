@@ -1,8 +1,10 @@
 # Installation
 
-This is the canonical first-install guide for SpecKit PowerPack. It assumes the user has never used PowerPack before.
+This is the canonical first-install guide for **Specify PowerPack**. It assumes the user has never used PowerPack before.
 
-PowerPack extends the official GitHub Spec Kit; it does not replace it. The bootstrap can install a tested Spec Kit release when needed.
+Specify PowerPack extends the official GitHub Spec Kit; it does not replace it. The bootstrap can install a tested Spec Kit release when needed.
+
+The canonical repository is `ds1david/specify-powerpack`. The canonical CLI is `specify-powerpack`. The previous `speckit-powerpack` command remains available as a compatibility alias during migration.
 
 ## What you need
 
@@ -22,7 +24,7 @@ You do **not** need Chrome, Chromium, Playwright, CDP or ChatGPT-Web2API.
 
 ## Fastest installation
 
-Clone the PowerPack repository, then run the wrapper for your operating system.
+Clone the Specify PowerPack repository, then run the wrapper for your operating system.
 
 Linux / WSL / macOS:
 
@@ -42,7 +44,7 @@ Direct Python is equivalent and is the portable fallback:
 python install.py --project /path/to/your-project --integration codex
 ```
 
-The bootstrap installs `uv` when necessary, installs the `speckit-powerpack` CLI, then invokes the same PowerPack initialization contract used by the CLI.
+The bootstrap installs `uv` when necessary, installs the `specify-powerpack` CLI, then invokes the same PowerPack initialization contract used by the CLI.
 
 ## Installing a branch or pinned revision
 
@@ -50,7 +52,7 @@ For development/homologation:
 
 ```bash
 python install.py \
-  --repository https://github.com/ds1david/speckit-powerpack.git \
+  --repository https://github.com/ds1david/specify-powerpack.git \
   --ref feat/browserless-codereview-stable \
   --project /path/to/project \
   --integration codex
@@ -60,10 +62,10 @@ For reproducible installation, prefer an immutable commit SHA in `--ref`.
 
 ## First install into a project
 
-If the project has never used Spec Kit or PowerPack:
+If the project has never used Spec Kit or Specify PowerPack:
 
 ```bash
-speckit-powerpack init /path/to/project --integration codex
+specify-powerpack init /path/to/project --integration codex
 ```
 
 `init`:
@@ -71,14 +73,14 @@ speckit-powerpack init /path/to/project --integration codex
 1. verifies/bootstraps official Spec Kit;
 2. initializes Spec Kit when `.specify/` does not exist;
 3. materializes PowerPack runtime/configuration under `.specify/powerpack/`;
-4. installs the PowerPack Spec Kit extension and preset.
+4. installs the Specify PowerPack Spec Kit extension and preset.
 
 It does not authenticate ChatGPT and does not guess a ChatGPT Project.
 
 If the repository is already a Spec Kit project, use:
 
 ```bash
-speckit-powerpack install . --integration codex --bootstrap-speckit
+specify-powerpack install . --integration codex --bootstrap-speckit
 ```
 
 ## Configure the browserless reviewer
@@ -92,19 +94,19 @@ codex login
 Optionally inspect Projects visible to that account:
 
 ```bash
-speckit-powerpack review project discover
+specify-powerpack review project discover
 ```
 
 Bind the repository interactively:
 
 ```bash
-speckit-powerpack review setup --path .
+specify-powerpack review setup --path .
 ```
 
 Or non-interactively:
 
 ```bash
-speckit-powerpack review setup --path . --project '<project-id-or-unique-name-or-url>'
+specify-powerpack review setup --path . --project '<project-id-or-unique-name-or-url>'
 ```
 
 `review setup` validates the Codex-authenticated ChatGPT backend, resolves a ChatGPT Project and verifies the GitHub App/connector state. The persisted project binding uses `authorization = codex-backend-api` and `context_mode = serialized`.
@@ -114,19 +116,19 @@ speckit-powerpack review setup --path . --project '<project-id-or-unique-name-or
 Installation-only checks:
 
 ```bash
-speckit-powerpack doctor .
+specify-powerpack doctor .
 ```
 
 Live review checks, including GitHub connector discovery:
 
 ```bash
-speckit-powerpack doctor . --strict-review
+specify-powerpack doctor . --strict-review
 ```
 
 Detailed state:
 
 ```bash
-speckit-powerpack review status --path . --live
+specify-powerpack review status --path . --live
 ```
 
 A strict review-ready installation must prove Codex CLI, Codex auth, ChatGPT Project binding and a live GitHub App/connector.
@@ -136,7 +138,7 @@ A strict review-ready installation must prove Codex CLI, Codex auth, ChatGPT Pro
 The PR is always explicit:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr 123 \
   --prompt 'Perform the complete Deep Review Evidence Protocol.'
@@ -147,7 +149,7 @@ A canonical GitHub PR URL is also accepted.
 Second and later rounds can validate all previous findings:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr 123 \
   --previous .specify/powerpack/reviews/<previous>.json
@@ -160,28 +162,34 @@ The review fails closed if the local HEAD differs from the PR head, the branch c
 Check the installed source:
 
 ```bash
-speckit-powerpack update . --check
+specify-powerpack update . --check
 ```
 
 Update the CLI and refresh managed project assets:
 
 ```bash
-speckit-powerpack update .
+specify-powerpack update .
 ```
 
 Refresh only project assets:
 
 ```bash
-speckit-powerpack update . --project-only
+specify-powerpack update . --project-only
 ```
 
 Reset mutable PowerPack configuration only when intentionally discarding local customization/binding:
 
 ```bash
-speckit-powerpack update . --project-only --reset-config
+specify-powerpack update . --project-only --reset-config
 ```
 
 See `UPDATES.md` before using reset.
+
+## Compatibility alias
+
+Existing environments that still invoke `speckit-powerpack` continue to work. New documentation and automation should use `specify-powerpack`.
+
+The Python import package remains `speckit_powerpack` for compatibility with existing integrations; that module name is an implementation identifier, not the product name.
 
 ## What is stored in the repository
 
