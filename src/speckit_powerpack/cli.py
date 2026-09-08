@@ -26,6 +26,8 @@ from .update_manager import UpdateError, apply_self_update, check_update, effect
 
 install_backend_compat()
 
+PRODUCT_NAME = "Specify PowerPack"
+CANONICAL_CLI = "specify-powerpack"
 SPECKIT_REPO = "https://github.com/github/spec-kit.git"
 SPECKIT_TESTED_TAG = "v1.0.4"
 SPECKIT_MIN_VERSION = (1, 0, 0)
@@ -110,7 +112,7 @@ def ensure_specify(*, bootstrap: bool) -> str:
             return binary
         if not bootstrap:
             raise PowerPackError(
-                f"Spec Kit {version or 'unknown'} is incompatible; PowerPack requires >= {SPECKIT_MIN_VERSION_TEXT}."
+                f"Spec Kit {version or 'unknown'} is incompatible; {PRODUCT_NAME} requires >= {SPECKIT_MIN_VERSION_TEXT}."
             )
     elif not bootstrap:
         raise PowerPackError("Official Spec Kit CLI ('specify') is missing. Re-run with --bootstrap-speckit.")
@@ -120,7 +122,7 @@ def ensure_specify(*, bootstrap: bool) -> str:
 def _review_config(project: Path) -> tuple[Path, dict[str, Any]]:
     path = project / ".specify" / "powerpack" / "review.json"
     if not path.is_file():
-        raise PowerPackError("PowerPack review config is missing. Run 'speckit-powerpack install .' first.")
+        raise PowerPackError(f"PowerPack review config is missing. Run '{CANONICAL_CLI} install .' first.")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -238,7 +240,7 @@ def install_powerpack(
         run([specify, "init", "--here", "--integration", integration, "--force"], cwd=project)
     if not (project / ".specify").is_dir():
         raise PowerPackError(
-            "Target is not an initialized Spec Kit project. Use 'speckit-powerpack init <path>' for first installation."
+            f"Target is not an initialized Spec Kit project. Use '{CANONICAL_CLI} init <path>' for first installation."
         )
     install_support(project, integration, reset_config=reset_config)
     install_components(project, specify)
@@ -303,8 +305,11 @@ def cmd_init(args: argparse.Namespace) -> None:
         bootstrap=True,
         reset_config=args.reset_config,
     )
-    print(f"SpecKit PowerPack {__version__} installed in {project}.")
-    print("Next: run 'codex login', connect the GitHub App in ChatGPT/Codex, then 'speckit-powerpack review setup --path .'.")
+    print(f"{PRODUCT_NAME} {__version__} installed in {project}.")
+    print(
+        "Next: run 'codex login', connect the GitHub App in ChatGPT/Codex, then "
+        f"'{CANONICAL_CLI} review setup --path .'."
+    )
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -315,7 +320,7 @@ def cmd_install(args: argparse.Namespace) -> None:
         bootstrap=args.bootstrap_speckit,
         reset_config=args.reset_config,
     )
-    print(f"SpecKit PowerPack {__version__} materialized in {project}.")
+    print(f"{PRODUCT_NAME} {__version__} materialized in {project}.")
 
 
 def cmd_update(args: argparse.Namespace) -> None:
@@ -327,8 +332,8 @@ def cmd_update(args: argparse.Namespace) -> None:
         source = effective_source()
         ref = args.ref or str(source["ref"])
         repository = args.repository or str(source["repository"])
-        result = apply_self_update(repository, ref)
-        print(f"PowerPack CLI updated from {repository}@{ref}.")
+        apply_self_update(repository, ref)
+        print(f"{PRODUCT_NAME} CLI updated from {repository}@{ref}.")
     integration = args.integration or project_integration(project)
     install_powerpack(
         str(project),
@@ -397,7 +402,7 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     for key, value in {**hard, **review}.items():
         print(f"{'OK' if value else 'FAIL':5} {key}")
     if not all(hard.values()):
-        raise PowerPackError("PowerPack installation checks failed.")
+        raise PowerPackError(f"{PRODUCT_NAME} installation checks failed.")
     if args.strict_review and not all(review.values()):
         raise PowerPackError("Browserless Project/GitHub review is not ready.")
 
@@ -503,17 +508,17 @@ def cmd_review_run(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="speckit-powerpack")
+    parser = argparse.ArgumentParser(prog=CANONICAL_CLI)
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    init = sub.add_parser("init", help="Initialize Spec Kit when needed and install PowerPack into a project")
+    init = sub.add_parser("init", help=f"Initialize Spec Kit when needed and install {PRODUCT_NAME} into a project")
     init.add_argument("path", nargs="?", default=".")
     init.add_argument("--integration", choices=["codex", "claude"], default=DEFAULT_INTEGRATION)
     init.add_argument("--reset-config", action="store_true")
     init.set_defaults(func=cmd_init)
 
-    install = sub.add_parser("install", help="Install/refresh PowerPack in an existing Spec Kit project")
+    install = sub.add_parser("install", help=f"Install/refresh {PRODUCT_NAME} in an existing Spec Kit project")
     install.add_argument("path", nargs="?", default=".")
     install.add_argument("--integration", choices=["codex", "claude"], default=DEFAULT_INTEGRATION)
     install.add_argument("--bootstrap-speckit", action="store_true")
