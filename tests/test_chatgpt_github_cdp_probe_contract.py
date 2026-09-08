@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 PS1 = ROOT / "scripts" / "homologation" / "probe_chatgpt_github_cdp.ps1"
+COMPAT_PS1 = ROOT / "scripts" / "homologation" / "probe_chatgpt_github_cdp_compat.ps1"
 SH = ROOT / "scripts" / "homologation" / "probe_chatgpt_github_cdp.sh"
 
 
@@ -43,10 +44,20 @@ def test_cdp_probe_does_not_reconstruct_private_backend_submit() -> None:
     assert 'Invoke-RestMethod' in text  # CDP HTTP discovery only.
 
 
-def test_wsl_launcher_executes_windows_powershell_probe() -> None:
+def test_powershell_51_compat_shim_repairs_parser_and_restmethod_portability() -> None:
+    text = COMPAT_PS1.read_text(encoding="utf-8")
+
+    assert 'TaskCanceledException' in text
+    assert 'OperationCanceledException' in text
+    assert "Regex]::Replace" in text
+    assert ".Replace(' -UseBasicParsing', '')" in text
+    assert 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tempPath @args' in text
+
+
+def test_wsl_launcher_executes_windows_powershell_compat_probe() -> None:
     text = SH.read_text(encoding="utf-8")
 
     assert 'powershell.exe' in text
     assert 'wslpath -w' in text
-    assert 'probe_chatgpt_github_cdp.ps1' in text
+    assert 'probe_chatgpt_github_cdp_compat.ps1' in text
     assert '-ExecutionPolicy Bypass' in text
