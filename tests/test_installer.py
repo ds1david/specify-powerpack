@@ -17,7 +17,7 @@ def test_installer_bootstraps_cli_then_initializes_project(monkeypatch, tmp_path
     monkeypatch.setattr(installer, "ensure_python", lambda: None)
     monkeypatch.setattr(installer, "ensure_git", lambda: None)
     monkeypatch.setattr(installer, "uv_command", lambda: ["uv"])
-    monkeypatch.setattr(installer, "resolve_powerpack_binary", lambda uv: "speckit-powerpack")
+    monkeypatch.setattr(installer, "resolve_powerpack_binary", lambda uv: "specify-powerpack")
     monkeypatch.setattr(installer, "run", lambda argv, **kwargs: calls.append(list(argv)))
 
     code = installer.main([
@@ -30,7 +30,7 @@ def test_installer_bootstraps_cli_then_initializes_project(monkeypatch, tmp_path
     assert code == 0
     assert calls == [
         ["uv", "tool", "install", "--force", "git+https://github.com/example/powerpack.git@abc123"],
-        ["speckit-powerpack", "init", str(tmp_path), "--integration", "codex"],
+        ["specify-powerpack", "init", str(tmp_path), "--integration", "codex"],
     ]
 
 
@@ -40,11 +40,18 @@ def test_installer_reset_config_is_explicit(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(installer, "ensure_python", lambda: None)
     monkeypatch.setattr(installer, "ensure_git", lambda: None)
     monkeypatch.setattr(installer, "uv_command", lambda: ["uv"])
-    monkeypatch.setattr(installer, "resolve_powerpack_binary", lambda uv: "speckit-powerpack")
+    monkeypatch.setattr(installer, "resolve_powerpack_binary", lambda uv: "specify-powerpack")
     monkeypatch.setattr(installer, "run", lambda argv, **kwargs: calls.append(list(argv)))
 
     assert installer.main(["--project", str(tmp_path), "--reset-config"]) == 0
     assert calls[-1][-1] == "--reset-config"
+
+
+def test_installer_brand_and_repository_are_canonical():
+    assert installer.PRODUCT_NAME == "Specify PowerPack"
+    assert installer.CANONICAL_CLI == "specify-powerpack"
+    assert installer.LEGACY_CLI == "speckit-powerpack"
+    assert installer.DEFAULT_REPOSITORY == "https://github.com/ds1david/specify-powerpack.git"
 
 
 def test_shell_wrappers_delegate_to_python_installer():
