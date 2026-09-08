@@ -47,8 +47,13 @@ def test_review_defaults_are_browserless_project_and_github():
     assert github["explicit_app_mention"] is True
     assert github["allow_shell_fallback"] is False
     assert github["allow_web_search_fallback"] is False
-    assert review["deep_review"]["schema_version"] == "2.0"
-    assert review["deep_review"]["immutable_pr_manifest"] is True
+    deep = review["deep_review"]
+    assert deep["schema_version"] == "2.0"
+    assert deep["immutable_pr_manifest"] is True
+    assert deep["exact_changed_file_coverage"] is True
+    assert deep["exact_requirement_coverage"] is True
+    assert deep["inspection_evidence_required"] is True
+    assert deep["context_gaps_block_approval"] is True
 
 
 def test_package_entrypoint_and_runtime_have_no_browser_stack():
@@ -66,6 +71,7 @@ def test_package_entrypoint_and_runtime_have_no_browser_stack():
         "cli_user_state.py",
         "desktop_browser_bridge.py",
         "web_review_smoke.py",
+        "web_review_runner.py",
         "playwright_cli_compat.py",
         "playwright_eval_compat.py",
     ):
@@ -94,6 +100,12 @@ def test_installed_metadata_uses_specify_powerpack_brand():
 def test_deep_review_protocol_and_validator_are_packaged():
     assert (ASSETS / "review" / "deep-review-protocol.md").is_file()
     assert (ASSETS / "runtime" / "powerpack_review_protocol.py").is_file()
+    protocol = (ASSETS / "review" / "deep-review-protocol.md").read_text(encoding="utf-8")
+    assert "exact same set of IDs" in protocol
+    assert "coverage.inspection_evidence" in protocol
+    assert "coverage.verdict_challenge" in protocol
+    assert "coverage.context_gaps" in protocol
+    assert "ChatGPT Project Web" not in protocol
 
 
 def test_technical_debt_policy_forbids_review_escape_hatch():
