@@ -194,13 +194,16 @@ pull_request_number: {context.pull_request_number}
 pull_request_url: {context.pull_request_url}
 github_plugin_authorization: USER_CONFIRMED
 github_plugin_invocation: {GITHUB_PLUGIN_MENTION}
+github_tool_activation: mention-requested
+github_tool_evidence: REQUIRED
+web_transport: chatgpt-backend-codex-responses
 
-The GitHub app/plugin must already be installed and connected in ChatGPT Web or Desktop for the authenticated account, with access to this repository. The leading {GITHUB_PLUGIN_MENTION} mention is intentional and required by the currently homologated Web flow to activate GitHub repository access.
+The GitHub app/plugin must already be installed and connected in ChatGPT Web or Desktop for the authenticated account, with access to this repository. The leading {GITHUB_PLUGIN_MENTION} mention is intentional because it activates GitHub in the homologated interactive ChatGPT Web/Desktop product flow. In the current browserless backend transport this mention is only a capability request hint: it is not proof that the GitHub tool was materialized in this session.
 
 Use the GitHub plugin/connector to open and inspect exactly this pull request.
 The pull request parameter is authoritative: do not substitute another PR and do not perform a generic repository review.
 Inspect the PR base/head identity, changed files and relevant SPEC evidence before producing a verdict.
-If this session exposes no GitHub plugin/connector/tool after the {GITHUB_PLUGIN_MENTION} invocation, stop with BLOCKED_CAPABILITY and state that the current Web transport did not provide the required GitHub capability.
+If this session exposes no GitHub plugin/connector/tool after the {GITHUB_PLUGIN_MENTION} invocation, stop with BLOCKED_CAPABILITY and state that the current Web transport did not materialize the required GitHub capability.
 If a GitHub plugin/connector/tool is available but cannot access this exact repository or pull request, stop with BLOCKED_CONFIGURATION and state that GitHub app installation, connection or repository authorization must be granted or repaired in ChatGPT Web/Desktop and GitHub.
 Do not infer approval from Project memory, PR description, prior reviews, or green CI alone."""
 
@@ -228,8 +231,9 @@ def install_review_context_contract(provider_cli) -> None:
 
     Web/ChatGPT Project reviews require an explicit PR, an installed/connected
     GitHub app/plugin with repository access, a user-confirmed permission grant,
-    and an explicit @GitHub invocation. Local Codex reviews derive their context
-    from the current Git branch and its current Spec Kit SPEC.
+    an explicit @GitHub capability request, and actual GitHub tool evidence.
+    Local Codex reviews derive their context from the current Git branch and its
+    current Spec Kit SPEC.
     """
 
     original_prepare_parser = provider_cli._prepare_parser
@@ -298,7 +302,7 @@ def install_review_context_contract(provider_cli) -> None:
             "--github-plugin-authorized",
             action="store_true",
             help=(
-                "Required attestation that the GitHub app/plugin is installed and connected in ChatGPT Web/Desktop and authorized for this repository; Web prompts invoke @GitHub automatically"
+                "Required attestation that the GitHub app/plugin is installed and connected in ChatGPT Web/Desktop and authorized for this repository; Web prompts request @GitHub automatically but tool availability must still be proven"
             ),
         )
         run.set_defaults(func=cmd_review_run)
