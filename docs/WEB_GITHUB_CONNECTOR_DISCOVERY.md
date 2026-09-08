@@ -2,15 +2,13 @@
 
 ## Status
 
-This document records redacted structural evidence from an Edge HAR captured while selecting **Plugins → GitHub → Use in chat** in ChatGPT Web.
+This document records redacted structural evidence from an Edge HAR captured while selecting **Plugins → GitHub → Use in chat** in ChatGPT Web, plus the browserless reproduction executed on WSL with Codex-derived ChatGPT authentication.
 
 It documents a private ChatGPT product flow, not a public or stable API contract. Raw HAR files must not be committed because they may contain sensitive session information.
 
 ## Main result
 
-PowerPack does not need to hard-code a GitHub connector id if the authenticated ChatGPT account can access the same plugin catalog endpoints observed in the Web product.
-
-The installed-plugin catalog already maps the human-facing GitHub plugin to the canonical connector used later in conversation `system_hints`.
+PowerPack does not need to hard-code a GitHub connector id. The authenticated ChatGPT account can resolve the GitHub plugin and its canonical connector dynamically through the same catalog endpoints observed in the Web product.
 
 Observed relationship:
 
@@ -27,6 +25,51 @@ The later conversation HAR uses that canonical connector as:
 ```text
 plugin:connector_<github-id>
 ```
+
+## Browserless WSL proof
+
+The read-only probe was executed successfully on WSL using the existing `~/.codex/auth.json` path through `ChatGPTBackendClient` and without Playwright, Chromium, browser-cookie copying or hard-coded connector ids.
+
+Command:
+
+```bash
+uv run python \
+  scripts/homologation/probe_chatgpt_github_connector.py \
+  --locale pt-BR
+```
+
+Observed result:
+
+```text
+ok                                      true
+GitHub plugin resolved                  true
+GitHub plugin status                    ENABLED
+GitHub plugin enabled                   true
+authentication_policy                   ON_INSTALL
+GitHub connector resolved               true
+connector metadata status               ENABLED
+connector type                          SERVICE
+accessible GitHub link                  true
+auth_type                               OAUTH
+auth_status                             ACTIVE
+visibility                              VISIBLE
+connector_status                        ENABLED
+apps_privacy_control                    full_access
+availability found                      true
+installed                               true
+available                               true
+can_install                             false
+availability status                     ENABLED
+raw_secrets_included                    false
+```
+
+The same checkout also passed the combined harness/context/HAR/probe unit suite:
+
+```text
+24 passed in 0.21s
+```
+
+Therefore the browserless GitHub connector discovery and authorization preflight is now **PROVEN PASS on WSL for the homologated account/environment**. This is not yet proof that the connector can be materialized inside a browserless conversation turn.
 
 ## Discovery sequence
 
@@ -52,7 +95,7 @@ release.display_name
 release.app_ids
 ```
 
-For the captured account:
+For the homologated account:
 
 ```text
 name = github
@@ -70,7 +113,7 @@ Do not persist the plugin id or connector id as a universal constant. Resolve th
 GET /backend-api/ps/plugins/plugin_connector_1p_<redacted>
 ```
 
-The detail response repeats the canonical connector mapping. This can be used as a confirmation step but may not be necessary if the installed-plugin response is sufficient and unambiguous.
+The detail response repeats the canonical connector mapping. The browserless probe requires the detail response to confirm the same connector id.
 
 ### App content
 
@@ -86,7 +129,7 @@ Request shape:
 }
 ```
 
-Observed GitHub app properties included:
+Observed GitHub app properties include:
 
 ```text
 name = GitHub
@@ -101,7 +144,7 @@ supported_auth includes OAUTH
 POST /backend-api/aip/connectors/links/list_accessible
 ```
 
-The captured response included an accessible GitHub link for the same connector with:
+The browserless probe resolved an accessible GitHub link for the same connector with:
 
 ```text
 auth_type = OAUTH
@@ -112,9 +155,7 @@ connector_type = SERVICE
 apps_privacy_control = full_access
 ```
 
-This is promising as a browserless preflight for an already connected GitHub account because it reports authorization state without exposing OAuth credential values.
-
-PowerPack must never log or persist link/account identifiers or OAuth token material from this response.
+This is now proven as a browserless preflight for an already connected GitHub account. PowerPack must never log or persist link/account identifiers or OAuth credential material from this response.
 
 ### Availability
 
@@ -130,11 +171,12 @@ Request shape:
 }
 ```
 
-The captured GitHub response reported:
+The browserless probe confirmed:
 
 ```text
 installed = true
 available = true
+can_install = false
 status = ENABLED
 ```
 
@@ -146,13 +188,13 @@ The Web client also called:
 GET /backend-api/aip/connectors/connector_<github-id>/siwc
 ```
 
-The response has fields such as `available` and `has_grant`, but its semantics are not yet understood. It is observation-only and must not become a provider requirement until controlled ablation establishes its role.
+The response has fields such as `available` and `has_grant`, but its semantics are not yet understood. It remains observation-only and is not required by the proven preflight.
 
 ## “Use in chat” interpretation
 
 The HAR did not show a new plugin installation, connector creation or OAuth authorization exchange when **Use in chat** was clicked. GitHub was already installed and authenticated.
 
-The current evidence therefore supports this interpretation:
+The evidence supports this interpretation:
 
 ```text
 open plugin catalog
@@ -167,21 +209,22 @@ open plugin catalog
 
 The actual conversation HAR independently shows the final connector injection through `system_hints` and `ecosystemMention` metadata.
 
-## Proposed browserless preflight
+## Proven browserless preflight contract
 
-Before experimenting with connector-aware `/f/conversation`, PowerPack can test whether the existing Codex-derived ChatGPT authentication is sufficient to perform the read-only discovery flow:
+The preflight can now be treated as an implemented/proven capability on the WSL homologation target:
 
 ```text
 1. GET installed plugins
 2. resolve exactly one GitHub plugin
-3. derive canonical connector id
-4. optionally fetch plugin detail and require same connector id
-5. query app content
-6. query accessible links and require active GitHub link
-7. query app availability and require installed + available + enabled
+3. derive exactly one canonical connector id
+4. fetch plugin detail and require the same connector id
+5. query app content and require GitHub + ENABLED + SERVICE
+6. query accessible links and require an ACTIVE OAuth GitHub link
+7. query app availability and require installed + available + ENABLED
+8. emit only redacted evidence
 ```
 
-Failure classification should remain fail-closed:
+Fail-closed classification:
 
 ```text
 no GitHub plugin in installed catalog
@@ -197,7 +240,7 @@ preflight passes but conversation still lacks GitHub tool
   -> BLOCKED_CAPABILITY (transport/materialization)
 ```
 
-The exact classification should be finalized only after the browserless read-only probe is executed against real accounts.
+The last case is the current H2 boundary.
 
 ## Security constraints
 
@@ -213,20 +256,31 @@ raw account identifiers
 signed asset URLs
 ```
 
-Connector/plugin ids used transiently to assemble the current request may be kept in memory and redacted in homologation evidence.
+Connector/plugin ids used transiently to assemble the current request may be kept in memory and must be redacted in homologation evidence.
 
 ## Next experiment
 
-The next useful experiment is **not** another plain `@GitHub` review. It is a browserless read-only connector discovery probe using the same Codex-derived ChatGPT auth already used by `ChatGPTBackendClient`.
+Connector discovery is no longer the open question. The next controlled experiment is conversation capability materialization using the dynamically resolved connector.
 
-The probe should answer:
+Priority sequence:
 
 ```text
-Can ~/.codex/auth.json + ChatGPT account identity call:
-  /backend-api/ps/plugins/installed ?
-  /backend-api/apps/content ?
-  /backend-api/aip/connectors/links/list_accessible ?
-  /backend-api/apps/availability ?
+conversation/init
+  + plugin:connector_<resolved-id> system_hint
+
+then, only if init succeeds legitimately:
+
+f/conversation/prepare
+  + same connector hint
+  + normal root/parent message identity
+
+then, only if prepare succeeds legitimately without fabricating security material:
+
+f/conversation
+  + literal @GitHub
+  + top-level system_hint
+  + message-level system_hint
+  + ecosystemMention metadata
 ```
 
-If yes, PowerPack can dynamically resolve and validate the GitHub connector without browser automation or hard-coded ids. Only then should the conversation-transport ablation proceed.
+Do not fabricate Sentinel/proof/conduit material. Values returned legitimately by the backend may be used transiently and must never be logged. If the private conversation transport requires product-only anti-abuse orchestration that cannot be obtained through the existing authenticated flow, record that as `BLOCKED_CAPABILITY`/architectural boundary rather than attempting to bypass it.
