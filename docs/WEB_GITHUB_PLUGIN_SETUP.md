@@ -13,7 +13,7 @@ A valid ChatGPT Project binding alone is not evidence that the reviewer can insp
 
 Before using `speckit-powerpack review run --provider web`, configure GitHub in the same ChatGPT account used by the PowerPack/Codex-authenticated flow.
 
-In ChatGPT Web or Desktop:
+In a ChatGPT Web/Desktop surface where GitHub is available:
 
 1. Open **Settings**.
 2. Open **Apps** or **Plugins**, depending on the product surface shown to the account.
@@ -25,9 +25,10 @@ In ChatGPT Web or Desktop:
 OpenAI documents GitHub connection and repository authorization at:
 
 - https://help.openai.com/en/articles/11145903-connecting-github-to-chatgpt
+- https://help.openai.com/en/articles/20001494-connecting-and-managing-app-accounts-in-chatgpt
 - https://help.openai.com/en/articles/11487775-connectors-in-chatgpt
 
-GitHub availability can vary by ChatGPT plan, workspace and product surface. A repository being authorized in GitHub does not by itself prove that the current ChatGPT session exposes the GitHub tool.
+OpenAI also documents that a connected app/plugin may be invoked explicitly with an `@` mention or selected from the tools menu. GitHub availability can vary by ChatGPT plan, workspace and product surface. A repository being authorized in GitHub does not by itself prove that the current ChatGPT session exposes the GitHub tool.
 
 ## Interactive ChatGPT Project binding
 
@@ -48,19 +49,19 @@ speckit-powerpack doctor --strict-review .
 
 A bind or strict-doctor failure is a hard stop.
 
-## `@github` activation is part of the Web review contract
+## `@GitHub` activation is part of the Web review contract
 
-In the currently homologated ChatGPT Web/Desktop behavior, explicitly mentioning `@github` at the start of a prompt activates the connected GitHub capability for repository inspection.
-
-PowerPack therefore prefixes Web PR review prompts automatically with:
+The currently homologated ChatGPT behavior for this PowerPack path requires an explicit GitHub mention at the beginning of the effective review prompt. PowerPack canonicalizes that invocation as:
 
 ```text
-@github
+@GitHub
 ```
 
-Users **do not need to add `@github` to their prompt file**. The effective prompt assembled by PowerPack starts with the mention before the authoritative PR context and user review instruction.
+If a user prompt file already begins with `@GitHub` or `@github`, PowerPack removes that leading user-supplied mention before composition and emits one canonical `@GitHub` as the first line. This avoids duplicate plugin mentions while preserving the user's remaining review instruction.
 
-This behavior is an operationally homologated ChatGPT product behavior, not a public/stable API contract. The browserless provider uses non-public ChatGPT backend paths, so upstream behavior can change. If `@github` stops activating GitHub in the generated session, the review must fail closed and be re-homologated; do not silently fall back to Project memory or a generic repository review.
+The effective prompt therefore starts with the GitHub invocation before the authoritative PR context and the user review instruction.
+
+This activation behavior is operationally homologated in the ChatGPT product flow and is consistent with OpenAI's documented support for explicit `@` app/plugin mentions. It is **not** a public contract for the private ChatGPT backend transport. The browserless provider uses non-public ChatGPT backend paths, so upstream behavior can change. If `@GitHub` stops activating GitHub in the generated session, the review must fail closed and be re-homologated; do not silently fall back to Project memory or a generic repository review.
 
 ## Real Web PR review
 
@@ -81,7 +82,34 @@ speckit-powerpack review run \
 - the target repository has been granted to the ChatGPT GitHub app/plugin;
 - any required organization approval has been completed.
 
-The flag does not itself grant permissions and does not prove tool invocation. The generated `@github` mention requests the capability in the review session; the reviewer still has to demonstrate that the exact PR was inspected.
+The flag does not itself grant permissions and does not prove tool invocation. The generated `@GitHub` mention requests the capability in the review session; the reviewer still has to demonstrate that the exact PR was inspected.
+
+## Backend/tool-use model: verified facts vs implementation hypothesis
+
+The PowerPack must distinguish verified behavior from reverse-engineered or inferred backend details.
+
+### Verified for the current browserless flow
+
+- Codex authentication from `~/.codex/auth.json` is sufficient for the currently homologated Project discovery/context transport.
+- `ChatGPT-Account-ID` is used by the current browserless provider.
+- a bound ChatGPT Project can be discovered and its Project context can be loaded without Playwright, Chromium or browser-cookie copying;
+- the GitHub app/plugin must be connected to the ChatGPT account and the repository must be authorized;
+- an explicit `@GitHub` invocation is part of the currently homologated Web PR flow;
+- any `BLOCKED_*` response is a failed review gate, not an approval.
+
+### Not yet a proven transport contract
+
+The following details are plausible implementation hypotheses for a richer private-backend provider, but are **not yet accepted as PowerPack requirements without reproduced evidence**:
+
+- a mandatory `POST /backend-api/conversation` initialization flow;
+- exact `plugin_ids` or `gizmo_id` payload shapes;
+- exact SSE event names or message-tree representation for GitHub tool calls;
+- a mandatory browser `Cookie` header for plugin execution;
+- exact server-side OAuth/tool-call orchestration fields.
+
+PowerPack must not reintroduce browser cookies, Playwright or Chromium merely because those fields are hypothesized. If a future experiment proves that the private GitHub-capable transport requires additional account/session material, that becomes a separately reviewed security/architecture decision and triggers re-homologation.
+
+See `docs/WEB_GITHUB_BACKEND_EXPERIMENT.md` for the experimental transport model and evidence gates.
 
 ## Fail-closed statuses
 
@@ -91,7 +119,7 @@ The Web review must distinguish these cases:
 BLOCKED_CAPABILITY
 ```
 
-The review session exposes no GitHub plugin/connector/tool even after the generated `@github` invocation. This indicates a product-surface/transport capability problem, not an approved review.
+The review session exposes no GitHub plugin/connector/tool even after the generated `@GitHub` invocation. This indicates a product-surface/transport capability problem, not an approved review.
 
 ```text
 BLOCKED_CONFIGURATION
@@ -116,7 +144,7 @@ ChatGPT Project bind
 + backend/Project context
 + explicit PR identity
 + GitHub app/plugin installed and repository authorized
-+ generated @github invocation
++ one canonical generated @GitHub invocation
 + exact PR accessible to the reviewer
 + PR base/head and changed-file inspection
 + reviewer verdict for the same snapshot
