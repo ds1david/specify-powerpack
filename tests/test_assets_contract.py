@@ -101,7 +101,7 @@ def test_deep_review_protocol_and_validator_are_packaged():
     assert (ASSETS / "review" / "deep-review-protocol.md").is_file()
     assert (ASSETS / "runtime" / "powerpack_review_protocol.py").is_file()
     protocol = (ASSETS / "review" / "deep-review-protocol.md").read_text(encoding="utf-8")
-    assert "exact same set of IDs" in protocol
+    assert "exactly that same set of IDs" in protocol
     assert "coverage.inspection_evidence" in protocol
     assert "coverage.verdict_challenge" in protocol
     assert "coverage.context_gaps" in protocol
