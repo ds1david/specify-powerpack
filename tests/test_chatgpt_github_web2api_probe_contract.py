@@ -74,23 +74,39 @@ def test_windows_launcher_installs_exact_pinned_web2api_and_uses_same_venv_for_h
     assert "web2api_github_driver_probe" not in text  # path is injected, not duplicated logic
 
 
-def test_orchestrator_keeps_codex_auth_as_preflight_only() -> None:
+def test_orchestrator_is_web2api_only_no_codex_or_browserless_preflight() -> None:
     text = ORCHESTRATOR.read_text(encoding="utf-8")
 
-    assert "ChatGPTBackendClient" in text
-    assert "_resolve_connector(client)" in text
-    assert '"role": "preflight-only"' in text
-    assert "connector_id_exposed" in text
+    assert "web2api_only" in text
     assert "powershell.exe" in text
     assert "probe_chatgpt_github_web2api.ps1" in text
+    assert "ChatGPTBackendClient" not in text
+    assert "ChatGPTProjectError" not in text
+    assert "_resolve_connector" not in text
+    assert "codex_preflight" not in text
+    assert ".codex/auth.json" not in text
     assert "Authorization" not in text
     assert "Cookie" not in text
 
 
-def test_direct_cdp_probe_is_not_the_resumed_web2api_entrypoint() -> None:
+def test_default_prompt_requires_github_and_marker() -> None:
+    module = _load_helper()
+
+    assert module.DEFAULT_PROMPT.startswith("@GitHub ")
+    assert module.MARKER == "POWERPACK_GITHUB_TOOL_OK"
+    assert module.MARKER in module.DEFAULT_PROMPT
+
+
+def test_direct_cdp_and_browserless_probes_are_not_the_web2api_entrypoint() -> None:
     orchestrator = ORCHESTRATOR.read_text(encoding="utf-8")
     ps1 = PS1.read_text(encoding="utf-8")
 
-    assert "probe_chatgpt_github_cdp.ps1" not in orchestrator
-    assert "probe_chatgpt_github_cdp.ps1" not in ps1
-    assert "probe_chatgpt_github_cdp_compat.ps1" not in orchestrator
+    forbidden = (
+        "probe_chatgpt_github_cdp.ps1",
+        "probe_chatgpt_github_cdp_compat.ps1",
+        "probe_chatgpt_github_complete_har_flow.py",
+        "chatgpt_project_provider",
+    )
+    for value in forbidden:
+        assert value not in orchestrator
+        assert value not in ps1
