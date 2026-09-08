@@ -19,16 +19,39 @@ Codex-authenticated ChatGPT account
   -> ChatGPT backend response
 ```
 
-For GitHub-enabled ChatGPT sessions, the operational workflow additionally requires:
+The interactive ChatGPT Web/Desktop product flow has also demonstrated that, when the GitHub app/plugin is already installed/authenticated and the repository is authorized, an explicit `@GitHub` mention can expose repository access in that product session.
+
+A separate browserless experiment then demonstrated the boundary:
 
 ```text
-GitHub app/plugin installed and connected
-  -> target repository authorized
-  -> explicit @GitHub invocation
-  -> exact PR inspection
+same ChatGPT account
++ valid Project binding
++ GitHub app/plugin already installed/authenticated
++ target repository authorized
++ effective prompt starts with @GitHub
++ current chatgpt.com/backend-api/codex/responses transport
+= BLOCKED_CAPABILITY
 ```
 
-OpenAI publicly documents connecting GitHub to ChatGPT, authorizing repositories, and explicitly invoking connected apps/plugins with `@` mentions. It does not document the private backend payloads used internally to materialize a GitHub-capable conversation.
+Therefore an `@GitHub` string in the prompt is not sufficient to materialize the GitHub tool in the current `codex/responses` transport.
+
+## Current evidence classification
+
+The current browserless Web PR path should be described as:
+
+```text
+project_context_transport      PASS
+project_binding                PASS
+pr_identity_contract           PASS
+plugin_installation_attested   PASS
+repository_access_attested     PASS
+@GitHub_mention_requested      PASS
+github_tool_materialized       BLOCKED_CAPABILITY
+exact_pr_tool_evidence         NOT_AVAILABLE
+web_pr_review_overall          BLOCKED_CAPABILITY
+```
+
+This is not a user-configuration failure. The distinction matters because the same account/repository can expose GitHub successfully in an interactive ChatGPT product session while the browserless backend request does not.
 
 ## Working hypothesis
 
@@ -80,6 +103,57 @@ A browser `Cookie` header is **not currently an accepted PowerPack requirement**
 
 Only after those questions are resolved should the transport be implemented.
 
+## Safe capture protocol for the next experiment
+
+The next useful experiment is not another retry of `review run`. It is a structural comparison between:
+
+```text
+A. one ChatGPT Web/Desktop conversation where @GitHub actually opens the repository/PR
+B. one PowerPack browserless request that returns BLOCKED_CAPABILITY
+```
+
+Capture only protocol structure. Do not copy credentials.
+
+For the successful Web/Desktop session, record with secrets redacted:
+
+```text
+request order
+request URL path or endpoint family
+HTTP method
+request body field names
+which fields identify Project/GPT/plugin/app/conversation
+which fields identify parent/root messages
+which non-secret headers differ from PowerPack
+SSE/event type names
+presence and shape of tool-call events
+presence and shape of tool-result events
+final response event
+```
+
+For every request/response capture, redact completely:
+
+```text
+Authorization values
+Cookie values
+OAuth tokens
+session tokens
+CSRF tokens
+signed URLs
+raw account credentials
+```
+
+Safe placeholders are acceptable, for example:
+
+```text
+Authorization: <REDACTED>
+Cookie: <REDACTED>
+ChatGPT-Account-ID: <ACCOUNT-ID-PRESENT>
+plugin_ids: [<ID-PRESENT>]
+gizmo_id: <ID-PRESENT>
+```
+
+Do not send the raw HAR if it contains credentials. Prefer manually extracting a sanitized request skeleton or a redacted HAR copy.
+
 ## Required experiment evidence
 
 Before replacing the current `/codex/responses` review transport, capture a successful ChatGPT Web/Desktop GitHub review and record, with secrets redacted:
@@ -97,9 +171,7 @@ GitHub tool result evidence
 final assistant response
 ```
 
-Do **not** record bearer tokens, OAuth tokens, cookies or other raw credential values.
-
-The experiment must also include negative controls:
+The experiment must include at least these negative controls:
 
 ```text
 without @GitHub
@@ -112,6 +184,20 @@ invalid PR number
 
 These controls let PowerPack distinguish activation, capability, authorization and review-context failures.
 
+## Decision rules for hypothesized fields
+
+Do not promote any private field into production merely because it appears once.
+
+A candidate field such as `plugin_ids`, `gizmo_id`, `conversation_mode`, a specific conversation endpoint, or an additional header becomes a PowerPack dependency only when:
+
+1. it is present in a successful GitHub-enabled conversation;
+2. removing or changing it reproduces loss of GitHub capability while the rest of the request remains equivalent;
+3. its semantics can be expressed without embedding raw credentials into project configuration;
+4. the behavior can be reproduced on the supported environment;
+5. a fail-closed test covers upstream breakage.
+
+Until then it remains an experiment observation, not an architecture contract.
+
 ## Provider acceptance contract
 
 A future GitHub-capable Web provider is acceptable only when it can prove all of the following for the same immutable review snapshot:
@@ -121,6 +207,7 @@ provider = chatgpt-project/web
 Project binding resolved
 GitHub plugin/app precondition attested
 canonical @GitHub invocation emitted
+actual GitHub capability materialized
 exact repository resolved
 exact PR resolved
 base ref/base SHA captured
@@ -134,9 +221,9 @@ The implementation should preserve raw/redacted protocol evidence sufficient to 
 
 ## Why `@GitHub` alone is not sufficient evidence
 
-The mention is a capability request, not proof of execution. A model could still answer from Project memory, stale conversation context or prompt text.
+The mention is a capability request, not proof of execution. This is now demonstrated by the current browserless experiment: the model received the mention and still returned `BLOCKED_CAPABILITY` because no GitHub tool was available.
 
-Therefore final Web PR homologation must eventually require evidence that the exact PR was actually read through the GitHub capability. Until that evidence is available, the provider may prove Project context and activation behavior, but it must not claim full PR-review homologation.
+A model could otherwise answer from Project memory, stale conversation context or prompt text. Therefore final Web PR homologation must require evidence that the exact PR was actually read through the GitHub capability.
 
 ## Re-homologation rule
 
