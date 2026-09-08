@@ -1,148 +1,69 @@
-# PowerPack Update and Recovery
+# Updates and recovery
 
-PowerPack has two separately controlled update surfaces:
+**Specify PowerPack** separates CLI installation from project materialization.
 
-1. **installed CLI/package** — the `speckit-powerpack` executable managed by `uv`;
-2. **project materialization** — PowerPack runtime, preset, extension, policies and default configs under an initialized Spec Kit repository.
-
-The updater never authorizes destructive Git operations.
-
-## Detailed update process
-
-```mermaid
-flowchart TD
-    START[init / install / explicit update] --> CFG[Load update policy]
-    CFG --> META[Read installed PEP 610 direct_url.json]
-    META --> SRC[Resolve repository + ref + installed commit]
-    SRC --> REMOTE[git ls-remote selected ref]
-    REMOTE --> CMP{Installed commit comparable?}
-
-    CMP -->|yes, same| CUR[CURRENT]
-    CMP -->|yes, different| AVAIL[UPDATE_AVAILABLE]
-    CMP -->|no| UNKNOWN[UNKNOWN_INSTALLED_SOURCE]
-    REMOTE -->|error| FAIL[CHECK_FAILED]
-
-    AVAIL --> CONFIRM{Explicit confirmation?}
-    UNKNOWN -->|normal| STOP[Stop; require force for blind reinstall]
-    FAIL -->|normal| STOP
-    CUR -->|normal| END[No change]
-
-    CONFIRM -->|no| END
-    CONFIRM -->|yes| UV[uv tool install --force from resolved Git ref]
-    UNKNOWN -->|--force --yes| UV
-    FAIL -->|--force --yes| UV
-    CUR -->|--force --yes| UV
-
-    UV --> REFRESH{Project initialized?}
-    REFRESH -->|yes| MANAGED[Rematerialize PowerPack-managed runtime/preset/extension/policy assets]
-    REFRESH -->|no| DONE[CLI updated]
-
-    MANAGED --> RESET{--reset-config explicitly requested?}
-    RESET -->|no| PRESERVE[Preserve project PowerPack JSON customization]
-    RESET -->|yes + --force + --yes| DEFAULTS[Restore mutable PowerPack config defaults]
-    PRESERVE --> DONE
-    DEFAULTS --> DONE
-
-    DONE --> SAFE[Preserve application code, debt backlog/history, Web auth/profile bindings and Git history]
-```
-
-## Diagram node map / customization surface
-
-| Diagram node | Package implementation | Installed/project state | How to customize |
-|---|---|---|---|
-| `Load update policy` | `src/speckit_powerpack/assets/config/default-update.json` | `.specify/powerpack/update.json` | enable/disable checks, auto-check-on-install, repository/ref overrides and refresh policy |
-| `Read installed metadata` | `src/speckit_powerpack/update_manager.py::installed_vcs_info` | Python distribution `direct_url.json` | do not hand-edit; choose install source/ref instead |
-| `Resolve repository/ref` | `update_manager.py::effective_source` | packaged default + installed `requested_revision` + project update config | set `repository`/`ref` in `update.json` or explicit CLI flags |
-| `git ls-remote` | `update_manager.py::remote_sha` | no durable project mutation | change package code only for a universally different source resolver |
-| update decision | `update_manager.py::check_update` | none | package-level semantic change only |
-| explicit confirmation | `src/speckit_powerpack/cli.py` | terminal/user interaction | `--yes`/`--yes-update` only when operator explicitly pre-authorizes automation |
-| CLI reinstall | `update_manager.py::apply_self_update` | `uv` managed tool environment | source/ref configurable; force remains explicit |
-| project rematerialization | `cli.py::install_support` + `install_components` | `.specify/powerpack/*` + Spec Kit preset/extension materialization | project config preserved by default |
-| config reset | `cli.py` forced project refresh | PowerPack JSON files under `.specify/powerpack` | requires explicit `--force --reset-config --yes` recovery request |
-| agent update command | `assets/extensions/powerpack-tools/commands/update.md` | materialized agent command | extend project instructions, but never weaken explicit confirmation for force/reset |
-
-## Source identity
-
-When installed from Git through `uv`/pip-compatible tooling, PowerPack reads PEP 610 `direct_url.json` metadata and compares the installed `commit_id` with the selected remote Git ref using `git ls-remote`.
-
-A development install that records `requested_revision=feat/example` follows `feat/example` by default. This prevents a feature-branch installation from accidentally treating an older `main` as an update.
-
-If the installed commit cannot be proven, normal automatic update stops with `UNKNOWN_INSTALLED_SOURCE`. A blind reinstall then requires explicit `--force`.
-
-## Installer-triggered update
-
-`init` and `install` consult `.specify/powerpack/update.json` when available, otherwise packaged defaults:
-
-```json
-{
-  "enabled": true,
-  "auto_check_on_install": true,
-  "confirmation_required": true
-}
-```
-
-When a newer commit is detected the installer displays installed/remote identity and asks before updating. In non-interactive automation, confirmation must be explicit with `--yes-update`.
-
-Disable one check with:
+## Check
 
 ```bash
-speckit-powerpack install . --no-update-check
+specify-powerpack update . --check
 ```
 
-The internal restart after a successful self-update sets a one-shot skip marker so the new CLI does not recursively check/update again.
+For Git/VCS installs, Specify PowerPack reads PEP 610 `direct_url.json` metadata to identify repository, requested revision and installed commit.
 
-## Manual check
+An explicit commit-SHA installation is considered pinned and is not silently reinterpreted as `main`.
+
+## Update CLI and project assets
 
 ```bash
-speckit-powerpack update . --check
+specify-powerpack update .
 ```
 
-Possible statuses include `CURRENT`, `UPDATE_AVAILABLE`, `UNKNOWN_INSTALLED_SOURCE` and `CHECK_FAILED`. A check never modifies the CLI or repository.
+The CLI is reinstalled using `uv tool install --force` from the effective repository/ref, then Specify PowerPack assets are rematerialized in the project.
 
-## Normal confirmed update
+## Project-only refresh
 
 ```bash
-speckit-powerpack update .
+specify-powerpack update . --project-only
 ```
 
-or non-interactively after the operator has already approved:
+This does not reinstall the CLI.
+
+## Change source/ref explicitly
 
 ```bash
-speckit-powerpack update . --yes
+specify-powerpack update . \
+  --repository https://github.com/ds1david/specify-powerpack.git \
+  --ref main
 ```
 
-Normal update updates the CLI through `uv`, rematerializes PowerPack-managed assets and preserves project-customized PowerPack JSON, debt backlog/history, source/application files and platform-scoped Web authentication/project bindings.
+## Configuration preservation
 
-## Forced recovery
+Managed runtime/preset/extension files are refreshed. Mutable project configuration is preserved by default.
 
-When source comparison is unavailable or managed files are corrupted:
+The review-config migration converts supported legacy Project identity into schema 5 and intentionally drops obsolete browser/Web2API fields.
+
+To intentionally reset mutable PowerPack config:
 
 ```bash
-speckit-powerpack update . --force --yes
+specify-powerpack update . --project-only --reset-config
 ```
 
-This is intentionally "brute" only inside the PowerPack ownership boundary. It reinstalls the CLI and overwrites packaged/runtime/preset/extension/policy assets that PowerPack owns. It does **not** run `git reset`, rebase, force-push, delete project code, delete debt history or delete browser profiles.
+This can remove the current ChatGPT Project binding, so `review setup` may be required again.
 
-If only project materialization is broken, prefer:
+## Safety boundary
+
+Specify PowerPack update does not authorize destructive Git reset/rebase/force-push, source deletion or GitHub mutations. It only updates its CLI and owned project assets/configuration according to the requested flags.
+
+## Recovery
+
+For an existing Spec Kit project with damaged/missing Specify PowerPack managed assets:
 
 ```bash
-speckit-powerpack update . --project-only --force --yes
+specify-powerpack install . --integration codex --bootstrap-speckit
 ```
 
-## Resetting PowerPack configuration
+If configuration itself should also be recreated, add `--reset-config` deliberately.
 
-Restoring mutable PowerPack project config to package defaults is a stronger and separate recovery action:
+For a machine with no working Specify PowerPack CLI, rerun the repository bootstrap described in [`INSTALLATION.md`](INSTALLATION.md).
 
-```bash
-speckit-powerpack update . --project-only --force --reset-config --yes
-```
-
-This may reset custom values in `model-routing.json`, `review.json`, `technical-debt.json`, `full-cycle.json`, `update.json`, `prerequisites.json` and `quality-gates.json`. It still does not delete the debt backlog or global Web authentication data. Agents MUST never add `--reset-config` without an explicit user request.
-
-## Agent command
-
-The `powerpack-tools` extension exposes `speckit.powerpack-tools.update`. The agent checks first, explains source/ref/scope and obtains confirmation. `--force` and especially `--reset-config` are never inferred.
-
-## Customization rule
-
-Use `.specify/powerpack/update.json` for project policy and explicit CLI flags for one-off source/ref recovery. Change `update_manager.py` or updater semantics only when the behavior is reusable across unrelated projects.
+The previous `speckit-powerpack` command remains a compatibility alias during migration.

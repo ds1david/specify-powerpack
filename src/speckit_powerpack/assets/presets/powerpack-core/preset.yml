@@ -2,11 +2,11 @@ schema_version: "1.0"
 
 preset:
   id: "powerpack-core"
-  name: "SpecKit PowerPack Core"
+  name: "Specify PowerPack Core"
   version: "0.1.0"
   description: "Composable prerequisite gates, convergence, deep implementation review, full-cycle orchestration and governed technical-debt lifecycle for official Spec Kit."
   author: "David Oliveira"
-  repository: "https://github.com/ds1david/speckit-powerpack"
+  repository: "https://github.com/ds1david/specify-powerpack"
   license: "MIT"
 
 requires:

@@ -1,319 +1,228 @@
-# SpecKit PowerPack
+# Specify PowerPack
 
-> **Status: Draft / pre-release.** The repository is intentionally evolving before its first stable public release.
+> **Status: pre-release / evolving.** This is a personal project in continuous evolution. It is driven by the workflow, quality and safety criteria I consider useful, while being progressively generalized into a reusable PowerPack for projects of different contexts. Changes must distinguish a real defect from a new capability request.
 
-SpecKit PowerPack is a composable enhancement layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds reusable workflow state, convergence, deep implementation review, full-cycle orchestration, technical-debt governance, executor-aware model routing, managed updates and a mandatory ChatGPT Project Web review gate.
+Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds convergence, review evidence, full-cycle orchestration, technical-debt governance, model routing, managed updates and a browserless ChatGPT Project + GitHub code-review gate.
 
-## Current happy path
+The canonical repository is `ds1david/specify-powerpack`. The canonical CLI is `specify-powerpack`; the previous `speckit-powerpack` command is retained as a compatibility alias during migration.
+
+## Workflow
 
 ```text
 speckit-specify
-  -> speckit-clarify
-  -> speckit-plan
-  -> speckit-checklist
-  -> speckit-checklist-converge
-  -> speckit-tasks
-  -> speckit-analyze
-  -> speckit-implement
-  -> speckit-implement-review
-       -> speckit-converge
-            -> tasks appended? speckit-implement -> speckit-converge ...
-       -> independent Sol/xhigh review
-            -> findings? implement fixes -> speckit-converge -> Sol review ...
-       -> mandatory ChatGPT Project Web review
-            -> findings? implement fixes -> speckit-converge -> Sol review -> Web review ...
-            -> both gates approve same final snapshot? COMPLETE
-            -> review budget exhausted? BLOCKED_BUDGET -> explicit extend
+→ speckit-clarify
+→ speckit-plan
+→ speckit-checklist
+→ speckit-checklist-converge
+→ speckit-tasks
+→ speckit-analyze
+→ speckit-implement
+→ speckit-implement-review
 ```
 
-The first `speckit-implement` is mandatory and explicit. `speckit-implement-review` cannot manufacture or skip that predecessor; its first productive action is convergence.
+`implement-review` owns convergence, quality gates, independent Sol review and the final Project-aware GitHub review. Findings return to implementation; any implementation change invalidates approvals bound to an earlier snapshot.
 
-## What PowerPack adds
+## What is implemented
 
 - same-SPEC predecessor enforcement;
-- `speckit-implement` wrapper with precise implementation receipts;
-- explicit `implement -> implement-review` contract;
-- integrated convergence/review/fix/re-convergence loop;
-- Deep Review Evidence Protocol and schema 2.0 validator;
-- durable review findings in `tasks.md`: `PENDING -> SELECTED -> IMPLEMENTED -> RESOLVED`;
-- explicit review/convergence budgets with `BLOCKED_BUDGET` and user-authorized `extend N`;
-- resumable `speckit-full-cycle` orchestration;
-- governed technical-debt lifecycle;
-- architecture/OS/language/framework/build-tool agnostic capability resolution;
-- Codex-first Terra/Luna/Sol routing;
-- mandatory ChatGPT Project Web second gate;
-- isolated Playwright Chromium account profiles, independent from Windows Edge/Chrome;
-- multiple ChatGPT accounts and multiple account bindings per Project;
-- Project discovery, manual selection, known-URL binding and invite/shared-link acceptance;
-- safe Spec Kit bootstrap/upgrade and PowerPack update/recovery.
+- explicit implementation receipts;
+- convergence and review repair loops;
+- Deep Review Evidence Protocol schema 2.0 + validator;
+- capability-based quality gates instead of hard-coded Maven/npm/pytest assumptions;
+- technical-debt governance that forbids hiding current-flow findings as debt;
+- Codex/Claude executor routing;
+- browserless ChatGPT Project context;
+- GitHub App/connector discovery and OAuth readiness checks;
+- GitHub tool execution through the official Codex Apps MCP runtime;
+- immutable two-phase GitHub PR review;
+- cross-platform installer for Linux/WSL/macOS and Windows;
+- PowerPack-managed Spec Kit bootstrap/update.
 
-## Core design rule
+## Browserless review architecture
 
 ```text
-DISCOVER CAPABILITY
-        ↓
-SELECT STRATEGY
-        ↓
-EXECUTE CONTRACT
+repository .specify/powerpack/review.json
+             │
+             ├─ ChatGPT Project id/name
+             │
+             ▼
+       ~/.codex/auth.json
+             │
+      ChatGPT backend reads
+             │
+      serialized Project context
+             │
+             ├───────────────┐
+             │               │
+             ▼               ▼
+       active Spec Kit     GitHub App discovery
+       artifacts           + OAuth/availability
+             │               │
+             └──────┬────────┘
+                    ▼
+          codex exec --json --ephemeral
+          --sandbox read-only
+                    │
+          [$github](app://connector)
+                    │
+              codex_apps MCP
+                    │
+                GitHub tools
+                    │
+          exact PR/diff/file evidence
+                    │
+              schema 2.0 review
 ```
 
-Projects customize configuration, policy, domain skills and stricter gates rather than cloning generated PowerPack skills.
+There is no Chrome, CDP, Playwright, Selenium or Web2API in the supported production path.
 
-## Requirements
+### What “Project context” means
+
+Specify PowerPack reads the bound ChatGPT Project through account-scoped ChatGPT backend APIs, serializes Project metadata/instructions and recent Project conversations, and injects that material as read-only context for the review turn.
+
+This is deliberately reported as:
+
+```text
+project_context_serialized = true
+native_project_binding      = false
+response_visible_in_project = false
+```
+
+The review is **not** written as a native conversation inside the ChatGPT Project.
+
+### What “GitHub connector” means
+
+Specify PowerPack does not manually inject private `tools[]` into `/backend-api/codex/responses`. It discovers the installed GitHub App/connector, then explicitly selects it with:
+
+```text
+[$github](app://<connector-id>)
+```
+
+The Codex runtime owns App resolution, MCP tools, approvals, tool execution and continuation. Specify PowerPack observes the JSONL lifecycle and requires structural `codex_apps` GitHub tool-call/result evidence. Shell and web-search fallbacks are rejected.
+
+## Immutable code review
+
+`review run` has two phases.
+
+### Phase A — PR manifest
+
+The GitHub App resolves the exact PR, base ref/SHA, merge-base, head SHA and complete changed-file list. Specify PowerPack verifies local `HEAD == PR head SHA`, resolves exactly one active Spec Kit SPEC and computes a deterministic SHA-256 snapshot digest.
+
+### Phase B — deep review
+
+The review receives:
+
+- immutable PR manifest;
+- active SPEC artifacts;
+- serialized ChatGPT Project context;
+- complete Deep Review Protocol 2.0;
+- previous review on round 2+;
+- exact GitHub App binding.
+
+Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
+
+Trade-off: two phases add latency, but avoid approving an ambiguous or stale snapshot.
+
+## First installation
+
+For someone who has never used Specify PowerPack, start with [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
+
+Minimum prerequisites:
 
 - Python 3.11+
 - Git
-- `uv`
-- official Spec Kit `>=1.0.0` (PowerPack can bootstrap/upgrade to tested `v1.0.4`)
-- Claude Code and/or Codex CLI
-- Playwright + Chromium for mandatory ChatGPT Web review
+- internet access to GitHub/ChatGPT
+- a ChatGPT account eligible for the Codex CLI / Apps used by your environment
 
-Claude Code is **not required** for a Codex-first execution.
+`uv` and official Spec Kit can be bootstrapped by the installer.
 
-## Codex-first model routing
+### Linux / WSL / macOS
 
-When `.specify/powerpack/model-routing.json` has `active_integration: "codex"`:
-
-| Role | Model | Effort | Authority |
-|---|---|---:|---|
-| Parent / orchestrator / implementer | `gpt-5.6-terra` | high | writes, phase ownership, user interaction |
-| Bounded mechanical worker | `gpt-5.6-luna` | medium | narrow scans/inventories/evidence collection |
-| Semantic gate / advisor | `gpt-5.6-sol` | high | read-only semantic escalation |
-| Independent deep reviewer | `gpt-5.6-sol` | xhigh | read-only review |
-
-A Terra parent must **not** launch another `codex` CLI recursively just to review its own work. Use one in-session Sol/xhigh/read-only reviewer/subagent, or the current context only when that profile is already provable.
-
-## Installation
-
-### Install/update the CLI
+From a clone of this repository:
 
 ```bash
-uv tool install --force \
-  git+https://github.com/ds1david/speckit-powerpack.git@main
+./install.sh --project /path/to/project --integration codex
 ```
 
-### Existing Spec Kit project — Codex primary
-
-From the project root:
+Or directly:
 
 ```bash
-git status --short
-git branch --show-current
-
-speckit-powerpack install . \
-  --integration codex \
-  --bootstrap-speckit
+python3 install.py --project /path/to/project --integration codex
 ```
 
-`--bootstrap-speckit` also upgrades an older incompatible Spec Kit installation to the tested release.
+### Windows PowerShell
 
-Installation materializes PowerPack and prepares Playwright/Chromium. It **does not silently authenticate ChatGPT or choose a Project**.
-
-## ChatGPT Web onboarding: account first, Project second
-
-PowerPack models Web review as:
-
-```text
-Playwright profile = authenticated ChatGPT account identity
-Project binding    = Project context selected for this repository
+```powershell
+.\install.ps1 --project C:\path\to\project --integration codex
 ```
 
-The authenticated account is the Web reviewer identity. The Project is separate context.
+The installer installs the Specify PowerPack CLI with `uv`, then `specify-powerpack init` bootstraps official Spec Kit when required and materializes the PowerPack preset/extension/runtime.
 
-### 1. Authorize a ChatGPT account
+## Review setup
+
+After project installation:
 
 ```bash
-speckit-powerpack review auth authorize ds1david \
-  --account-label ds1david-plus
+codex login
+cd /path/to/project
+specify-powerpack review setup --path .
+specify-powerpack doctor . --strict-review
 ```
 
-A visible PowerPack Chromium profile opens. The profile is stored outside the repository and does **not** reuse the Windows Edge/Chrome user-data directory.
+`review setup` lists the ChatGPT Projects visible to the Codex-authenticated account, saves the selected Project binding, and verifies the GitHub App/connector state.
 
-Credentials/MFA are entered only on ChatGPT.
+The GitHub App must already be installed/connected in the ChatGPT/Codex account and authorized for repositories you intend to review.
 
-A second account gets a second isolated profile:
+## Run a code review
+
+The current local branch must correspond to the exact GitHub PR head and exactly one Spec Kit SPEC.
 
 ```bash
-speckit-powerpack review auth authorize webflow \
-  --account-label webflow-plus
+specify-powerpack review run \
+  --path . \
+  --pr 92 \
+  --prompt "Perform the complete Deep Review Evidence Protocol."
 ```
 
-Inspect authorized accounts:
+For a subsequent round:
 
 ```bash
-speckit-powerpack review auth list
+specify-powerpack review run \
+  --path . \
+  --pr 92 \
+  --previous .specify/powerpack/reviews/<previous>.json
 ```
 
-Select the default account for later Project commands:
+A successful transport is not automatically an approval. The final result remains `APPROVED`, `CHANGES_REQUIRED` or `BLOCKED` according to the Deep Review Protocol.
+
+## Diagnostics
 
 ```bash
-speckit-powerpack review auth use ds1david
+specify-powerpack doctor .
+specify-powerpack doctor . --strict-review
+specify-powerpack review status --path . --live
+specify-powerpack review project discover
 ```
 
-Changing the active account alone does not silently change the repository's configured reviewer identity.
+`--strict-review` performs live Codex/Project/GitHub readiness checks.
 
-### 2. Discover and select an accessible Project
+## Updates
 
 ```bash
-speckit-powerpack review project discover \
-  --profile ds1david
+specify-powerpack update . --check
+specify-powerpack update .
 ```
 
-Then bind one discovered Project:
+Refresh only the project materialization:
 
 ```bash
-speckit-powerpack review project select \
-  --profile ds1david \
-  --path .
+specify-powerpack update . --project-only
 ```
 
-Choose a known list index/alias:
+Configuration reset is explicit:
 
 ```bash
-speckit-powerpack review project select \
-  --profile ds1david \
-  --index 2 \
-  --alias atsel \
-  --path .
-```
-
-If sidebar discovery is incomplete, navigate to the Project manually:
-
-```bash
-speckit-powerpack review project select \
-  --profile ds1david \
-  --manual \
-  --alias atsel \
-  --path .
-```
-
-### 3. Known Project URL
-
-```bash
-speckit-powerpack review project add \
-  'https://chatgpt.com/g/g-p-.../project' \
-  --profile ds1david \
-  --alias atsel \
-  --path .
-```
-
-The Project is opened with that account before the binding is persisted.
-
-### 4. Invite/shared Project link
-
-```bash
-speckit-powerpack review project accept-invite \
-  '<chatgpt-invite-or-shared-link>' \
-  --profile webflow \
-  --alias atsel \
-  --path .
-```
-
-Accept/join the Project in the visible browser if required. PowerPack persists the resulting Project URL only after the browser is actually on a Project.
-
-### 5. One Project, multiple reviewer accounts
-
-The same local Project alias may have several account bindings:
-
-```text
-atsel
-└── linux
-    ├── ds1david -> owner account
-    └── webflow  -> shared collaborator account
-```
-
-Choose who performs Web review:
-
-```bash
-speckit-powerpack review project use atsel \
-  --profile ds1david \
-  --path .
-```
-
-or:
-
-```bash
-speckit-powerpack review project use atsel \
-  --profile webflow \
-  --path .
-```
-
-That selection writes the effective account/profile identity into `.specify/powerpack/review.json`. PowerPack must not silently substitute another account simply because that account can access the same shared Project.
-
-### 6. Reconfigure an account
-
-Reuse the current isolated profile:
-
-```bash
-speckit-powerpack review auth reconfigure ds1david \
-  --account-label ds1david-plus
-```
-
-Start that PowerPack profile with fresh browser state:
-
-```bash
-speckit-powerpack review auth reconfigure ds1david \
-  --account-label ds1david-plus \
-  --fresh
-```
-
-Reauthorization intentionally marks previous Project bindings for that profile stale. Re-select/re-add the desired Project before review.
-
-Forget one profile completely:
-
-```bash
-speckit-powerpack review auth forget webflow --path .
-```
-
-See [`docs/CHATGPT_WEB_ACCOUNTS.md`](docs/CHATGPT_WEB_ACCOUNTS.md) for the complete multi-account flow.
-
-## Doctor and readiness
-
-Normal diagnostics:
-
-```bash
-speckit-powerpack doctor
-```
-
-Missing ChatGPT account/Project onboarding is reported as `SETUP`, not as a broken PowerPack installation.
-
-Strict readiness gate used before `speckit-implement-review`:
-
-```bash
-speckit-powerpack doctor --strict-review
-```
-
-Expected review readiness:
-
-```text
-OK web-review-required
-OK playwright-package
-OK playwright-browser
-OK chatgpt-account-authenticated
-OK chatgpt-project-bound
-```
-
-Real installation defects still fail normal `doctor`.
-
-## Expected project review configuration
-
-After binding a Project/account pair:
-
-```json
-{
-  "chatgpt_web": {
-    "required": true,
-    "enabled": true,
-    "project_alias": "atsel",
-    "project_name": "...",
-    "project_url": "https://chatgpt.com/g/g-p-.../project",
-    "profile": "webflow",
-    "account_label": "webflow-plus",
-    "profile_scope": "platform",
-    "profile_platform": "linux",
-    "authorization": "playwright-account-consent"
-  }
-}
+specify-powerpack update . --project-only --reset-config
 ```
 
 ## Installed project layout
@@ -335,185 +244,40 @@ After binding a Project/account pair:
     ├── technical-debt.json
     ├── update.json
     ├── deep-review-protocol.md
-    ├── technical-debt-policy.md
-    ├── technical-debt-template.md
-    ├── state/
-    └── runtime/
+    └── reviews/            # local generated review artifacts
 ```
 
-Machine-local browser state is outside the repository:
+Credentials are **not** stored in the repository. Codex authentication remains in `~/.codex/auth.json`.
+
+## Design principles
 
 ```text
-<global PowerPack config>/
-├── browser-install/<platform>.json
-└── browser-profiles/
-    ├── windows/<profile>/
-    ├── linux/<profile>/
-    └── macos/<profile>/
+DISCOVER CAPABILITY
+        ↓
+SELECT STRATEGY
+        ↓
+EXECUTE CONTRACT
 ```
 
-In WSL, profiles use the Linux namespace. They are not Windows Edge/Chrome profiles.
-
-## Same-SPEC workflow safety
-
-PowerPack does not treat artifact existence as proof that a predecessor actually ran.
-
-```mermaid
-flowchart LR
-    C[speckit-checklist / SPEC-A] --> CR[receipt SPEC-A]
-    CR --> CC[speckit-checklist-converge / SPEC-A]
-    CR -. invalid .-> CCB[checklist-converge / SPEC-B]
-
-    I[speckit-implement / SPEC-A] --> IR[completed implement receipt SPEC-A]
-    IR --> R[speckit-implement-review / SPEC-A]
-    IR -. invalid .-> RB[implement-review / SPEC-B]
-```
-
-The full-cycle safety floor includes:
-
-```json
-{
-  "same_spec_only": true,
-  "stop_on_blocked": true,
-  "allow_debt_escape_hatch": false,
-  "explicit_initial_implement_required": true,
-  "implement_review_owns_convergence": true
-}
-```
-
-## Canonical `speckit-implement-review`
-
-```mermaid
-flowchart TD
-    PRE[Validate explicit same-SPEC implement predecessor] --> CONV[Run convergence]
-    CONV -->|tasks appended| IMP[Implement appended work]
-    IMP --> CONV
-    CONV -->|clean| SOL[Sol/xhigh full snapshot review]
-    SOL -->|findings| TASKS[Persist findings in tasks.md]
-    TASKS --> FIX[Implement findings]
-    FIX --> CONV
-    SOL -->|approved| WEB[Mandatory ChatGPT Project Web review using selected account/profile]
-    WEB -->|findings| TASKS
-    WEB -->|approved same snapshot| DONE[COMPLETE]
-```
-
-Any implementation change invalidates earlier approvals and restarts convergence before fresh Sol and Web review.
-
-Findings can never be converted to debt/backlog/TODO merely to force convergence.
-
-If review budget is exhausted:
-
-```text
-speckit-implement-review extend 2
-```
-
-No silent extension is allowed.
-
-## Capability-driven quality gates
-
-No universal Maven/Gradle/npm/pytest command is embedded in workflow skills. `.specify/powerpack/bin/capabilities.py` discovers a reproducible strategy and fails closed on unknown/ambiguous architecture. Documentation-only implementation deltas may be `NOT_APPLICABLE`.
-
-See [`docs/PORTABILITY.md`](docs/PORTABILITY.md).
-
-## Full cycle
-
-Top-level phases:
-
-```text
-clarify
-→ plan
-→ checklist/checklist-converge
-→ tasks
-→ analyze
-→ implement
-→ implement-review
-→ DONE
-```
-
-`implement-review` owns its internal convergence and both review gates.
-
-See [`docs/FULL_CYCLE.md`](docs/FULL_CYCLE.md).
-
-## Technical-debt governance
-
-Active SPEC work, convergence gaps, review findings and blockers cannot become debt merely to complete the workflow.
-
-Default ledger: `docs/technical-debt.md`.
-
-See [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md).
-
-## Updates and recovery
-
-```bash
-speckit-powerpack update . --check
-speckit-powerpack update .
-speckit-powerpack update . --yes
-```
-
-Forced recovery inside the PowerPack ownership boundary:
-
-```bash
-speckit-powerpack update . --force --yes
-```
-
-Project-only rematerialization:
-
-```bash
-speckit-powerpack update . --project-only --force --yes
-```
-
-Reset mutable PowerPack project configuration only after explicit approval:
-
-```bash
-speckit-powerpack update . --project-only --force --reset-config --yes
-```
-
-The updater never authorizes destructive Git reset/rebase/force-push or deletion of project source/debt/browser profiles.
-
-See [`docs/UPDATES.md`](docs/UPDATES.md).
-
-## Session/usage limits
-
-Claude/Codex usage/rate/session limits are classified separately from build/test errors. Safe checkpoints contain only resumable execution context, never passwords, cookies, MFA or raw browser authentication material.
-
-A temporary Claude Code limit does not require changing the SDD workflow. Switch the active integration to Codex and continue from the same SPEC state.
+Specify PowerPack is intended to remain language/framework/build-tool agnostic. Project-specific customizations belong in configuration/policy/domain material rather than forks of generated workflow skills.
 
 ## Documentation
 
-- [`docs/CODEX_FIRST_INSTALL.md`](docs/CODEX_FIRST_INSTALL.md) — existing-project migration with Codex as primary executor.
-- [`docs/CHATGPT_WEB_ACCOUNTS.md`](docs/CHATGPT_WEB_ACCOUNTS.md) — isolated account profiles, multi-account Project bindings, invites and switching reviewer identity.
-- [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md) — customization boundaries.
-- [`docs/PROCESS_ARCHITECTURE.md`](docs/PROCESS_ARCHITECTURE.md) — end-to-end process architecture.
-- [`docs/IMPLEMENT_REVIEW.md`](docs/IMPLEMENT_REVIEW.md) — deep review + convergence evidence contract.
-- [`docs/FULL_CYCLE.md`](docs/FULL_CYCLE.md) — full-cycle state machine.
-- [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) — debt lifecycle.
-- [`docs/UPDATES.md`](docs/UPDATES.md) — updater/recovery process.
-- [`docs/PORTABILITY.md`](docs/PORTABILITY.md) — agnostic capability design.
+- [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — first contact, installation and repository setup.
+- [`docs/PROCESS_ARCHITECTURE.md`](docs/PROCESS_ARCHITECTURE.md) — real runtime architecture and boundaries.
+- [`docs/IMPLEMENT_REVIEW.md`](docs/IMPLEMENT_REVIEW.md) — immutable review protocol and repair loop.
+- [`docs/FULL_CYCLE.md`](docs/FULL_CYCLE.md) — full-cycle orchestration.
+- [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md) — supported customization boundaries.
+- [`docs/PORTABILITY.md`](docs/PORTABILITY.md) — capability-driven portability.
+- [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) — debt governance.
+- [`docs/UPDATES.md`](docs/UPDATES.md) — update/recovery behavior.
+- [`docs/DECISIONS_AND_TRADEOFFS.md`](docs/DECISIONS_AND_TRADEOFFS.md) — architecture decisions and trade-offs.
 
-## Security / safety boundaries
+## Safety boundaries
 
-- Codex independent review uses Sol/xhigh/read-only semantics.
-- Terra owns writes; Sol reviewers do not implement findings.
-- Recursive Codex CLI spawning for review is forbidden.
-- ChatGPT Web requires account-scoped Playwright consent plus a Project binding.
-- The selected Playwright profile/account is the Web reviewer identity.
-- Each account has its own isolated persistent profile.
-- PowerPack never reuses the default Edge/Chrome user-data directory.
-- Reauthentication invalidates previous Project trust for that profile.
-- Passwords/MFA/raw cookies are not written to project configuration.
-- PowerPack workflows do not authorize merge, GitHub approval, ready-for-review, force-push or destructive reset.
-- Technical debt cannot hide current-flow blockers/findings.
-
-## Development and CI
-
-```bash
-python -m pip install -e '.[dev]'
-pytest -q
-python -m build --wheel
-```
-
-GitHub Actions runs Ubuntu/Windows/macOS × Python 3.11/3.13 for non-draft PRs and pushes to `main`.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+- GitHub review is read-only.
+- Shell/web-search fallback is rejected for GitHub review evidence.
+- Project context is background memory; SPEC + immutable PR evidence are authoritative on conflict.
+- No raw OAuth/access tokens are printed or stored in repository config.
+- Findings cannot be converted into debt merely to force convergence.
+- Specify PowerPack workflows do not authorize merge, GitHub approval, ready-for-review, force-push or destructive reset.

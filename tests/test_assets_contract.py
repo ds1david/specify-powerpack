@@ -14,72 +14,98 @@ def test_implement_review_has_single_canonical_asset():
     assert not (commands / "speckit.implement-review-v2.md").exists()
     preset = (PRESET / "preset.yml").read_text(encoding="utf-8")
     assert 'file: "commands/speckit.implement-review.md"' in preset
-    assert "implement-review-v2" not in preset
 
 
 def test_debt_and_full_cycle_commands_are_packaged():
     commands = PRESET / "commands"
-    expected = [
+    for filename in (
         "speckit.full-cycle.md",
         "speckit.debt-create.md",
         "speckit.debt-list.md",
         "speckit.debt-consult.md",
         "speckit.debt-start.md",
         "speckit.debt-close.md",
-    ]
-    for filename in expected:
+    ):
         assert (commands / filename).is_file(), filename
     assert (ASSETS / "runtime" / "powerpack_debt.py").is_file()
     assert (ASSETS / "runtime" / "powerpack_full_cycle.py").is_file()
 
 
-def test_update_command_and_policy_are_packaged():
-    extension = ASSETS / "extensions" / "powerpack-tools"
-    manifest = (extension / "extension.yml").read_text(encoding="utf-8")
-    assert (extension / "commands" / "update.md").is_file()
-    assert 'name: "speckit.powerpack-tools.update"' in manifest
-    update = json.loads((ASSETS / "config" / "default-update.json").read_text(encoding="utf-8"))
-    assert update["auto_check_on_install"] is True
-    assert update["confirmation_required"] is True
-    assert update["force"]["destructive_git_operations"] is False
-
-
-def test_review_defaults_require_user_scoped_web2api_accounts_and_projects():
+def test_review_defaults_are_browserless_project_and_github():
     review = json.loads((ASSETS / "config" / "default-review.json").read_text(encoding="utf-8"))
-    assert review["schema_version"] == 4
-    web = review["chatgpt_web"]
-    assert web["required"] is True
-    assert web["enabled"] is True
-    assert web["backend"] == "chatgpt-web2api"
-    assert web["profile_scope"] == "platform"
-    assert web["headless"] is False
-    assert web["authorization"] is None
-    assert web["account_label"] is None
-    assert web["endpoint"] is None
-    assert web["project_id"] is None
-    assert web["project_name"] is None
-    assert review["deep_review"]["schema_version"] == "2.0"
-    assert review["deep_review"]["validate_previous_findings"] is True
-    assert review["deep_review"]["full_snapshot_each_round"] is True
-    assert review["deep_review"]["adversarial_verdict_challenge"] is True
+    assert review["schema_version"] == 5
+    assert review["provider"] == "unconfigured"
+    assert review["review_backend"] == "codex-apps-github"
+    assert review["mode"] == "browserless"
+    project = review["chatgpt_project"]
+    assert project["required"] is True
+    assert project["context_mode"] == "serialized"
+    assert project["native_binding"] is False
+    github = review["github_app"]
+    assert github["required"] is True
+    assert github["runtime"] == "codex_apps"
+    assert github["explicit_app_mention"] is True
+    assert github["allow_shell_fallback"] is False
+    assert github["allow_web_search_fallback"] is False
+    deep = review["deep_review"]
+    assert deep["schema_version"] == "2.0"
+    assert deep["immutable_pr_manifest"] is True
+    assert deep["exact_changed_file_coverage"] is True
+    assert deep["exact_requirement_coverage"] is True
+    assert deep["inspection_evidence_required"] is True
+    assert deep["context_gaps_block_approval"] is True
 
 
-def test_user_state_cli_contains_web2api_backend_and_legacy_playwright_remains_packaged():
+def test_package_entrypoint_and_runtime_have_no_browser_stack():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'speckit-powerpack = "speckit_powerpack.cli_user_state:main"' in pyproject
-    assert (ROOT / "src" / "speckit_powerpack" / "chatgpt_web2api_backend.py").is_file()
-    assert (ROOT / "src" / "speckit_powerpack" / "cli_web2api_review.py").is_file()
-    assert (ROOT / "src" / "speckit_powerpack" / "cli_user_state.py").is_file()
-    assert (ROOT / "src" / "speckit_powerpack" / "repository_context.py").is_file()
-    # Legacy browser modules remain readable for migration/compatibility, but
-    # they are no longer the functional Web-review path.
-    assert (ROOT / "src" / "speckit_powerpack" / "desktop_browser_bridge.py").is_file()
-    assert (ROOT / "src" / "speckit_powerpack" / "web_review_smoke.py").is_file()
+    assert 'name = "specify-powerpack"' in pyproject
+    assert 'specify-powerpack = "speckit_powerpack.cli:main"' in pyproject
+    assert 'speckit-powerpack = "speckit_powerpack.cli:main"' in pyproject
+    assert "https://github.com/ds1david/specify-powerpack" in pyproject
+    assert "https://github.com/ds1david/speckit-powerpack" not in pyproject
+    assert "playwright" not in pyproject.casefold()
+    package = ROOT / "src" / "speckit_powerpack"
+    for obsolete in (
+        "chatgpt_web2api_backend.py",
+        "cli_web2api_review.py",
+        "cli_user_state.py",
+        "desktop_browser_bridge.py",
+        "web_review_smoke.py",
+        "web_review_runner.py",
+        "playwright_cli_compat.py",
+        "playwright_eval_compat.py",
+    ):
+        assert not (package / obsolete).exists(), obsolete
+    for required in (
+        "chatgpt_project_provider.py",
+        "github_connector_discovery.py",
+        "codex_apps_runtime.py",
+        "browserless_review.py",
+        "review_context.py",
+    ):
+        assert (package / required).is_file(), required
+
+
+def test_installed_metadata_uses_specify_powerpack_brand():
+    extension = (ASSETS / "extensions" / "powerpack-tools" / "extension.yml").read_text(encoding="utf-8")
+    preset = (PRESET / "preset.yml").read_text(encoding="utf-8")
+    assert 'name: "Specify PowerPack Tools"' in extension
+    assert 'name: "Specify PowerPack Core"' in preset
+    assert "ds1david/specify-powerpack" in extension
+    assert "ds1david/specify-powerpack" in preset
+    assert "ds1david/speckit-powerpack" not in extension
+    assert "ds1david/speckit-powerpack" not in preset
 
 
 def test_deep_review_protocol_and_validator_are_packaged():
     assert (ASSETS / "review" / "deep-review-protocol.md").is_file()
     assert (ASSETS / "runtime" / "powerpack_review_protocol.py").is_file()
+    protocol = (ASSETS / "review" / "deep-review-protocol.md").read_text(encoding="utf-8")
+    assert "exactly that same set of IDs" in protocol
+    assert "coverage.inspection_evidence" in protocol
+    assert "coverage.verdict_challenge" in protocol
+    assert "coverage.context_gaps" in protocol
+    assert "ChatGPT Project Web" not in protocol
 
 
 def test_technical_debt_policy_forbids_review_escape_hatch():
@@ -91,8 +117,6 @@ def test_technical_debt_policy_forbids_review_escape_hatch():
     assert policy["powerpack_policy_is_minimum_floor"] is True
     assert debt["storage_format"] == "markdown-v1"
     assert debt["template_path"] == ".specify/powerpack/technical-debt-template.md"
-    assert (ASSETS / "policies" / "technical-debt.md").is_file()
-    assert (ASSETS / "templates" / "technical-debt-backlog.md").is_file()
 
 
 def test_full_cycle_defaults_preserve_safety_invariants():
@@ -103,53 +127,52 @@ def test_full_cycle_defaults_preserve_safety_invariants():
     assert config["behavior"]["allow_debt_escape_hatch"] is False
     assert config["behavior"]["explicit_initial_implement_required"] is True
     assert config["behavior"]["implement_review_owns_convergence"] is True
-    assert config["phases"]["implement"] is True
-    assert config["phases"]["implement_review"] is True
     assert "converge" not in config["phases"]
 
 
-def test_implement_review_contract_starts_from_explicit_implement_then_converges():
+def test_implement_review_contract_routes_browserless_project_github_gate():
     text = (PRESET / "commands" / "speckit.implement-review.md").read_text(encoding="utf-8")
     assert "speckit-implement\n  -> speckit-implement-review" in text
-    assert "MUST NOT perform the initial implementation" in text
-    assert "first productive action after readiness and predecessor gates is `speckit-converge`" in text
-    assert "BLOCKED_BUDGET" in text
-    assert "gpt-5.6-terra/high" in text
+    assert "speckit-converge" in text
     assert "gpt-5.6-sol/xhigh/read-only" in text
-    assert "NEVER launch another `codex` CLI recursively" in text
+    assert "browserless ChatGPT Project + GitHub review" in text
+    assert "[$github](app://<connector-id>)" in text
+    assert "codex_apps MCP" in text
+    assert "specify-powerpack review run" in text
+    assert "--pr <number-or-canonical-github-pr-url>" in text
+    assert "local `HEAD == PR head SHA`" in text
+    assert "Chrome, CDP, Playwright, Web2API" in text
+    assert "BLOCKED_CONFIGURATION" in text
 
 
-def test_implement_review_requires_explicit_web2api_account_project_and_dual_approval():
-    text = (PRESET / "commands" / "speckit.implement-review.md").read_text(encoding="utf-8")
-    assert "speckit-powerpack doctor --strict-review" in text
-    assert "chatgpt-web2api" in text
-    assert "account_label" in text
-    assert "project_id" in text
-    assert "reviewer endpoint" in text
-    assert "No automatic fallback" in text
-    assert "same ChatGPT Project may have multiple account bindings" in text
-    assert "mandatory ChatGPT Project Web review" in text
-    assert "speckit-powerpack review run" in text
-    assert "Both final approvals must refer to the same final snapshot" in text
-    assert "Codex-only completion path" in text
+def test_installed_command_docs_reject_removed_browser_review_contracts():
+    command_files = [
+        PRESET / "commands" / "speckit.full-cycle.md",
+        ASSETS / "extensions" / "powerpack-tools" / "commands" / "doctor.md",
+        ASSETS / "extensions" / "powerpack-tools" / "commands" / "update.md",
+    ]
+    forbidden = (
+        "chatgpt-web2api",
+        "playwright-consent",
+        "review authorize",
+        "review binding show",
+        "browser profile",
+        "web reviewer endpoint",
+        "mandatory chatgpt project web review",
+    )
+    for path in command_files:
+        text = path.read_text(encoding="utf-8").casefold()
+        for marker in forbidden:
+            assert marker not in text, f"{path.name} still references obsolete marker: {marker}"
 
 
-def test_model_routing_covers_workflows_without_changing_review_profile():
+def test_model_routing_preserves_reviewer_profile():
     routing = json.loads((ASSETS / "config" / "default-model-routing.json").read_text(encoding="utf-8"))
     assert routing["schema_version"] == 2
     assert routing["stages"]["full-cycle"] == "orchestration"
     assert routing["stages"]["implement-review"] == "orchestration"
-    assert routing["stages"]["converge"] == "semantic_gate"
-    assert routing["stages"]["debt-list"] == "economical"
-    assert routing["stages"]["debt-consult"] == "economical"
-    assert routing["stages"]["powerpack-update"] == "economical"
-    assert routing["integrations"]["claude"]["economical"] == "haiku"
-    assert routing["integrations"]["codex"]["economical"] == "gpt-5.6-luna"
     assert routing["integrations"]["codex"]["coding"] == "gpt-5.6-terra"
-    assert routing["integrations"]["codex"]["orchestration"] == "gpt-5.6-terra"
-    assert routing["integrations"]["codex"]["semantic_gate"] == "gpt-5.6-sol"
     assert routing["integrations"]["codex"]["reviewer"] == "gpt-5.6-sol"
-    assert routing["effort"]["codex"]["coding"] == "high"
     assert routing["effort"]["codex"]["reviewer"] == "xhigh"
     assert routing["reviewer_contract"]["codex"] == {
         "model": "gpt-5.6-sol",

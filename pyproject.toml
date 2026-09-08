@@ -3,26 +3,27 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "speckit-powerpack"
+name = "specify-powerpack"
 version = "0.1.0.dev0"
-description = "Draft distribution layer for GitHub Spec Kit with workflow prerequisites, convergence and independent implementation review."
+description = "Specify PowerPack: browserless extension layer for GitHub Spec Kit with convergence and Project-aware GitHub code review."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "David Oliveira"}]
-keywords = ["spec-kit", "sdd", "claude-code", "codex", "code-review"]
-dependencies = ["playwright>=1.55,<2"]
+keywords = ["spec-kit", "specify", "sdd", "codex", "code-review", "chatgpt-project", "github"]
+dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "build>=1.2,<2"]
 
 [project.urls]
-Homepage = "https://github.com/ds1david/speckit-powerpack"
-Repository = "https://github.com/ds1david/speckit-powerpack"
-Issues = "https://github.com/ds1david/speckit-powerpack/issues"
+Homepage = "https://github.com/ds1david/specify-powerpack"
+Repository = "https://github.com/ds1david/specify-powerpack"
+Issues = "https://github.com/ds1david/specify-powerpack/issues"
 
 [project.scripts]
-speckit-powerpack = "speckit_powerpack.cli_user_state:main"
+specify-powerpack = "speckit_powerpack.cli:main"
+speckit-powerpack = "speckit_powerpack.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -7,8 +7,10 @@ import shutil
 import subprocess
 from typing import Any
 
-DEFAULT_REPOSITORY = "https://github.com/ds1david/speckit-powerpack.git"
+DEFAULT_REPOSITORY = "https://github.com/ds1david/specify-powerpack.git"
 DEFAULT_REF = "main"
+CANONICAL_DISTRIBUTION = "specify-powerpack"
+LEGACY_DISTRIBUTION = "speckit-powerpack"
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -16,13 +18,21 @@ class UpdateError(RuntimeError):
     pass
 
 
+def _installed_distribution() -> metadata.Distribution | None:
+    for name in (CANONICAL_DISTRIBUTION, LEGACY_DISTRIBUTION):
+        try:
+            return metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return None
+
+
 def installed_vcs_info() -> dict[str, Any]:
-    """Return PEP 610 VCS metadata when PowerPack was installed from Git."""
-    try:
-        dist = metadata.distribution("speckit-powerpack")
-        raw = dist.read_text("direct_url.json")
-    except metadata.PackageNotFoundError:
+    """Return PEP 610 VCS metadata when Specify PowerPack was installed from Git."""
+    dist = _installed_distribution()
+    if dist is None:
         return {}
+    raw = dist.read_text("direct_url.json")
     if not raw:
         return {}
     try:
@@ -50,7 +60,7 @@ def effective_source(config: dict[str, Any] | None = None) -> dict[str, Any]:
     # A user who explicitly installed @<commit-sha> selected an immutable build.
     # Do not silently reinterpret that choice as @main during install/init update
     # checks. Moving away from the pinned build requires an explicit configured
-    # ref (for example `speckit-powerpack update . --ref main ...`) or a fresh
+    # ref (for example `specify-powerpack update . --ref main`) or a fresh
     # `uv tool install ...@<other-ref>`.
     pinned = False
     if configured_ref:
@@ -73,9 +83,7 @@ def effective_source(config: dict[str, Any] | None = None) -> dict[str, Any]:
 def remote_sha(repository: str, ref: str) -> str:
     git = shutil.which("git")
     if not git:
-        raise UpdateError("git is required to check PowerPack updates")
-    # Prefer a branch, then the peeled commit of an annotated tag, then the
-    # tag object/lightweight tag, then the raw ref supplied by the operator.
+        raise UpdateError("git is required to check Specify PowerPack updates")
     refs = [f"refs/heads/{ref}", f"refs/tags/{ref}^{{}}", f"refs/tags/{ref}", ref]
     for candidate in refs:
         proc = subprocess.run([git, "ls-remote", repository, candidate], text=True, capture_output=True)
@@ -92,10 +100,6 @@ def remote_sha(repository: str, ref: str) -> str:
 def check_update(config: dict[str, Any] | None = None) -> dict[str, Any]:
     source = effective_source(config)
     installed = source.get("installed_commit")
-
-    # Immutable explicit SHA installations are already at the exact revision
-    # the operator requested. Do not compare them with DEFAULT_REF/main and do
-    # not offer a misleading downgrade/sidegrade as an "update".
     if source.get("pinned") and installed and _SHA_RE.fullmatch(str(installed)):
         return {
             "status": "PINNED",
@@ -130,7 +134,7 @@ def git_source(repository: str, ref: str) -> str:
 def update_argv(repository: str, ref: str) -> list[str]:
     uv = shutil.which("uv")
     if not uv:
-        raise UpdateError("uv is required to update the installed PowerPack CLI")
+        raise UpdateError("uv is required to update the installed Specify PowerPack CLI")
     return [uv, "tool", "install", "--force", git_source(repository, ref)]
 
 
@@ -138,7 +142,7 @@ def apply_self_update(repository: str, ref: str) -> dict[str, Any]:
     argv = update_argv(repository, ref)
     proc = subprocess.run(argv, text=True, capture_output=True)
     if proc.returncode != 0:
-        raise UpdateError((proc.stderr or proc.stdout or "PowerPack update failed").strip())
+        raise UpdateError((proc.stderr or proc.stdout or "Specify PowerPack update failed").strip())
     return {
         "status": "UPDATED",
         "repository": repository,

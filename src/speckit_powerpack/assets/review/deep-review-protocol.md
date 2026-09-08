@@ -1,4 +1,4 @@
-# PowerPack Deep Review Evidence Protocol
+# Specify PowerPack Deep Review Evidence Protocol
 
 ## Purpose
 
@@ -6,72 +6,42 @@ Determine, with reproducible evidence, whether the current implementation snapsh
 
 Every review round is bound to one immutable snapshot identity: SPEC, base SHA, merge-base, head SHA and snapshot digest. Previous approvals, green CI, PR descriptions and implementer claims are hypotheses, never proof.
 
-## Mandatory review context manifest
+The supported browserless provider materializes that identity from the exact GitHub PR through the selected GitHub App and then verifies local `HEAD == PR head SHA`. Do not substitute a different repository, PR, branch or local-only approximation.
 
-Before **every fresh Sol or ChatGPT Web review**, regenerate the immutable review context manifest:
+## Review scope: defect versus capability expansion
 
-```bash
-python .specify/powerpack/bin/review_protocol.py manifest \
-  --feature-dir <active-feature-dir>
-```
+Specify PowerPack is a personal project in continuous evolution and is progressively generalized into a reusable plugin for projects of different domains and technical contexts. That evolution must not turn product ideation into blocking review findings.
 
-Default output:
+A finding is valid when there is concrete evidence that the reviewed snapshot violates the current contract, for example:
 
-```text
-.specify/powerpack/runtime/review-context.json
-```
+- an active SPEC requirement or acceptance criterion is not satisfied;
+- documented behavior or an explicit contract is broken;
+- a non-weakenable Specify PowerPack invariant is violated;
+- behavior expected to be preserved has regressed;
+- an already-supported capability behaves incorrectly, inconsistently or unsafely.
 
-The manifest is authoritative for:
+A request to support a new provider, platform, workflow, architecture, convenience behavior or broader generalization is normally a capability proposal, not a defect, until it is deliberately promoted into the active SPEC or another durable repository contract.
 
-- SPEC identity;
-- base ref/base SHA;
-- merge-base;
-- current head SHA;
-- deterministic snapshot SHA-256;
-- complete changed-file set against the merge-base, including current workspace changes/untracked files;
-- SPEC artifacts (`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `checklists/`) that are present;
-- discovered requirement IDs such as `FR-*`, `NFR-*`, `REQ-*`, `SC-*`, `AC-*` and `UC-*`;
-- the exact context files every reviewer must inspect.
-
-A manifest becomes stale after any implementation change. Never reuse it after changing the workspace or HEAD. Regenerate it before the next review.
-
-The validator automatically binds to `.specify/powerpack/runtime/review-context.json` when run from a PowerPack project. An explicit path may also be supplied with `--manifest`.
-
-Manifest freshness is fail-closed. `validate`, `web-prompt`, `record-escape` and `finalize` recompute the current repository/workspace snapshot and return `BLOCKED_REVIEW_CONTEXT` when HEAD, base SHA, merge-base, changed files, SPEC artifacts, requirement IDs or snapshot digest no longer match the persisted manifest.
+A reviewer MUST NOT block approval solely because a broader design would be useful. Every finding must identify the current requirement, contract, invariant or preserved behavior that is actually violated.
 
 ## Required evidence order
 
 Read, when present, in this order:
 
-1. the review context manifest and immutable snapshot identity;
+1. the immutable PR snapshot and review context;
 2. project instructions and constitution/policies;
-3. every manifest SPEC artifact;
+3. the active SPEC artifacts (`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `checklists/`);
 4. the complete diff against the merge-base and complete contents of every changed file;
 5. callers, callees, implementations, schemas, migrations, configuration and tests necessary to establish blast radius;
 6. the previous round only to verify prior findings, never to inherit its conclusion.
 
-All manifest `changed_files` MUST appear exactly in `coverage.changed_files`. Every `required_context_file` MUST appear in `coverage.inspected_files`.
-
-Every changed file MUST also have one entry in:
-
-```json
-"inspection_evidence": [
-  {
-    "file": "path/to/file",
-    "evidence": "what was inspected and why it proves the relevant behavior"
-  }
-]
-```
-
-Merely listing a path as inspected is not proof of review coverage.
+`coverage.changed_files` MUST exactly match the immutable PR changed-file set. Every changed file MUST appear in `coverage.inspected_files` and MUST have concrete `coverage.inspection_evidence`.
 
 ## Requirement completeness
 
-When the manifest contains requirement IDs, `coverage.requirements` MUST contain exactly that same set of IDs. A non-empty subset is not sufficient.
+When the active SPEC exposes requirement IDs such as `FR-*`, `NFR-*`, `REQ-*`, `SC-*`, `AC-*` or `UC-*`, `coverage.requirements` MUST contain exactly that same set of IDs.
 
-This closes the false-positive case where a reviewer inspects `FR-001..FR-003` but silently omits `FR-004..FR-014` and still returns `APPROVED`.
-
-If a requirement cannot be evaluated, return `PARTIAL`, `FAIL`, or `BLOCKED` with evidence. Do not omit it.
+A non-empty subset is not sufficient. If one requirement cannot be evaluated, return `PARTIAL`, `FAIL` or `BLOCKED` with evidence instead of omitting it.
 
 ## Mandatory review fronts
 
@@ -99,13 +69,11 @@ On round 2+, validate every finding from the immediately previous review against
 - `NOT_RESOLVED`
 - `REGRESSED`
 
-Do not silently drop or rename previous IDs. A repeated material defect after it was claimed resolved is a repeated-finding condition and must be surfaced explicitly to the PowerPack loop.
-
-Intermediate round validation MUST use `--previous <previous-review.json>` so the validator can prove that every previous finding ID appears exactly once. A final attestation may carry already-resolved `previous_findings` from round 2+ without reclassifying that final review as a first-round review.
+Do not silently drop or rename previous IDs. A repeated material defect after it was claimed resolved is a repeated-finding condition and must be surfaced explicitly to the Specify PowerPack loop.
 
 ### Pass 2 — full snapshot review
 
-Discard the previous verdict and review the entire current manifest-bound snapshot again against the merge-base. Do not review only the latest correction delta.
+Discard the previous verdict and review the entire current immutable snapshot again against the merge-base. Do not review only the correction delta.
 
 For every relevant production flow, inspect when applicable:
 
@@ -119,10 +87,10 @@ For concurrent state, identify ownership, valid transitions and the synchronizat
 
 Before returning the verdict, actively try to invalidate it. Look for the strongest remaining counterexample in concurrency, replay, restart, partial failure, boundaries, constraints, side effects, shutdown, composition root, security and vacuously green tests.
 
-Return the challenge explicitly:
+Return the challenge in `coverage.verdict_challenge`:
 
 ```json
-"verdict_challenge": {
+{
   "strongest_counterexample": "concrete failure hypothesis",
   "result": "SURVIVED",
   "evidence": ["specific evidence that defeats or confirms the hypothesis"]
@@ -138,27 +106,32 @@ Allowed challenge results:
 
 `APPROVED` requires `SURVIVED` or evidence-backed `NOT_APPLICABLE`.
 
-For `CHANGES_REQUIRED`, every finding must describe a concrete failure, observable impact and verifiable acceptance criteria rather than personal preference.
+## Inspection evidence
+
+Every changed file requires one `coverage.inspection_evidence` entry:
+
+```json
+{
+  "file": "path/to/file",
+  "evidence": "what was inspected and why it proves the relevant behavior"
+}
+```
+
+Merely listing a path in `inspected_files` is not proof of review coverage.
 
 ## Context-gap discipline
 
-Every manifest-bound review MUST return:
+Every review MUST return:
 
 ```json
 "context_gaps": []
 ```
 
-If the reviewer has material knowledge from ChatGPT Project conversation/history that is not represented in repository evidence, put a concise description in `context_gaps` and do **not** approve.
+inside `coverage`.
 
-A Project-only architectural/product constraint is not a valid hidden source of truth. Convert it into a current finding and promote the durable information into an appropriate repository artifact such as:
+If serialized ChatGPT Project context contains a material architectural or product constraint that is absent from repository evidence, describe it in `coverage.context_gaps` and do **not** approve.
 
-- `spec.md`;
-- `research.md`;
-- an ADR;
-- architecture documentation;
-- project constitution/policy.
-
-This keeps Codex, Claude, ChatGPT Web and other supported agents reviewable against the same durable context.
+A Project-only constraint is not automatically a bug. First determine whether it belongs to the current contract. If it is a new requirement, promote it deliberately into `spec.md`, `research.md`, an ADR, architecture documentation or project policy before treating its absence as implementation non-compliance.
 
 ## Finding discipline
 
@@ -178,21 +151,35 @@ A finding must include:
 - `required_change`
 - `acceptance_criteria`
 
+For `CHANGES_REQUIRED`, every finding must describe a concrete failure, observable impact and verifiable acceptance criteria rather than personal preference.
+
 If context, tooling or infrastructure limitations prevent a responsible conclusion, use `BLOCKED`; do not approve by absence of evidence.
+
+## Browserless GitHub evidence boundary
+
+PR/repository evidence MUST come through the explicitly selected GitHub App in the Codex Apps MCP runtime.
+
+The supported provider requires structural GitHub tool-call/result evidence. Shell commands, generic web search, PR descriptions, green CI or Project memory alone cannot satisfy GitHub review evidence.
+
+Review is read-only. Never merge, approve, ready-for-review, force-push or otherwise mutate the PR as part of this protocol.
 
 ## Output contract
 
 Return one JSON object using schema `2.0` with `review_context`, `coverage`, all mandatory fronts and `findings`.
 
-In addition to the existing fields, a manifest-bound review requires:
+`coverage` must include at least:
 
 ```json
 {
-  "coverage": {
-    "inspection_evidence": [],
-    "verdict_challenge": {},
-    "context_gaps": []
-  }
+  "changed_files": [],
+  "inspected_files": [],
+  "requirements": [],
+  "baseline_scenarios": [],
+  "previous_findings": [],
+  "fronts": [],
+  "inspection_evidence": [],
+  "verdict_challenge": {},
+  "context_gaps": []
 }
 ```
 
@@ -203,125 +190,20 @@ Allowed front statuses: `PASS`, `FINDINGS`, `BLOCKED`, `NOT_APPLICABLE`.
 `APPROVED` requires all of the following:
 
 - `findings: []`;
-- exact manifest changed-file coverage;
-- all manifest required context files inspected;
+- exact immutable changed-file coverage;
+- every changed file inspected;
 - concrete inspection evidence for every changed file;
-- exact requirement-ID coverage when the manifest exposes requirement IDs;
+- exact requirement-ID coverage when requirement IDs are present;
 - no requirement in `PARTIAL/FAIL`;
 - no baseline `REGRESSION`;
 - every previous finding `RESOLVED`;
-- all fronts `PASS/NOT_APPLICABLE`;
+- every front `PASS/NOT_APPLICABLE`;
 - successful adversarial verdict challenge;
-- `context_gaps: []`.
+- `coverage.context_gaps: []`.
 
-Validate every Sol and Web output before ingesting findings or accepting approval:
+The installed validator is authoritative for the transport-independent structural contract, while the browserless provider additionally validates exact GitHub snapshot identity, exact SPEC requirement IDs and literal ChatGPT Project-context evidence:
 
 ```bash
 python .specify/powerpack/bin/review_protocol.py validate --input <review.json>
 python .specify/powerpack/bin/review_protocol.py validate --input <review.json> --previous <previous-review.json>
 ```
-
-The validator classification is authoritative:
-
-- `VALID` — contract and current manifest match;
-- `BLOCKED_REVIEW_CONTRACT` — structural review output is invalid;
-- `BLOCKED_REVIEW_CONTEXT` — output is incomplete or belongs to a different/stale manifest snapshot;
-- `BLOCKED_REPEATED_FINDING` — a materially repeated finding was incorrectly declared resolved.
-
-## Mandatory ChatGPT Project Web gate
-
-The Web review is an independent second gate, not a confirmation of Sol.
-
-### Canonical Web execution
-
-The canonical execution path is the PowerPack Playwright runner:
-
-```bash
-speckit-powerpack-web-review --path .
-```
-
-The runner MUST be used by `speckit-implement-review` after Sol is clean for the current manifest. It performs the operational part of the Web gate instead of merely describing it:
-
-1. loads `.specify/powerpack/review.json`;
-2. requires the strict account/profile/Project readiness contract already used by `speckit-powerpack doctor --strict-review`;
-3. regenerates the deterministic Web prompt through `review_protocol.py web-prompt`, which also proves the manifest is still fresh;
-4. launches Chromium with the exact isolated PowerPack profile selected for this repository;
-5. opens the exact configured ChatGPT Project URL;
-6. verifies that the live browser was not redirected to login and that the account is not denied access to the Project;
-7. finds the current ChatGPT prompt composer using bounded selector fallbacks;
-8. submits the exact manifest-bound prompt;
-9. waits for a new assistant response to reach a stable completed state;
-10. persists the raw assistant response to `.specify/powerpack/runtime/web-review.raw.txt` for local diagnostics;
-11. extracts the JSON object to `.specify/powerpack/runtime/web-review.json`;
-12. validates that JSON against the same current manifest before returning success.
-
-The configured `chatgpt_web.headless` value is honored. For diagnosis or explicit user preference it may be overridden per run:
-
-```bash
-speckit-powerpack-web-review --path . --headed
-speckit-powerpack-web-review --path . --headless
-```
-
-A selector/UI change, expired login, inaccessible Project, missing prompt composer, missing assistant response, malformed JSON, stale manifest or validator rejection returns `BLOCKED`; none may degrade into a Codex-only approval.
-
-The runner intentionally opens the Project landing URL for every review invocation instead of trusting whatever conversation happens to be open in the persistent browser profile. Authentication state is reused; review verdict/context is not trusted from a previous browser page.
-
-### Manifest-bound Web prompt
-
-The runner generates the prompt automatically. For diagnostics, the same deterministic prompt can be generated without sending it:
-
-```bash
-python .specify/powerpack/bin/review_protocol.py web-prompt
-```
-
-Default output:
-
-```text
-.specify/powerpack/runtime/web-review-prompt.txt
-```
-
-The Web reviewer must use the Project-linked repository/GitHub context to inspect the exact manifest `head_sha`.
-
-If the Web reviewer cannot prove access to the exact head SHA, SPEC artifacts or changed files, it MUST return `BLOCKED`. Login failure, expired browser session, missing Project access, stale Project binding or inability to reach the exact repository snapshot is never an acceptable approval path.
-
-The Web output is validated by the same manifest-bound validator as Sol.
-
-### Review escape
-
-When Sol approved a snapshot but Web finds one or more defects on that **same** snapshot, record the escape before implementing anything:
-
-```bash
-python .specify/powerpack/bin/review_protocol.py record-escape \
-  --sol-review <sol-review.json> \
-  --web-review .specify/powerpack/runtime/web-review.json
-```
-
-Default append-only log:
-
-```text
-.specify/powerpack/runtime/review-escapes.jsonl
-```
-
-This captures false-negative categories/severities without turning them into technical debt. The Web findings still follow the normal mandatory implementation loop.
-
-## Final two-gate attestation
-
-Never mark `COMPLETE` merely because both providers returned the word `APPROVED`.
-
-Before completion, execute:
-
-```bash
-python .specify/powerpack/bin/review_protocol.py finalize \
-  --sol-review <final-sol-review.json> \
-  --web-review .specify/powerpack/runtime/web-review.json
-```
-
-`COMPLETE` is emitted only when both reviews:
-
-- are structurally valid;
-- are valid against the current manifest;
-- refer to the exact same immutable snapshot;
-- both return `APPROVED`;
-- the persisted manifest is still proven fresh against the current workspace at finalization time.
-
-Any implementation change invalidates both approvals and requires a new manifest, fresh Sol review and fresh Web review.

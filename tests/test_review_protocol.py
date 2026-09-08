@@ -22,6 +22,11 @@ def valid_review(*, verdict: str = "APPROVED", findings=None, previous_findings=
         if verdict == "BLOCKED" and name == "SPEC_COMPLIANCE":
             status = "BLOCKED"
         fronts.append({"name": name, "status": status, "evidence": ["proof"]})
+    challenge_result = {
+        "APPROVED": "SURVIVED",
+        "CHANGES_REQUIRED": "FINDING",
+        "BLOCKED": "BLOCKED",
+    }[verdict]
     return {
         "schema_version": "2.0",
         "reviewer": "codex",
@@ -39,6 +44,9 @@ def valid_review(*, verdict: str = "APPROVED", findings=None, previous_findings=
         "coverage": {
             "changed_files": ["src/a.py"],
             "inspected_files": ["src/a.py", "tests/test_a.py"],
+            "inspection_evidence": [
+                {"file": "src/a.py", "evidence": "inspected behavior and callers"}
+            ],
             "tests_examined": ["tests/test_a.py"],
             "requirements": [{"id": "FR-001", "status": "PASS", "evidence": ["proof"]}],
             "baseline_scenarios": [{
@@ -51,6 +59,12 @@ def valid_review(*, verdict: str = "APPROVED", findings=None, previous_findings=
             "previous_findings": previous_findings,
             "verification_limitations": [],
             "fronts": fronts,
+            "verdict_challenge": {
+                "strongest_counterexample": "review verdict could miss a material failure",
+                "result": challenge_result,
+                "evidence": ["adversarial pass completed with concrete evidence"],
+            },
+            "context_gaps": [],
         },
         "findings": findings,
     }

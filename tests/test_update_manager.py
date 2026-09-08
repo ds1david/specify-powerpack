@@ -36,6 +36,30 @@ def test_effective_source_follows_installed_feature_branch(monkeypatch):
     assert source["pinned"] is False
 
 
+def test_installed_distribution_falls_back_to_legacy_name(monkeypatch):
+    requested: list[str] = []
+
+    def distribution(name: str):
+        requested.append(name)
+        if name == updates.CANONICAL_DISTRIBUTION:
+            raise updates.metadata.PackageNotFoundError(name)
+        assert name == updates.LEGACY_DISTRIBUTION
+        return FakeDistribution({
+            "url": "https://github.com/ds1david/speckit-powerpack.git",
+            "vcs_info": {
+                "vcs": "git",
+                "commit_id": "a" * 40,
+                "requested_revision": "main",
+            },
+        })
+
+    monkeypatch.setattr(updates.metadata, "distribution", distribution)
+    source = updates.effective_source({})
+    assert requested == ["specify-powerpack", "speckit-powerpack"]
+    assert source["installed_commit"] == "a" * 40
+    assert source["installed_requested_revision"] == "main"
+
+
 def test_exact_commit_install_remains_pinned_instead_of_falling_back_to_main(monkeypatch):
     commit = "a" * 40
     monkeypatch.setattr(
@@ -121,6 +145,6 @@ def test_update_argv_is_explicit_forced_uv_reinstall(monkeypatch):
     monkeypatch.setattr(updates.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None)
     argv = updates.update_argv(updates.DEFAULT_REPOSITORY, "main")
     assert argv[:4] == ["/usr/bin/uv", "tool", "install", "--force"]
-    assert argv[4].startswith("git+https://github.com/ds1david/speckit-powerpack.git@")
+    assert argv[4].startswith("git+https://github.com/ds1david/specify-powerpack.git@")
     assert argv[4].endswith("@main")
     assert "--from" not in argv

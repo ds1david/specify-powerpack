@@ -1,111 +1,71 @@
-# `speckit-implement-review` contract
+# Implementation review
 
-This document is the human-readable summary of the PowerPack implementation review. The installed reviewer protocol is `.specify/powerpack/deep-review-protocol.md`; its package source is `src/speckit_powerpack/assets/review/deep-review-protocol.md`.
+`/speckit-implement-review` is a **Specify PowerPack** workflow command that reviews and converges an implementation that already has an explicit same-SPEC `speckit-implement` predecessor. It must not perform the initial implementation just to satisfy its prerequisite.
 
-## Happy path
-
-The initial implementation is deliberately explicit and cannot be skipped:
+## Workflow contract
 
 ```text
-speckit-analyze
-→ speckit-implement
-→ speckit-implement-review
-    → speckit-converge
-        → tasks appended? speckit-implement → speckit-converge
-    → Sol/xhigh independent review
-        → findings? implement fixes → speckit-converge → Sol review
-    → mandatory ChatGPT Project Web review
-        → findings? implement fixes → speckit-converge → Sol review → Web review
-    → both gates approve same final snapshot
-    → COMPLETE
+implement receipt
+  → converge
+      → tasks appended? implement authorized work → converge
+  → capability-selected quality gate
+  → deep PR review
+      → findings? persist → implement → converge → quality gate → fresh review
+      → approved current snapshot? COMPLETE
 ```
 
-`implement-review` is therefore not “perform the initial implementation and then review it”. It means “take the implementation just produced by `speckit-implement`, prove convergence, review it independently, repair every finding and re-prove convergence until the same final snapshot passes both review gates”.
+All review findings are current-flow work. They cannot be converted into technical debt merely to make the workflow finish.
 
-## Invariants
+## Readiness
 
-1. The current SPEC must have a completed explicit `speckit-implement` receipt for the same SPEC.
-2. `speckit-implement-review` MUST NOT call `speckit-implement` merely to manufacture the missing initial predecessor.
-3. The first productive action after predecessor validation is `speckit-converge`.
-4. If convergence appends tasks, `speckit-implement` executes those corrective tasks and returns immediately to convergence inside the same active review run.
-5. Claude Code uses one external Codex reviewer; a Codex/Terra parent uses one in-session Sol reviewer/subagent when it is not already running in the required reviewer profile. Recursive `codex` CLI spawning is forbidden.
-6. The deep-review profile is `gpt-5.6-sol`, reasoning effort `xhigh`, sandbox `read-only`.
-7. The Codex parent/orchestrator/implementer profile is `gpt-5.6-terra`, reasoning effort `high`; bounded mechanical work may use `gpt-5.6-luna`.
-8. Every review round is bound to a full base/merge-base/head/snapshot identity.
-9. Every changed file must be accounted for as inspected evidence.
-10. On round 2+, every previous finding is explicitly revalidated before the full snapshot is reviewed again.
-11. Every round ends with an adversarial attempt to invalidate its own verdict.
-12. Reviewer JSON must pass `.specify/powerpack/bin/review_protocol.py` before findings or approval are accepted.
-13. A finding declared `RESOLVED` that materially reappears is `BLOCKED_REPEATED_FINDING`, not silently deduplicated into another loop.
-14. Every valid finding is written to `tasks.md` before implementation.
-15. Interactive mode implements only selected findings; automatic mode selects every pending finding.
-16. A finding moves through `PENDING → SELECTED → IMPLEMENTED → RESOLVED`.
-17. After any finding-driven implementation change, `speckit-converge` runs again before another approval is accepted.
-18. A quality gate is selected by project capabilities, not hard-coded to a language/framework/tool.
-19. Documentation-only implementation work does not execute an application build gate.
-20. New implementation changes invalidate approvals associated with an earlier HEAD.
-21. Review/convergence budgets are explicit and are never extended silently.
-22. ChatGPT Project Web review is mandatory and requires a current `playwright-consent` grant for the exact Project/profile/platform binding.
-23. The PowerPack Playwright profile is separate from the default Windows Edge/Chrome user-data directory.
-24. `COMPLETE` requires Sol/xhigh and ChatGPT Web approval of the same final snapshot.
-25. Aborting removes ephemeral review state, never the durable finding ledger or explicitly authorized browser/project binding.
-
-## Reviewer routing
-
-```mermaid
-flowchart LR
-    S[implement-review starts] --> P[validate explicit implement predecessor]
-    P --> C[converge implementation]
-    C --> E{executor}
-    E -->|Claude| X[codex exec: Sol/xhigh/read-only]
-    E -->|Codex Terra parent| I[in-session Sol reviewer: xhigh/read-only]
-    E -->|already Sol/xhigh/read-only| D[review directly in current context]
-    E -->|route cannot be proven| B[BLOCKED]
-    X --> R[review immutable snapshot]
-    I --> R
-    D --> R
-    R -->|approved| W[mandatory ChatGPT Project Web gate]
+```bash
+specify-powerpack doctor . --strict-review
 ```
 
-The distinction between **reviewer identity/profile** and **spawn mechanism** prevents a Terra parent from reviewing its own implementation and prevents recursive `codex -> codex` process spawning merely to change reviewer identity.
+The repository must be bound to a ChatGPT Project and the GitHub App/connector must be live for the Codex-authenticated account.
 
-## Convergence loop
+## Exact PR requirement
 
-Before the first review and after every finding-driven code change:
+The provider never guesses a PR:
 
-```mermaid
-flowchart TD
-    C[run speckit-converge] --> Q{remaining work?}
-    Q -->|no| R[eligible for independent review]
-    Q -->|yes| I[run speckit-implement for appended tasks]
-    I --> C
-    Q -->|needs real decision| O[RETURN to owner stage]
+```bash
+specify-powerpack review run --path . --pr <number-or-canonical-url>
 ```
 
-The configured `max_convergence_rounds` defaults to 5. If deterministic work remains when the budget ends, the run stops and asks for explicit continuation rather than silently increasing the budget.
+The local Git origin must be GitHub and must match the PR repository.
 
-## Deep-review round
+## Immutable manifest
 
-```mermaid
-flowchart TD
-    SNAP[Bind SPEC/base/merge-base/head/digest] --> PREV{Previous review?}
-    PREV -->|yes| P1[Validate every previous finding]
-    PREV -->|no| P2[Full snapshot review]
-    P1 --> P2
-    P2 --> P3[Adversarial verdict challenge]
-    P3 --> JSON[Schema 2.0 review JSON]
-    JSON --> V[review_protocol.py validate]
-    V -->|contract invalid| BC[BLOCKED_REVIEW_CONTRACT]
-    V -->|resolved finding reappeared| BR[BLOCKED_REPEATED_FINDING]
-    V -->|findings| TASKS[Persist all findings in tasks.md]
-    TASKS --> FIX[Implement selected/all findings]
-    FIX --> CONV[Re-run speckit-converge]
-    CONV --> GATE[Capability-selected quality gate]
-    GATE --> SNAP
-    V -->|Sol APPROVED| WEB[Mandatory ChatGPT Web review same snapshot]
-    WEB -->|findings| TASKS
-    WEB -->|APPROVED| DONE[dual-gate approval]
-```
+Each round starts with a fresh GitHub-tool manifest containing base/head/merge-base and complete changed files. Specify PowerPack binds the active SPEC to that manifest and hashes the canonical snapshot.
+
+If local `HEAD != PR head SHA`, the review stops. Any implementation change therefore invalidates previous approval automatically because the next run produces a different head/snapshot.
+
+## Evidence inputs
+
+The deep reviewer receives four distinct evidence classes:
+
+1. **immutable GitHub PR evidence** — authoritative current code/diff identity;
+2. **Spec Kit context** — authoritative current requirements;
+3. **ChatGPT Project context** — serialized historical/background memory;
+4. **previous review** — mandatory finding revalidation on round 2+.
+
+Project memory never substitutes for current PR evidence.
+
+## GitHub evidence rules
+
+The selected GitHub App is injected as an explicit `app://` Codex App mention. The resulting Codex JSONL must contain completed `codex_apps` MCP calls with tool results associated with GitHub.
+
+Forbidden evidence fallbacks:
+
+- shell/command execution for GitHub inspection;
+- generic web search;
+- PR description alone;
+- CI status alone;
+- Project memory alone.
+
+## Deep Review Protocol
+
+The installed `.specify/powerpack/deep-review-protocol.md` and schema 2.0 validator remain mandatory.
 
 Required fronts are:
 
@@ -118,57 +78,58 @@ Required fronts are:
 - `DOCUMENTATION_AND_OPERABILITY`
 - `SECURITY_AND_SCOPE`
 
-`APPROVED` requires `findings: []`, every changed file inspected, no partial/failed requirement, no baseline regression, all previous findings resolved and all fronts `PASS` or evidence-backed `NOT_APPLICABLE`.
+Validate manually when needed:
 
-## Review budget / extend
+```bash
+python .specify/powerpack/bin/review_protocol.py validate --input <review.json>
+```
 
-`max_review_rounds` defaults to 5. When the current snapshot still lacks valid approval from **both** gates and the configured budget is exhausted, the skill finishes with:
+Round 2+:
+
+```bash
+python .specify/powerpack/bin/review_protocol.py validate \
+  --input <review.json> \
+  --previous <previous-review.json>
+```
+
+## Project-context proof
+
+The review must return:
+
+```json
+{
+  "project_context_evidence": {
+    "project_name": "exact bound Project name",
+    "literal_evidence": "3 to 20 consecutive words from serialized Project context"
+  }
+}
+```
+
+Specify PowerPack verifies that the literal excerpt actually occurs in the serialized context and is not merely the Project name.
+
+## Output
+
+Default output path:
 
 ```text
-Stage Handoff: BLOCKED_BUDGET
-Suggested: speckit-implement-review extend 2
+.specify/powerpack/reviews/<spec>-pr<number>-<head-prefix>.json
 ```
 
-`extend N` resumes the same review run and current SPEC. It does not require a new initial `speckit-implement` merely because the review budget was increased.
+The CLI prints a machine-readable completion summary including verdict, snapshot and the GitHub tools observed. It explicitly reports browser/CDP/Playwright/Web2API usage as false.
 
-## Mandatory ChatGPT Project Web gate
+## Previous findings
 
-Before review work begins, run:
+Use:
 
 ```bash
-speckit-powerpack doctor
+specify-powerpack review run \
+  --path . \
+  --pr <number> \
+  --previous <previous-review.json>
 ```
 
-The review is `BLOCKED_CONFIGURATION` unless the current platform has:
+The schema validator requires exact accounting for every prior finding. A finding declared resolved but materially reappearing is blocked by the review protocol.
 
-- Playwright package and Chromium preparation;
-- an explicit `playwright-consent` grant;
-- a persistent PowerPack browser profile;
-- an exact Project alias/URL/profile binding in `.specify/powerpack/review.json`;
-- the configured executor available.
+## Completion
 
-Authorization is performed by:
-
-```bash
-speckit-powerpack review authorize \
-  --profile <profile> \
-  --project <alias> \
-  --url 'https://chatgpt.com/g/g-p-.../project' \
-  --path .
-```
-
-The Playwright consent tab shows the exact profile storage path and Project URL. After authorization, the selected Project opens in another tab. The user signs in on `chatgpt.com`, verifies the Project, returns to the consent tab and explicitly grants access.
-
-The persistent browser state is PowerPack-owned and platform-scoped. It must not reuse the default Windows Edge/Chrome `User Data` directory. WSL therefore uses its Linux PowerPack profile namespace.
-
-A Web finding that changes code invalidates the prior Sol approval, requires convergence again and sends the new HEAD back through Sol review before Web can evaluate it again. Both final approvals must refer to the same snapshot.
-
-## Terminal UX
-
-The installed skill shows planned routing before material work and repeats the same routing rows at completion with observed result/timing fields. Conditional routes are visibly conditional. If timing cannot be measured, the report uses `N/D` rather than an estimate.
-
-Material human decisions use one question at a time and the final report includes a Stage Handoff (`RETURN`, `LOOP`, `COMPLETE`, `BLOCKED` or `BLOCKED_BUDGET`).
-
-## Customization
-
-See [`CUSTOMIZATION.md`](CUSTOMIZATION.md) for configuration surfaces and [`PROCESS_ARCHITECTURE.md`](PROCESS_ARCHITECTURE.md) for the end-to-end flow mapped to exact source/runtime files.
+`APPROVED` is valid only for the exact snapshot reviewed, with no findings and all protocol coverage satisfied. A changed HEAD requires a new review round.

@@ -1,19 +1,17 @@
-# Customizing SpecKit PowerPack
+# Customization
 
-PowerPack is designed so projects customize **configuration, policy, gates and domain skills**, not generated agent copies of PowerPack commands.
+**Specify PowerPack** is intended to be reused across projects with different languages, frameworks and build systems. Customize policy and capability inputs, not generated provider internals.
 
 ## Project nature and evolution
 
-SpecKit PowerPack is currently a **personal project** and is intentionally in constant evolution. Its current behavior reflects the workflow, quality, safety, portability and developer-experience criteria that the author considers useful and necessary based on hands-on use.
+Specify PowerPack is a personal project in continuous evolution. Its behavior reflects workflow, quality, safety, portability and developer-experience criteria proven useful through hands-on use, while the project is progressively generalized into an effective reusable plugin for projects from different domains, architectures, languages, frameworks and delivery contexts.
 
-That origin is not intended to make the PowerPack project-specific. A central objective of the ongoing work is to continuously expand the author's technical vision and knowledge so the project can mature into an effective, reusable plugin that can be installed in projects from **any business domain, architecture, language, framework or delivery context** without requiring a fork of the PowerPack itself.
+That evolution has two different forms and they must not be confused:
 
-This means the repository may evolve in two different ways, and they must not be confused:
+- **corrections** to behavior already promised by the active SPEC, documentation, contracts or non-weakenable invariants;
+- **new capabilities** that deliberately broaden what Specify PowerPack can support, automate, discover, integrate or customize.
 
-- **corrections** to behavior already promised by the current SPEC, documentation, contracts or non-weakenable invariants;
-- **new capabilities** that intentionally broaden what PowerPack can support, automate, discover, integrate or customize.
-
-Continuous evolution is expected. Lack of a capability that has never been part of the current contract is not automatically a defect.
+Continuous evolution is expected. The absence of a capability that has never been part of the current contract is not automatically a defect.
 
 ## Bug versus new capability
 
@@ -23,186 +21,88 @@ Treat something as a **bug/defect** when there is evidence that the current impl
 
 - violates an active SPEC requirement or acceptance criterion;
 - contradicts documented behavior or an explicit public/internal contract;
-- breaks a non-weakenable PowerPack invariant;
+- breaks a non-weakenable Specify PowerPack invariant;
 - regresses behavior that the current baseline is expected to preserve;
 - produces incorrect, unsafe or inconsistent behavior within a capability the project already claims to support.
 
-Treat something as a **new capability/enhancement** when it primarily asks PowerPack to:
+Treat something as a **new capability/enhancement** when it primarily asks Specify PowerPack to:
 
-- support a platform, provider, workflow, architecture or integration not currently promised;
-- automate an additional step that is currently manual by design;
+- support a provider, platform, workflow, architecture or integration not currently promised;
+- automate an additional step that is manual by design;
 - generalize an existing mechanism beyond its documented scope;
 - add optional UX, observability, discovery or convenience behavior;
-- adopt a newly identified product or architectural requirement that has not yet been promoted into the active SPEC or durable project policy.
+- adopt a new product or architectural requirement that has not yet been promoted into the active SPEC or durable project policy.
 
-A capability request becomes current-scope implementation work only after it is deliberately accepted into the relevant SPEC, plan, policy or contract. Once that happens, failure to implement it correctly can be classified as a defect or SPEC non-compliance.
+A capability request becomes current-scope implementation work only after it is deliberately accepted into the relevant SPEC, plan, policy or contract. Once accepted, failure to implement it correctly can become a defect or SPEC non-compliance.
 
-This distinction matters especially for AI-assisted code review. A reviewer must not block a valid implementation merely because it can imagine a broader product. Review findings require concrete evidence of a failure against the **current** contract. Ideas that extend the contract belong in capability planning, not in defect findings.
+This distinction matters especially for AI-assisted review. A reviewer must not block a valid implementation merely because it can imagine a broader product. A blocking finding requires concrete evidence of failure against the **current** contract. Ideas that extend the contract belong in capability planning.
 
-```text
-PowerPack invariant
-      +
-project configuration
-      +
-stricter project/domain policy
-      =
-effective behavior
-```
+## Safe project customization
 
-Project customization may add constraints or become stricter. It must not weaken same-SPEC safety, mandatory review findings, evidence contracts, capability-driven execution, debt creation rules, explicit update confirmation, the explicit initial `implement`, or the mandatory dual review contract.
+Versionable configuration lives under `.specify/powerpack/`, including:
 
-## Installed customization surface
+- `model-routing.json`
+- `quality-gates.json`
+- `full-cycle.json`
+- `technical-debt.json`
+- `review.json`
+- project policy/docs added by the consuming repository
 
-```text
-.specify/powerpack/
-├── bin/
-│   ├── powerpack.py
-│   ├── capabilities.py
-│   ├── review_protocol.py
-│   ├── debt.py
-│   └── full_cycle.py
-├── model-routing.json
-├── prerequisites.json
-├── quality-gates.json
-├── review.json
-├── full-cycle.json
-├── technical-debt.json
-├── update.json
-├── deep-review-protocol.md
-├── technical-debt-policy.md
-└── technical-debt-template.md
-```
+Project-specific quality commands should be expressed through capability/custom-gate configuration rather than editing packaged Python runtime files.
 
-Machine-local Web identity is intentionally outside the repository:
+## Review configuration
 
-```text
-<PowerPack config>/
-├── config.json
-├── browser-install/<platform>.json
-└── browser-profiles/<platform>/<profile>/
-```
-
-The browser profile is PowerPack-owned and must not point to the normal Windows Edge/Chrome `User Data` directory.
-
-## Configuration map
-
-| Concern | Project-local location | Package source | Customization rule |
-|---|---|---|---|
-| model/integration routing | `.specify/powerpack/model-routing.json` | `assets/config/default-model-routing.json` | safe to tune stage profiles; do not weaken independent reviewer contract |
-| predecessor graph | `.specify/powerpack/prerequisites.json` | generated by `cli.py` | may add prerequisites; do not bypass same-SPEC evidence |
-| quality/build gate | `.specify/powerpack/quality-gates.json` | generated by `cli.py` | use explicit `custom_command` for unsupported/ambiguous architecture |
-| review behavior | `.specify/powerpack/review.json` | `assets/config/default-review.json` | Project/profile/mode may vary; `required=true`, `enabled=true` and dual approval are non-weakenable |
-| review methodology | `.specify/powerpack/deep-review-protocol.md` | `assets/review/deep-review-protocol.md` | add stricter/domain probes; do not weaken required fronts/approval proof |
-| full-cycle orchestration | `.specify/powerpack/full-cycle.json` | `assets/config/default-full-cycle.json` | optional pre-implementation phases and round limits may vary; safety fields remain fixed |
-| technical debt | `.specify/powerpack/technical-debt.json` | `assets/config/default-technical-debt.json` | backlog/prefix/project policies; project policies may only strengthen the floor |
-| update behavior | `.specify/powerpack/update.json` | `assets/config/default-update.json` | checks/source/ref/project refresh; explicit force/reset confirmation remains mandatory |
-| browser identity/consent | global config + `browser-profiles/<platform>/...` | `cli.py` + `review_onboarding.py` | use `review authorize`; never copy/use default Edge/Chrome profiles |
-
-## `speckit-implement`
-
-Wraps official Spec Kit implementation and records a precise same-SPEC before/after delta. Implementation intent belongs in SPEC/plan/tasks/project instructions; language/framework-specific accounting does not belong in this skill.
-
-## `speckit-checklist-converge`
-
-Converges requirements-writing checklists after a real checklist execution for the same SPEC. Projects may customize checklist content/templates but may not weaken the predecessor gate.
-
-## `speckit-converge`
-
-Reconciles implementation against SPEC/plan/tasks. Project-specific closure checks belong in project policy/gates. An active convergence gap is not debt merely because the operator wants to finish the cycle.
-
-## `speckit-implement-review`
-
-Canonical package command:
-
-```text
-assets/presets/powerpack-core/commands/speckit.implement-review.md
-```
-
-Runtime/configuration:
-
-```text
-.specify/powerpack/bin/powerpack.py
-.specify/powerpack/bin/review_protocol.py
-.specify/powerpack/review.json
-.specify/powerpack/model-routing.json
-.specify/powerpack/quality-gates.json
-.specify/powerpack/deep-review-protocol.md
-```
-
-Safe customization:
-
-- interactive/auto review behavior;
-- exact ChatGPT Project alias/URL and PowerPack profile name;
-- explicit quality gate for an unsupported project;
-- stricter project/domain review probes;
-- project constitution/architecture/security invariants.
-
-Non-weakenable invariants:
-
-- explicit same-SPEC `speckit-implement` predecessor;
-- initial convergence belongs to `implement-review`;
-- Codex Terra parent does not recursively start another Codex CLI;
-- independent reviewer is Sol/xhigh/read-only;
-- every previous finding is revalidated and full snapshot re-reviewed after corrections;
-- findings remain current-flow durable tasks, never a debt/backlog escape hatch;
-- mandatory ChatGPT Project Web gate is authorized by explicit `playwright-consent`;
-- Sol and Web must approve the **same final snapshot**.
-
-### ChatGPT Web authorization
-
-Use one explicit operation:
-
-```bash
-speckit-powerpack review authorize \
-  --profile work \
-  --project my-project \
-  --url 'https://chatgpt.com/g/g-p-.../project' \
-  --path .
-```
-
-This opens a visible Playwright Chromium with its own persistent profile. The consent tab shows the requested Project URL and profile path before any grant is persisted. Credentials/MFA are entered only on `chatgpt.com`.
-
-Legacy `review auth login`, `review project bind` and `review project use` remain for compatibility/maintenance, but they **do not** satisfy mandatory review readiness unless the binding has a real `playwright-consent` grant.
-
-Profiles are platform-scoped:
-
-```text
-browser-profiles/
-├── windows/work/
-├── linux/work/     # WSL
-└── macos/work/
-```
-
-Never copy a Windows browser profile into Linux/WSL/macOS or configure PowerPack to reuse the default Edge/Chrome profile.
-
-## `speckit-full-cycle`
-
-Orchestrates existing Spec Kit/PowerPack primitives for exactly one SPEC. The top-level path is:
-
-```text
-clarify → plan → checklist/checklist-converge → tasks → analyze → implement → implement-review → DONE
-```
-
-`implement-review` owns convergence, corrective implementation, Sol review and mandatory Web review internally.
-
-Non-weakenable runtime assertions include:
+`review.json` schema 5 represents the supported provider:
 
 ```json
 {
-  "same_spec_only": true,
-  "stop_on_blocked": true,
-  "allow_debt_escape_hatch": false,
-  "explicit_initial_implement_required": true,
-  "implement_review_owns_convergence": true
+  "provider": "chatgpt-project",
+  "review_backend": "codex-apps-github",
+  "mode": "browserless",
+  "deep_review": {
+    "immutable_pr_manifest": true,
+    "exact_changed_file_coverage": true,
+    "exact_requirement_coverage": true,
+    "inspection_evidence_required": true,
+    "context_gaps_block_approval": true
+  },
+  "chatgpt_project": {
+    "authorization": "codex-backend-api",
+    "context_mode": "serialized",
+    "native_binding": false
+  },
+  "github_app": {
+    "runtime": "codex_apps",
+    "explicit_app_mention": true,
+    "require_structural_tool_evidence": true,
+    "allow_shell_fallback": false,
+    "allow_web_search_fallback": false
+  }
 }
 ```
 
-## Technical debt workflows
+Project identity fields are normally written by `specify-powerpack review setup`; do not hand-copy Project IDs when interactive discovery is available.
 
-`debt-create`, `debt-list`, `debt-consult`, `debt-start` and `debt-close` use the deterministic project-local ledger. Projects may customize backlog path, ID prefix, owners/domains and stricter evidence. Active review findings, convergence gaps, P0/BLOCKER or current SPEC obligations are never deferrable merely to converge.
+## Non-customizable safety floor
 
-## Updating the PowerPack
+Projects may make gates stricter, but should not weaken these invariants:
 
-Package behavior is the durable source. Generated `.claude/skills/*` and `.agents/skills/*` copies are materialized views and should not be edited as the long-term source of reusable PowerPack behavior.
+- exact PR required for PR review;
+- one resolved active SPEC;
+- local HEAD must equal PR head;
+- GitHub tool evidence required;
+- shell/web-search fallback forbidden for GitHub evidence;
+- Project context is background, not authoritative code evidence;
+- exact changed-file and requirement coverage where applicable;
+- concrete inspection evidence for every changed file;
+- adversarial verdict challenge required;
+- Project-only context gaps block approval until made durable;
+- Deep Review Protocol validation required;
+- active findings cannot be escaped to technical debt;
+- review runs are read-only and do not merge/approve PRs.
 
-Use normal confirmed update/refresh commands described in [`UPDATES.md`](UPDATES.md). Forced recovery remains constrained to PowerPack-managed assets and never authorizes destructive Git operations.
+## Managed files
+
+`install` and `update` refresh packaged runtime/preset/extension assets. Mutable config is preserved unless `--reset-config` is explicitly supplied.
+
+Avoid editing files under `.specify/powerpack/bin/` because they are managed copies. Contribute reusable runtime changes to the Specify PowerPack source package instead.

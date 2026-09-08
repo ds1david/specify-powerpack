@@ -1,7 +1,9 @@
 {
-  "schema_version": 4,
-  "mode": "interactive",
-  "conversation_strategy": "one-per-pr",
+  "schema_version": 5,
+  "provider": "unconfigured",
+  "review_backend": "codex-apps-github",
+  "mode": "browserless",
+  "conversation_strategy": "ephemeral-per-phase",
   "deep_review": {
     "schema_version": "2.0",
     "protocol_path": ".specify/powerpack/deep-review-protocol.md",
@@ -9,39 +11,35 @@
     "full_snapshot_each_round": true,
     "validate_previous_findings": true,
     "adversarial_verdict_challenge": true,
-    "manifest_required": true,
-    "manifest_path": ".specify/powerpack/runtime/review-context.json",
+    "immutable_pr_manifest": true,
     "exact_changed_file_coverage": true,
     "exact_requirement_coverage": true,
     "inspection_evidence_required": true,
-    "context_gaps_block_approval": true,
-    "review_escape_tracking": true,
-    "final_two_gate_attestation": true
+    "context_gaps_block_approval": true
   },
   "codex": {
     "model": "gpt-5.6-sol",
     "reasoning_effort": "xhigh",
-    "sandbox": "read-only"
+    "sandbox": "read-only",
+    "ephemeral": true
   },
-  "chatgpt_web": {
+  "chatgpt_project": {
     "required": true,
-    "enabled": true,
-    "backend": "chatgpt-web2api",
-    "mode": "assisted",
-    "project_alias": null,
     "project_id": null,
     "project_name": null,
     "project_url": null,
-    "headless": false,
-    "profile": null,
-    "account_label": null,
-    "endpoint": null,
-    "profile_scope": "platform",
-    "profile_platform": null,
     "authorization": null,
-    "same_manifest_required": true,
-    "exact_snapshot_access_required": true,
-    "prompt_path": ".specify/powerpack/runtime/web-review-prompt.txt"
+    "context_mode": "serialized",
+    "native_binding": false
+  },
+  "github_app": {
+    "required": true,
+    "runtime": "codex_apps",
+    "authorization": "chatgpt-account-oauth",
+    "explicit_app_mention": true,
+    "require_structural_tool_evidence": true,
+    "allow_shell_fallback": false,
+    "allow_web_search_fallback": false
   },
   "quality_gate": {
     "mode": "auto-detect",

@@ -1,73 +1,84 @@
 ---
-description: "Check and update the installed SpecKit PowerPack and rematerialize its project-managed assets with explicit confirmation."
+description: "Check/update Specify PowerPack and rematerialize project-managed assets without destructive Git operations."
 ---
 
-# SpecKit PowerPack Update
+# Specify PowerPack Update
 
-This command manages PowerPack updates; it must never silently self-modify the developer environment.
+This command manages the installed Specify PowerPack CLI and its managed project assets.
 
-## Check first
-
-Run:
+## Check current source
 
 ```bash
-speckit-powerpack update . --check
+specify-powerpack update . --check
 ```
 
-Show installed source/commit, configured ref and remote commit/status. If the check cannot prove the installed VCS commit, report that explicitly; do not pretend an update is available.
+The result reports the effective VCS source/ref and installed/remote commit when they can be resolved. Explicit commit-SHA installations remain pinned; Specify PowerPack does not silently reinterpret a pinned build as `main`.
 
 ## Normal update
 
-If `UPDATE_AVAILABLE`, explain that a normal update:
-
-1. updates the `speckit-powerpack` CLI through `uv` from the resolved Git source/ref;
-2. rematerializes PowerPack-managed runtime/preset/extension assets in the current repository;
-3. preserves project-owned PowerPack configuration, technical-debt backlog, source code, Web authentication profiles and project bindings;
-4. performs no destructive Git operation.
-
-Ask the user for explicit confirmation. Only after confirmation run:
-
 ```bash
-speckit-powerpack update . --yes
+specify-powerpack update .
 ```
 
-Never infer consent from a previous unrelated install/update operation.
+A normal update:
 
-## Forced recovery update
-
-Use force only when the user explicitly requests a forced/recovery reinstall or the normal version/source comparison cannot operate and the user accepts that risk:
-
-```bash
-speckit-powerpack update . --force --yes
-```
-
-`--force` blindly reinstalls the CLI from the selected source/ref and overwrites PowerPack-managed package/runtime/preset/extension assets in the repository. It still MUST NOT reset application code, delete the debt backlog, delete Web profiles, force-push, reset/rebase Git or overwrite project configuration.
-
-Resetting PowerPack project configuration to packaged defaults is a separate stronger recovery action and requires the user to explicitly request it:
-
-```bash
-speckit-powerpack update . --force --reset-config --yes
-```
-
-Before this command, warn that `review.json`, `model-routing.json`, `technical-debt.json`, `full-cycle.json`, `update.json`, prerequisites and quality-gate customization may be restored to defaults. Never select `--reset-config` autonomously.
+1. reinstalls the `specify-powerpack` CLI through `uv` from the effective Git source/ref;
+2. rematerializes Specify PowerPack-managed runtime/preset/extension assets in the current repository;
+3. preserves mutable PowerPack project configuration by default;
+4. performs no destructive Git operation on application/source history.
 
 ## Project-only refresh
 
-When the installed CLI is known-good but project materialization is damaged:
+When the installed CLI is already correct and only managed project assets need refresh:
 
 ```bash
-speckit-powerpack update . --project-only --force --yes
+specify-powerpack update . --project-only
 ```
 
-This is the preferred recovery path for corrupted/missing `.specify/powerpack/bin/*` or generated PowerPack components.
+This is the preferred recovery path for missing/corrupted `.specify/powerpack/bin/*`, presets or extensions when the CLI itself does not need reinstalling.
 
-## Source/ref override
-
-A user may explicitly choose another source/ref:
+## Bootstrap/upgrade Spec Kit while refreshing
 
 ```bash
-speckit-powerpack update . --check --ref <branch-or-tag>
-speckit-powerpack update . --force --yes --ref <branch-or-tag>
+specify-powerpack update . --project-only --bootstrap-speckit
 ```
 
-Development installations made from a Git branch follow their installed `requested_revision` by default, so a feature-branch install does not accidentally downgrade to an older `main`.
+Use this when the project needs the tested compatible official Spec Kit release as part of rematerialization.
+
+## Explicit source/ref override
+
+```bash
+specify-powerpack update . \
+  --repository https://github.com/ds1david/specify-powerpack.git \
+  --ref <branch-tag-or-commit>
+```
+
+A feature-branch or immutable-SHA install therefore remains explicit and reproducible.
+
+## Configuration reset
+
+Resetting mutable PowerPack configuration is a separate, explicit operation:
+
+```bash
+specify-powerpack update . --project-only --reset-config
+```
+
+This may recreate `review.json`, model routing, full-cycle, technical-debt and other packaged defaults. It can remove the current ChatGPT Project binding, so `specify-powerpack review setup --path .` may be required afterward.
+
+Never add `--reset-config` merely to fix a managed runtime file.
+
+## Compatibility
+
+The legacy `speckit-powerpack` command remains a compatibility alias. New automation and documentation should use `specify-powerpack`.
+
+## Safety boundary
+
+Update/rematerialization does not authorize:
+
+- Git reset/rebase/clean;
+- force-push;
+- source-code deletion;
+- GitHub PR mutation;
+- deletion/copying of Codex/ChatGPT credentials.
+
+The browserless reviewer keeps authentication in the user's Codex auth store; no browser automation state is part of Specify PowerPack readiness or migration.
