@@ -2,23 +2,25 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
 import subprocess
-from typing import Any
+import sys
+import time
+from typing import Any, Iterator
 
 from speckit_powerpack.backend_compat import install_backend_compat
 from speckit_powerpack.chatgpt_project_provider import ChatGPTBackendClient, ChatGPTProjectError
+from speckit_powerpack.codex_apps_smoke_runtime import (
+    CODEX_APPS_SERVER,
+    parse_codex_jsonl as _parse_codex_jsonl,
+    run_codex_exec as _run_codex_exec,
+)
 from speckit_powerpack.github_connector_discovery import (
     GitHubConnectorDiscoveryError,
     discover_github_connector,
-)
-
-from smoke_chatgpt_github_codex_apps import (
-    CODEX_APPS_SERVER,
-    _parse_codex_jsonl,
-    _run_codex_exec,
 )
 
 
@@ -28,6 +30,45 @@ MARKER = "POWERPACK_GITHUB_LIST_REPOS_OK"
 BASE_PROMPT = "liste todos os meus repositorios"
 REPO_LINE_RE = re.compile(r"^\s*REPO\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\s*$", re.MULTILINE)
 TOTAL_RE = re.compile(r"^\s*TOTAL\s+(\d+)\s*$", re.MULTILINE)
+
+
+class _StepTimer:
+    def __init__(self) -> None:
+        self.started_at = time.perf_counter()
+        self.steps: list[dict[str, Any]] = []
+
+    @contextmanager
+    def step(self, name: str) -> Iterator[None]:
+        started = time.perf_counter()
+        print(f"[timing] start {name}", file=sys.stderr, flush=True)
+        status = "ok"
+        try:
+            yield
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            elapsed = time.perf_counter() - started
+            entry = {
+                "name": name,
+                "elapsed_seconds": round(elapsed, 3),
+                "status": status,
+            }
+            self.steps.append(entry)
+            print(
+                f"[timing] done  {name}: {elapsed:.3f}s status={status}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def report(self) -> dict[str, Any]:
+        total = time.perf_counter() - self.started_at
+        measured = sum(float(step["elapsed_seconds"]) for step in self.steps)
+        return {
+            "total_seconds": round(total, 3),
+            "measured_steps_seconds": round(measured, 3),
+            "steps": list(self.steps),
+        }
 
 
 def _build_prompt(*, connector_id: str) -> str:
@@ -77,65 +118,79 @@ def _parse_repo_listing(text: str) -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    project_path = Path(args.path).resolve()
-    if not project_path.is_dir():
-        raise RuntimeError(f"Smoke working directory does not exist: {project_path}")
+    timer = _StepTimer()
 
-    client = ChatGPTBackendClient()
-    github_state = discover_github_connector(client, locale=args.locale)
-    prompt = _build_prompt(connector_id=github_state.connector_id)
+    with timer.step("validate_working_directory"):
+        project_path = Path(args.path).resolve()
+        if not project_path.is_dir():
+            raise RuntimeError(f"Smoke working directory does not exist: {project_path}")
 
-    completed = _run_codex_exec(
-        project_path=project_path,
-        model=args.model,
-        prompt=prompt,
-        timeout=args.timeout,
-    )
-    parsed = _parse_codex_jsonl(completed.stdout, connector_id=github_state.connector_id)
-    assistant_text = str(parsed["assistant_text"])
-    listing = _parse_repo_listing(assistant_text)
+    with timer.step("initialize_backend_client"):
+        client = ChatGPTBackendClient()
 
-    explicit_app_mention_bound = f"app://{github_state.connector_id}" in prompt
-    github_tool_call_observed = parsed["codex_apps_completed_call_count"] > 0
-    github_tool_result_observed = parsed["codex_apps_result_call_count"] > 0
-    github_identity_in_event = bool(parsed["github_identity_in_event"])
-    no_local_fallback = parsed["command_execution_count"] == 0
-    no_web_fallback = parsed["web_search_count"] == 0
-    marker_seen = MARKER in assistant_text
-    tool_unavailable = assistant_text.strip() == "TOOL_UNAVAILABLE"
-    list_contract_ok = bool(
-        listing["repo_count"] > 0
-        and listing["duplicate_repo_lines"] == 0
-        and listing["total_present"]
-        and listing["total_matches_unique_repo_count"]
-    )
+    with timer.step("github_chat_preflight"):
+        github_state = discover_github_connector(client, locale=args.locale)
 
-    accepted = bool(
-        completed.returncode == 0
-        and github_state.ok
-        and explicit_app_mention_bound
-        and github_tool_call_observed
-        and github_tool_result_observed
-        and github_identity_in_event
-        and no_local_fallback
-        and no_web_fallback
-        and parsed["turn_completed"]
-        and not parsed["turn_failed"]
-        and marker_seen
-        and list_contract_ok
-        and not tool_unavailable
-    )
+    with timer.step("build_prompt"):
+        prompt = _build_prompt(connector_id=github_state.connector_id)
 
-    if accepted:
-        classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_SMOKE_PASSED"
-    elif not no_local_fallback or not no_web_fallback:
-        classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_FALLBACK_DETECTED"
-    elif tool_unavailable or not github_tool_call_observed:
-        classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_TOOL_UNAVAILABLE"
-    elif not list_contract_ok:
-        classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_LIST_CONTRACT_FAILED"
-    else:
-        classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_SMOKE_CONTRACT_FAILED"
+    with timer.step("codex_exec"):
+        completed = _run_codex_exec(
+            project_path=project_path,
+            model=args.model,
+            prompt=prompt,
+            timeout=args.timeout,
+        )
+
+    with timer.step("parse_codex_jsonl"):
+        parsed = _parse_codex_jsonl(completed.stdout, connector_id=github_state.connector_id)
+        assistant_text = str(parsed["assistant_text"])
+
+    with timer.step("parse_repository_listing"):
+        listing = _parse_repo_listing(assistant_text)
+
+    with timer.step("evaluate_contract"):
+        explicit_app_mention_bound = f"app://{github_state.connector_id}" in prompt
+        github_tool_call_observed = parsed["codex_apps_completed_call_count"] > 0
+        github_tool_result_observed = parsed["codex_apps_result_call_count"] > 0
+        github_identity_in_event = bool(parsed["github_identity_in_event"])
+        no_local_fallback = parsed["command_execution_count"] == 0
+        no_web_fallback = parsed["web_search_count"] == 0
+        marker_seen = MARKER in assistant_text
+        tool_unavailable = assistant_text.strip() == "TOOL_UNAVAILABLE"
+        list_contract_ok = bool(
+            listing["repo_count"] > 0
+            and listing["duplicate_repo_lines"] == 0
+            and listing["total_present"]
+            and listing["total_matches_unique_repo_count"]
+        )
+
+        accepted = bool(
+            completed.returncode == 0
+            and github_state.ok
+            and explicit_app_mention_bound
+            and github_tool_call_observed
+            and github_tool_result_observed
+            and github_identity_in_event
+            and no_local_fallback
+            and no_web_fallback
+            and parsed["turn_completed"]
+            and not parsed["turn_failed"]
+            and marker_seen
+            and list_contract_ok
+            and not tool_unavailable
+        )
+
+        if accepted:
+            classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_SMOKE_PASSED"
+        elif not no_local_fallback or not no_web_fallback:
+            classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_FALLBACK_DETECTED"
+        elif tool_unavailable or not github_tool_call_observed:
+            classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_TOOL_UNAVAILABLE"
+        elif not list_contract_ok:
+            classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_LIST_CONTRACT_FAILED"
+        else:
+            classification = "CHATGPT_GITHUB_LIST_REPOS_CODEX_APPS_SMOKE_CONTRACT_FAILED"
 
     report: dict[str, Any] = {
         "ok": accepted,
@@ -157,6 +212,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "sandbox": "read-only",
             "ephemeral": True,
         },
+        "timing": timer.report(),
         "evidence": {
             "github_chat_preflight": github_state.safe_report(),
             "github_codex_runtime": {
