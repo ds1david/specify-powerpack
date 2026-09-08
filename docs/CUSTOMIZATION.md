@@ -2,6 +2,43 @@
 
 PowerPack is designed so projects customize **configuration, policy, gates and domain skills**, not generated agent copies of PowerPack commands.
 
+## Project nature and evolution
+
+SpecKit PowerPack is currently a **personal project** and is intentionally in constant evolution. Its current behavior reflects the workflow, quality, safety, portability and developer-experience criteria that the author considers useful and necessary based on hands-on use.
+
+That origin is not intended to make the PowerPack project-specific. A central objective of the ongoing work is to continuously expand the author's technical vision and knowledge so the project can mature into an effective, reusable plugin that can be installed in projects from **any business domain, architecture, language, framework or delivery context** without requiring a fork of the PowerPack itself.
+
+This means the repository may evolve in two different ways, and they must not be confused:
+
+- **corrections** to behavior already promised by the current SPEC, documentation, contracts or non-weakenable invariants;
+- **new capabilities** that intentionally broaden what PowerPack can support, automate, discover, integrate or customize.
+
+Continuous evolution is expected. Lack of a capability that has never been part of the current contract is not automatically a defect.
+
+## Bug versus new capability
+
+Reviews, issues and maintenance work MUST distinguish an actual defect from a request to expand the product.
+
+Treat something as a **bug/defect** when there is evidence that the current implementation:
+
+- violates an active SPEC requirement or acceptance criterion;
+- contradicts documented behavior or an explicit public/internal contract;
+- breaks a non-weakenable PowerPack invariant;
+- regresses behavior that the current baseline is expected to preserve;
+- produces incorrect, unsafe or inconsistent behavior within a capability the project already claims to support.
+
+Treat something as a **new capability/enhancement** when it primarily asks PowerPack to:
+
+- support a platform, provider, workflow, architecture or integration not currently promised;
+- automate an additional step that is currently manual by design;
+- generalize an existing mechanism beyond its documented scope;
+- add optional UX, observability, discovery or convenience behavior;
+- adopt a newly identified product or architectural requirement that has not yet been promoted into the active SPEC or durable project policy.
+
+A capability request becomes current-scope implementation work only after it is deliberately accepted into the relevant SPEC, plan, policy or contract. Once that happens, failure to implement it correctly can be classified as a defect or SPEC non-compliance.
+
+This distinction matters especially for AI-assisted code review. A reviewer must not block a valid implementation merely because it can imagine a broader product. Review findings require concrete evidence of a failure against the **current** contract. Ideas that extend the contract belong in capability planning, not in defect findings.
+
 ```text
 PowerPack invariant
       +
