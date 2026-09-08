@@ -1,8 +1,10 @@
-# SpecKit PowerPack
+# Specify PowerPack
 
 > **Status: pre-release / evolving.** This is a personal project in continuous evolution. It is driven by the workflow, quality and safety criteria I consider useful, while being progressively generalized into a reusable PowerPack for projects of different contexts. Changes must distinguish a real defect from a new capability request.
 
-SpecKit PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds convergence, review evidence, full-cycle orchestration, technical-debt governance, model routing, managed updates and a browserless ChatGPT Project + GitHub code-review gate.
+Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds convergence, review evidence, full-cycle orchestration, technical-debt governance, model routing, managed updates and a browserless ChatGPT Project + GitHub code-review gate.
+
+The canonical repository is `ds1david/specify-powerpack`. The canonical CLI is `specify-powerpack`; the previous `speckit-powerpack` command is retained as a compatibility alias during migration.
 
 ## Workflow
 
@@ -76,7 +78,7 @@ There is no Chrome, CDP, Playwright, Selenium or Web2API in the supported produc
 
 ### What “Project context” means
 
-PowerPack reads the bound ChatGPT Project through account-scoped ChatGPT backend APIs, serializes Project metadata/instructions and recent Project conversations, and injects that material as read-only context for the review turn.
+Specify PowerPack reads the bound ChatGPT Project through account-scoped ChatGPT backend APIs, serializes Project metadata/instructions and recent Project conversations, and injects that material as read-only context for the review turn.
 
 This is deliberately reported as:
 
@@ -90,13 +92,13 @@ The review is **not** written as a native conversation inside the ChatGPT Projec
 
 ### What “GitHub connector” means
 
-PowerPack does not manually inject private `tools[]` into `/backend-api/codex/responses`. It discovers the installed GitHub App/connector, then explicitly selects it with:
+Specify PowerPack does not manually inject private `tools[]` into `/backend-api/codex/responses`. It discovers the installed GitHub App/connector, then explicitly selects it with:
 
 ```text
 [$github](app://<connector-id>)
 ```
 
-The Codex runtime owns App resolution, MCP tools, approvals, tool execution and continuation. PowerPack observes the JSONL lifecycle and requires structural `codex_apps` GitHub tool-call/result evidence. Shell and web-search fallbacks are rejected.
+The Codex runtime owns App resolution, MCP tools, approvals, tool execution and continuation. Specify PowerPack observes the JSONL lifecycle and requires structural `codex_apps` GitHub tool-call/result evidence. Shell and web-search fallbacks are rejected.
 
 ## Immutable code review
 
@@ -104,7 +106,7 @@ The Codex runtime owns App resolution, MCP tools, approvals, tool execution and 
 
 ### Phase A — PR manifest
 
-The GitHub App resolves the exact PR, base ref/SHA, merge-base, head SHA and complete changed-file list. PowerPack verifies local `HEAD == PR head SHA`, resolves exactly one active Spec Kit SPEC and computes a deterministic SHA-256 snapshot digest.
+The GitHub App resolves the exact PR, base ref/SHA, merge-base, head SHA and complete changed-file list. Specify PowerPack verifies local `HEAD == PR head SHA`, resolves exactly one active Spec Kit SPEC and computes a deterministic SHA-256 snapshot digest.
 
 ### Phase B — deep review
 
@@ -117,13 +119,13 @@ The review receives:
 - previous review on round 2+;
 - exact GitHub App binding.
 
-PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
+Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
 
 Trade-off: two phases add latency, but avoid approving an ambiguous or stale snapshot.
 
 ## First installation
 
-For someone who has never used PowerPack, start with [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
+For someone who has never used Specify PowerPack, start with [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
 
 Minimum prerequisites:
 
@@ -154,7 +156,7 @@ python3 install.py --project /path/to/project --integration codex
 .\install.ps1 --project C:\path\to\project --integration codex
 ```
 
-The installer installs the PowerPack CLI with `uv`, then `speckit-powerpack init` bootstraps official Spec Kit when required and materializes the PowerPack preset/extension/runtime.
+The installer installs the Specify PowerPack CLI with `uv`, then `specify-powerpack init` bootstraps official Spec Kit when required and materializes the PowerPack preset/extension/runtime.
 
 ## Review setup
 
@@ -163,8 +165,8 @@ After project installation:
 ```bash
 codex login
 cd /path/to/project
-speckit-powerpack review setup --path .
-speckit-powerpack doctor . --strict-review
+specify-powerpack review setup --path .
+specify-powerpack doctor . --strict-review
 ```
 
 `review setup` lists the ChatGPT Projects visible to the Codex-authenticated account, saves the selected Project binding, and verifies the GitHub App/connector state.
@@ -176,7 +178,7 @@ The GitHub App must already be installed/connected in the ChatGPT/Codex account 
 The current local branch must correspond to the exact GitHub PR head and exactly one Spec Kit SPEC.
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr 92 \
   --prompt "Perform the complete Deep Review Evidence Protocol."
@@ -185,7 +187,7 @@ speckit-powerpack review run \
 For a subsequent round:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr 92 \
   --previous .specify/powerpack/reviews/<previous>.json
@@ -196,10 +198,10 @@ A successful transport is not automatically an approval. The final result remain
 ## Diagnostics
 
 ```bash
-speckit-powerpack doctor .
-speckit-powerpack doctor . --strict-review
-speckit-powerpack review status --path . --live
-speckit-powerpack review project discover
+specify-powerpack doctor .
+specify-powerpack doctor . --strict-review
+specify-powerpack review status --path . --live
+specify-powerpack review project discover
 ```
 
 `--strict-review` performs live Codex/Project/GitHub readiness checks.
@@ -207,20 +209,20 @@ speckit-powerpack review project discover
 ## Updates
 
 ```bash
-speckit-powerpack update . --check
-speckit-powerpack update .
+specify-powerpack update . --check
+specify-powerpack update .
 ```
 
 Refresh only the project materialization:
 
 ```bash
-speckit-powerpack update . --project-only
+specify-powerpack update . --project-only
 ```
 
 Configuration reset is explicit:
 
 ```bash
-speckit-powerpack update . --project-only --reset-config
+specify-powerpack update . --project-only --reset-config
 ```
 
 ## Installed project layout
@@ -257,7 +259,7 @@ SELECT STRATEGY
 EXECUTE CONTRACT
 ```
 
-PowerPack is intended to remain language/framework/build-tool agnostic. Project-specific customizations belong in configuration/policy/domain material rather than forks of generated workflow skills.
+Specify PowerPack is intended to remain language/framework/build-tool agnostic. Project-specific customizations belong in configuration/policy/domain material rather than forks of generated workflow skills.
 
 ## Documentation
 
@@ -278,4 +280,4 @@ PowerPack is intended to remain language/framework/build-tool agnostic. Project-
 - Project context is background memory; SPEC + immutable PR evidence are authoritative on conflict.
 - No raw OAuth/access tokens are printed or stored in repository config.
 - Findings cannot be converted into debt merely to force convergence.
-- PowerPack workflows do not authorize merge, GitHub approval, ready-for-review, force-push or destructive reset.
+- Specify PowerPack workflows do not authorize merge, GitHub approval, ready-for-review, force-push or destructive reset.
