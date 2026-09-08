@@ -10,16 +10,26 @@ from typing import Any
 CODEX_APPS_SERVER = "codex_apps"
 
 
+class CodexAppsError(RuntimeError):
+    pass
+
+
 def run_codex_exec(
     *,
     project_path: Path,
     model: str,
     prompt: str,
     timeout: int,
+    effort: str = "xhigh",
 ) -> subprocess.CompletedProcess[str]:
+    """Run one browserless Codex turn and expose its JSONL lifecycle.
+
+    Codex owns App/MCP resolution, approvals, tool execution and continuation.
+    PowerPack deliberately does not reproduce the private Responses tool loop.
+    """
     codex = shutil.which("codex")
     if not codex:
-        raise RuntimeError("codex CLI was not found on PATH. Install/login to Codex before running this smoke.")
+        raise CodexAppsError("Codex CLI was not found on PATH. Install Codex and run 'codex login' first.")
     command = [
         codex,
         "exec",
@@ -32,6 +42,8 @@ def run_codex_exec(
     ]
     if model.strip():
         command.extend(["-m", model.strip()])
+    if effort.strip():
+        command.extend(["-c", f'model_reasoning_effort="{effort.strip()}"'])
     command.append(prompt)
     try:
         return subprocess.run(
@@ -42,9 +54,9 @@ def run_codex_exec(
             timeout=max(30, timeout),
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"codex exec timed out after {timeout}s") from exc
+        raise CodexAppsError(f"codex exec timed out after {timeout}s") from exc
     except OSError as exc:
-        raise RuntimeError(f"Could not execute Codex CLI: {exc}") from exc
+        raise CodexAppsError(f"Could not execute Codex CLI: {exc}") from exc
 
 
 def _walk(value: Any):
@@ -115,11 +127,10 @@ def parse_codex_jsonl(raw: str, *, connector_id: str) -> dict[str, Any]:
                     "status": str(thread_item.get("status") or ""),
                     "result_present": thread_item.get("result") is not None,
                     "error_present": thread_item.get("error") is not None,
+                    "github_identity": _event_mentions_github(thread_item, connector_id),
                 }
                 codex_apps_calls.append(call)
-                github_identity_in_event = github_identity_in_event or _event_mentions_github(
-                    thread_item, connector_id
-                )
+                github_identity_in_event = github_identity_in_event or bool(call["github_identity"])
 
     assistant_text = "\n".join(part.strip() for part in agent_messages if part.strip()).strip()
     completed_calls = [
@@ -141,4 +152,20 @@ def parse_codex_jsonl(raw: str, *, connector_id: str) -> dict[str, Any]:
         "github_identity_in_event": github_identity_in_event,
         "command_execution_count": command_execution_count,
         "web_search_count": web_search_count,
+        "calls": codex_apps_calls,
     }
+
+
+def require_github_tool_evidence(parsed: dict[str, Any]) -> None:
+    if parsed.get("command_execution_count"):
+        raise CodexAppsError("Review used a local shell fallback; GitHub evidence must come through Codex Apps.")
+    if parsed.get("web_search_count"):
+        raise CodexAppsError("Review used web-search fallback; GitHub evidence must come through Codex Apps.")
+    if not parsed.get("turn_completed") or parsed.get("turn_failed"):
+        raise CodexAppsError("Codex turn did not complete successfully.")
+    if int(parsed.get("codex_apps_completed_call_count") or 0) < 1:
+        raise CodexAppsError("No completed codex_apps MCP tool call was observed.")
+    if int(parsed.get("codex_apps_result_call_count") or 0) < 1:
+        raise CodexAppsError("No successful codex_apps MCP tool result was observed.")
+    if not parsed.get("github_identity_in_event"):
+        raise CodexAppsError("The Codex Apps lifecycle could not be attributed to GitHub.")
