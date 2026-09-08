@@ -26,28 +26,38 @@ install_backend_compat()
 
 MARKER = "POWERPACK_PROJECT_GITHUB_OK"
 PROJECT_NAME_RE = re.compile(r"^\s*PROJECT_NAME:\s*(.+?)\s*$", re.MULTILINE)
+PROJECT_DESCRIPTION_RE = re.compile(r"^\s*PROJECT_DESCRIPTION:\s*(.+?)\s*$", re.MULTILINE)
+PROJECT_CONTEXT_EVIDENCE_RE = re.compile(r"^\s*PROJECT_CONTEXT_EVIDENCE:\s*(.+?)\s*$", re.MULTILINE)
 REPO_LINE_RE = re.compile(r"^\s*REPO\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\s*$", re.MULTILINE)
 TOTAL_RE = re.compile(r"^\s*TOTAL\s+(\d+)\s*$", re.MULTILINE)
+
+
+def _normalize_space(text: str) -> str:
+    return " ".join(text.split()).casefold()
 
 
 def _build_prompt(*, connector_id: str, project_context: str) -> str:
     context = project_context[:16_000]
     return f"""Este é um smoke browserless que precisa provar duas capacidades no MESMO turno:
-1. compreender o contexto do ChatGPT Project vinculado ao repositório;
+1. compreender de fato o contexto do ChatGPT Project vinculado ao repositório;
 2. usar o GitHub App instalado para listar todos os repositórios acessíveis.
 
 Para GitHub, use exclusivamente esta seleção explícita do Codex App:
 [$github](app://{connector_id})
 
-Perguntas:
-- Qual é o nome do ChatGPT Project representado no contexto abaixo?
+Perguntas sobre o ChatGPT Project, respondidas SOMENTE a partir do <project_context> abaixo:
+- Qual é o nome exato do ChatGPT Project?
+- Qual é a descrição abreviada / principal missão desse Project? Responda em no máximo 100 palavras.
+- Copie também uma evidência textual curta, de 3 a 20 palavras, literalmente presente no <project_context>, que sustente a descrição. Não use apenas o nome do Project como evidência.
+
+Pergunta sobre GitHub:
 - Liste TODOS os repositórios que o conector GitHub consegue acessar para a minha conta.
 - Se a ferramenta GitHub for paginada, continue até não existir próxima página.
 
 Restrições:
 - Você DEVE usar o GitHub App/tool antes de responder.
 - Não execute comandos shell.
-- Não leia o checkout local para descobrir o nome do Project ou os repositórios.
+- Não leia o checkout local para descobrir o nome/descrição do Project ou os repositórios.
 - Não use web search.
 - Não use outro app/connector.
 - Não modifique nenhum estado no GitHub.
@@ -55,6 +65,8 @@ Restrições:
 
 Formato obrigatório:
 PROJECT_NAME: <nome exato do ChatGPT Project>
+PROJECT_DESCRIPTION: <descrição abreviada em uma única linha, no máximo 100 palavras>
+PROJECT_CONTEXT_EVIDENCE: <trecho literal de 3 a 20 palavras do contexto que sustenta a descrição>
 REPO owner/name
 REPO owner/name
 ...
@@ -73,12 +85,27 @@ O material abaixo foi serializado do ChatGPT Project configurado em .specify/pow
 def _parse_response(text: str) -> dict[str, Any]:
     project_match = PROJECT_NAME_RE.search(text)
     project_name = project_match.group(1).strip() if project_match else ""
+    description_match = PROJECT_DESCRIPTION_RE.search(text)
+    project_description = description_match.group(1).strip() if description_match else ""
+    context_evidence_match = PROJECT_CONTEXT_EVIDENCE_RE.search(text)
+    project_context_evidence = context_evidence_match.group(1).strip() if context_evidence_match else ""
+    description_word_count = len(re.findall(r"\S+", project_description))
+    context_evidence_word_count = len(re.findall(r"\S+", project_context_evidence))
+
     repos = REPO_LINE_RE.findall(text)
     unique_repos = list(dict.fromkeys(repos))
     total_match = TOTAL_RE.search(text)
     declared_total = int(total_match.group(1)) if total_match else None
     return {
         "project_name": project_name,
+        "project_description": project_description,
+        "description_word_count": description_word_count,
+        "description_present": bool(project_description),
+        "description_max_100_words": 0 < description_word_count <= 100,
+        "project_context_evidence": project_context_evidence,
+        "context_evidence_word_count": context_evidence_word_count,
+        "context_evidence_present": bool(project_context_evidence),
+        "context_evidence_length_valid": 3 <= context_evidence_word_count <= 20,
         "repos": unique_repos,
         "repo_count": len(unique_repos),
         "duplicate_repo_lines": len(repos) - len(unique_repos),
@@ -146,6 +173,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             parsed["project_name"]
             and parsed["project_name"].casefold() == binding["project_name"].casefold()
         )
+        normalized_context = _normalize_space(project_context)
+        normalized_evidence = _normalize_space(parsed["project_context_evidence"])
+        context_evidence_in_serialized_context = bool(
+            normalized_evidence and normalized_evidence in normalized_context
+        )
+        context_evidence_distinct_from_name = bool(
+            normalized_evidence
+            and normalized_evidence != _normalize_space(binding["project_name"])
+        )
+        project_context_contract_ok = bool(
+            exact_project_name
+            and parsed["description_present"]
+            and parsed["description_max_100_words"]
+            and parsed["context_evidence_present"]
+            and parsed["context_evidence_length_valid"]
+            and context_evidence_in_serialized_context
+            and context_evidence_distinct_from_name
+        )
+
         explicit_app_mention_bound = f"app://{github_state.connector_id}" in prompt
         github_tool_call_observed = runtime["codex_apps_completed_call_count"] > 0
         github_tool_result_observed = runtime["codex_apps_result_call_count"] > 0
@@ -163,7 +209,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed.returncode == 0
             and github_state.ok
             and binding_matches_context
-            and exact_project_name
+            and project_context_contract_ok
             and explicit_app_mention_bound
             and github_tool_call_observed
             and github_tool_result_observed
@@ -179,7 +225,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         if accepted:
             classification = "CHATGPT_PROJECT_GITHUB_LIST_REPOS_SMOKE_PASSED"
-        elif not exact_project_name:
+        elif not project_context_contract_ok:
             classification = "CHATGPT_PROJECT_GITHUB_PROJECT_CONTEXT_FAILED"
         elif not no_local_fallback or not no_web_fallback:
             classification = "CHATGPT_PROJECT_GITHUB_FALLBACK_DETECTED"
@@ -211,7 +257,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "model": args.model,
             "sandbox": "read-only",
             "ephemeral": True,
-            "prompt_intent": "nome do ChatGPT Project + listar todos os repositorios via GitHub connector",
+            "prompt_intent": "nome + descricao <=100 palavras + evidencia literal do ChatGPT Project + listar todos os repositorios via GitHub connector",
         },
         "timing": timer.report(),
         "evidence": {
@@ -222,6 +268,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "project_context": {
                 "project_name_returned": parsed["project_name"],
                 "project_name_exact_match": exact_project_name,
+                "project_description_returned": parsed["project_description"],
+                "description_present": parsed["description_present"],
+                "description_word_count": parsed["description_word_count"],
+                "description_max_100_words": parsed["description_max_100_words"],
+                "context_evidence_returned": parsed["project_context_evidence"],
+                "context_evidence_word_count": parsed["context_evidence_word_count"],
+                "context_evidence_length_valid": parsed["context_evidence_length_valid"],
+                "context_evidence_in_serialized_context": context_evidence_in_serialized_context,
+                "context_evidence_distinct_from_name": context_evidence_distinct_from_name,
+                "project_context_contract_passed": project_context_contract_ok,
             },
             "github_chat_preflight": github_state.safe_report(),
             "github_codex_runtime": {
@@ -268,7 +324,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Browserless combined smoke: serialize the ChatGPT Project bound to the repository and, "
-            "in the same Codex turn, explicitly use the installed GitHub App to list repositories."
+            "in the same Codex turn, prove Project context with name/description/literal evidence and "
+            "explicitly use the installed GitHub App to list repositories."
         )
     )
     parser.add_argument("--path", default=".")
