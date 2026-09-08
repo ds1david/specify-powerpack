@@ -61,7 +61,8 @@ function Wait-Service([int]$ServicePort, [int]$TimeoutSec = 300) {
 }
 
 function Safe-Name([string]$Value) {
-    $safe = [Text.RegularExpressions.Regex]::Replace($Value, "[^A-Za-z0-9_.-]+", "-").Trim("-", ".", "_")
+    $safe = [Text.RegularExpressions.Regex]::Replace($Value, "[^A-Za-z0-9_.-]+", "-")
+    $safe = $safe.Trim([char[]]"-._")
     if (-not $safe) { return "web2api-github-probe" }
     return $safe
 }
