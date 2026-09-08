@@ -118,6 +118,27 @@ def test_implement_review_contract_routes_browserless_project_github_gate():
     assert "BLOCKED_CONFIGURATION" in text
 
 
+def test_installed_command_docs_reject_removed_browser_review_contracts():
+    command_files = [
+        PRESET / "commands" / "speckit.full-cycle.md",
+        ASSETS / "extensions" / "powerpack-tools" / "commands" / "doctor.md",
+        ASSETS / "extensions" / "powerpack-tools" / "commands" / "update.md",
+    ]
+    forbidden = (
+        "chatgpt-web2api",
+        "playwright-consent",
+        "review authorize",
+        "review binding show",
+        "browser profile",
+        "web reviewer endpoint",
+        "mandatory chatgpt project web review",
+    )
+    for path in command_files:
+        text = path.read_text(encoding="utf-8").casefold()
+        for marker in forbidden:
+            assert marker not in text, f"{path.name} still references obsolete marker: {marker}"
+
+
 def test_model_routing_preserves_reviewer_profile():
     routing = json.loads((ASSETS / "config" / "default-model-routing.json").read_text(encoding="utf-8"))
     assert routing["schema_version"] == 2
