@@ -1,16 +1,37 @@
-# Resuming ChatGPT-Web2API for GitHub-enabled Web review
+# Web2API-only GitHub prompt probe
 
 ## Decision
 
-After the browserless `/backend-api/f/conversation` experiments crossed from HTTP 422 body validation to a repeatable HTTP 403 product/security boundary, the GitHub-enabled review turn returns to the existing ChatGPT-Web2API/Chrome transport.
+The GitHub prompt capability probe is now intentionally isolated to the existing ChatGPT-Web2API/Chrome transport.
 
-The browserless work is not discarded. Its Codex-authenticated account/Project/connector discovery remains useful as a preflight. The actual mutation/send is delegated to the real ChatGPT Web frontend through the pinned Web2API CDP driver.
+It does not use:
 
-## Historical finding: Web2API was not removed by one later commit
+```text
+~/.codex/auth.json
+ChatGPTBackendClient
+browserless connector discovery
+direct /backend-api/f/conversation submit
+the earlier direct-CDP probe
+```
 
-The repository history has two lines that diverged before PR #5 was merged.
+The purpose of this probe is narrow: prove whether the real ChatGPT Web frontend, driven through the pinned ChatGPT-Web2API implementation, can materialize `@GitHub` in the composer before Send and complete a GitHub-enabled turn.
 
-The Web2API line was built on September 6, 2026 through commits including:
+## Historical context
+
+The repository has two lines that evolved in parallel:
+
+```text
+main / PR #5
+  -> ChatGPT-Web2API
+  -> Chrome/CDP
+  -> real frontend
+
+feat/homologation-harness browserless experiments
+  -> ~/.codex/auth.json
+  -> direct backend-api reads/conversation probes
+```
+
+The Web2API line was built through commits including:
 
 ```text
 a7a5f3c  feat(review): add ChatGPT Web2API backend adapter
@@ -23,169 +44,147 @@ d6a8ce1  config(review): make Web2API the versioned Web gate policy
 65846fb  Merge PR #5: functional ChatGPT Project reviewer bridge
 ```
 
-`main` currently contains PR #5 at:
-
-```text
-65846fbfb7e40bff7c8b37252aae5b84b8946697
-```
-
-The browserless/homologation line descends from the earlier merge base:
-
-```text
-520b0ea599cc1fa9a59058debcc5416511e2c51b
-```
-
-and later evolved around:
-
-```text
-~/.codex/auth.json
-  -> ChatGPTBackendClient
-  -> Project discovery/binding
-  -> GitHub connector discovery
-  -> direct conversation experiments
-```
-
-Therefore the correct interpretation is not "Web2API was removed." The two implementations evolved in parallel and the browserless feature branch never inherited the later PR #5 merge.
-
-## Authentication clarification
-
-Two authentication contexts are intentionally kept separate.
-
-### Codex-authenticated preflight
-
-PowerPack reads:
-
-```text
-~/.codex/auth.json
-```
-
-through `ChatGPTBackendClient` and verifies that the authenticated ChatGPT account can resolve the GitHub connector.
-
-This proves account/backend capability before opening the browser path.
-
-### Web2API review turn
-
-ChatGPT-Web2API uses a real headed Chrome profile and the normal ChatGPT Web session in that profile.
-
-PowerPack does **not**:
-
-```text
-copy the Codex bearer token into Chrome
-convert ~/.codex/auth.json into cookies
-copy browser cookies into WSL
-fabricate Sentinel/proof/Turnstile values
-replay product security material from HAR captures
-```
-
-The browser frontend produces its own legitimate session/security/turn orchestration.
-
-## Why Web2API is the appropriate send boundary
-
-The pinned upstream is:
+The pinned upstream remains:
 
 ```text
 repository: Octo-Lex/ChatGPT-Web2API
 revision:   497527dceabfa3f95961e23c291e618c5570f1ac
 ```
 
-The upstream itself previously established that direct `/backend-api/f/conversation` sends hit an HTTP 403 gate, including experiments with browser-like TLS. Its supported write path therefore drives the real browser DOM through CDP.
-
-The PowerPack browserless reproduction independently reached the same architectural boundary after matching the successful HAR's non-secret turn semantics:
+## Runtime topology
 
 ```text
-old direct reproduction     -> 422 Invalid conversation body
-corrected direct reproduction -> 403 SECURITY_OR_RATE_BOUNDARY
+WSL probe
+  |
+  +-- powershell.exe
+        |
+        +-- dedicated Windows venv
+        |
+        +-- pinned ChatGPT-Web2API service
+        |     |
+        |     +-- owns persistent headed Chrome profile
+        |     +-- owns Chrome/CDP lifecycle
+        |
+        +-- Web2API helper executed by the same venv
+              |
+              +-- chatgpt_web2api.CDPDriver
+              +-- owned ChatGPT tab
+              +-- navigate_new_chat(project optional)
+              +-- send_and_stream(prompt)
 ```
 
-That evidence is consistent with delegating mutation/send to the real frontend rather than cloning the private protocol.
+No Codex bearer token is read or passed anywhere in this flow.
 
-## GitHub-enabled send seam
+## GitHub enablement gate
 
-The pinned Web2API `CDPDriver.send_and_stream()` already owns the critical turn lifecycle:
+The pinned Web2API `CDPDriver.send_and_stream()` already owns the native turn lifecycle:
 
 ```text
 assistant-count baseline
--> IdentityListener health/capture scope
+-> IdentityListener
 -> turn anchor
 -> type_message(text)
 -> click_send()
--> send acknowledgment
--> completion detection
+-> acknowledgment
+-> completion detector
 -> conversation-id discovery
--> anchored backend reconciliation
+-> anchored reconciliation
 ```
 
-PowerPack does not replace this sequence.
-
-The GitHub capability is inserted at one narrow seam:
+The PowerPack probe changes only the seam between `type_message()` and `click_send()`.
 
 ```text
-send_and_stream(review_prompt)
+send_and_stream("@GitHub ...")
     |
     +-- Web2API type_message("@GitHub ...")
     |
-    +-- POWERPACK GATE:
-    |      wait for native ChatGPT frontend to emit
+    +-- POWERPACK GATE
+    |      wait for native frontend:
+    |
     |      POST /backend-api/f/conversation/prepare
-    |        client_prepare_source = context_change
-    |        system_hints contains plugin:connector_*
-    |        partial_query starts "GitHub ..."
+    |      client_prepare_source = context_change
+    |      system_hints contains plugin:connector_*
+    |      partial_query starts with "GitHub "
     |
-    |      if not observed -> fail closed; click_send is never reached
+    |      not observed -> fail closed
+    |                     Send is not clicked
     |
-    +-- return from type_message wrapper
+    +-- gate succeeds
+    |
+    +-- return to Web2API send_and_stream
     |
     +-- Web2API click_send()
     |
-    +-- native frontend submit
+    +-- native ChatGPT frontend submit
     |
     +-- Web2API completion/reconciliation
 ```
 
-This matters because the successful complete HAR showed that the frontend resolved the pasted `@GitHub` mention **before** the user clicked Send.
+This follows the successful interactive HAR behavior: `@GitHub` is resolved into structured connector state before the final Send.
 
-## Final-submit evidence
+## Network evidence
 
-The observer chains Web2API's existing `IdentityListener` instead of replacing it.
+The helper chains the Web2API `IdentityListener` rather than replacing it.
 
-For the native final request it records only booleans/enums:
+It records only non-secret evidence:
 
 ```text
-top-level plugin:connector_* present
-message-level plugin:connector_* present
+GitHub context_change observed
+connector hint present before Send
+partial_query starts with GitHub
+final /f/conversation request observed
+top-level connector hint present
+message-level connector hint present
 ecosystemMention present
 client_prepare_state
-HTTP response status
+final HTTP status
+assistant response completed
+POWERPACK_GITHUB_TOOL_OK marker present
 ```
 
-It never persists:
+It does not persist:
 
 ```text
-connector id value
 Authorization
 Cookie
-OAuth/session token
+connector id value
+OAuth/session tokens
 conduit token
-Sentinel/proof/Turnstile token
+Sentinel/proof/Turnstile values
 CSRF material
-raw POST headers
+raw request headers
 ```
 
-Success for the generic capability probe requires:
+## Generic capability PASS
+
+The generic prompt is:
 
 ```text
-Codex-auth GitHub connector preflight             PASS
-Web2API CDPDriver connected                       PASS
-GitHub context_change observed before Send        PASS
-connector hint before Send                        PASS
-native final submit observed                      PASS
-final top-level connector hint                     PASS
-final message connector hint                       PASS
-final ecosystemMention                             PASS
-final /f/conversation HTTP 200                     PASS
-completed assistant response                       PASS
-POWERPACK_GITHUB_TOOL_OK marker                     PASS
+@GitHub LISTE TODOS OS MEUS REPOSITORIOS E TERMINE A RESPOSTA COM POWERPACK_GITHUB_TOOL_OK
 ```
+
+`WEB2API_GITHUB_FLOW_ACCEPTED` requires all of these:
+
+```text
+Web2API CDPDriver connected                    PASS
+GitHub context_change before Send             PASS
+connector hint before Send                    PASS
+final native submit observed                  PASS
+top-level connector hint                      PASS
+message-level connector hint                  PASS
+ecosystemMention                              PASS
+/f/conversation HTTP 200                      PASS
+assistant response completed                  PASS
+POWERPACK_GITHUB_TOOL_OK                       PASS
+```
+
+If the GitHub context is not materialized before Send, the classification is:
+
+```text
+WEB2API_GITHUB_MENTION_NOT_RESOLVED
+```
+
+and the probe explicitly does not reach Web2API's `click_send()`.
 
 ## Files
 
@@ -196,30 +195,7 @@ scripts/homologation/web2api_github_driver_probe.py
 tests/test_chatgpt_github_web2api_probe_contract.py
 ```
 
-The earlier direct-CDP probe remains diagnostic evidence only. It is not the resumed product architecture.
-
-## Runtime topology on WSL + Windows
-
-```text
-WSL PowerPack probe
-  |
-  +-- ~/.codex/auth.json
-  |     -> ChatGPTBackendClient
-  |     -> dynamic GitHub connector preflight
-  |
-  +-- powershell.exe
-        -> dedicated Windows venv
-        -> pinned ChatGPT-Web2API
-        -> Web2API service owns persistent headed Chrome profile
-        -> helper uses the same pinned Web2API package
-        -> CDPDriver owned tab
-        -> real ChatGPT frontend
-        -> GitHub context-change gate
-        -> native Send
-        -> Web2API response reconciliation
-```
-
-Default probe resources are isolated from the historical PR #5 defaults:
+## Default isolated resources
 
 ```text
 REST port: 8097
@@ -227,24 +203,18 @@ CDP port:  9231
 profile:   %LOCALAPPDATA%\SpecKitPowerPack\reviewers\web2api-github-probe
 ```
 
-## First-run login
+The profile is persistent. On first execution the user may need to complete normal ChatGPT login/MFA in the headed Chrome window.
 
-The Windows lifecycle launcher creates a persistent Web2API reviewer profile. If ChatGPT is not authenticated, the headed Chrome window is the place where the human completes normal login/MFA.
+## Scope
 
-No credentials are entered into PowerPack.
+This probe is a transport/capability test only. It does not by itself approve H2.
 
-After the profile is authenticated, subsequent probe runs reuse that browser profile.
-
-## Current scope
-
-This probe proves the transport/capability boundary only. It does not by itself approve H2.
-
-H2 still requires a later run against the bound Project and exact PR review contract:
+After this generic prompt passes, the next step is the Project + exact PR review flow:
 
 ```text
-Project identity
+bound Project
 + exact repository/PR identity
-+ GitHub tool materialization
++ GitHub connector materialization
 + actual PR inspection
 + immutable review evidence
 + final verdict on the intended snapshot
