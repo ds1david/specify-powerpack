@@ -53,7 +53,11 @@ def test_review_defaults_are_browserless_project_and_github():
 
 def test_package_entrypoint_and_runtime_have_no_browser_stack():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'name = "specify-powerpack"' in pyproject
+    assert 'specify-powerpack = "speckit_powerpack.cli:main"' in pyproject
     assert 'speckit-powerpack = "speckit_powerpack.cli:main"' in pyproject
+    assert "https://github.com/ds1david/specify-powerpack" in pyproject
+    assert "https://github.com/ds1david/speckit-powerpack" not in pyproject
     assert "playwright" not in pyproject.casefold()
     package = ROOT / "src" / "speckit_powerpack"
     for obsolete in (
@@ -74,6 +78,17 @@ def test_package_entrypoint_and_runtime_have_no_browser_stack():
         "review_context.py",
     ):
         assert (package / required).is_file(), required
+
+
+def test_installed_metadata_uses_specify_powerpack_brand():
+    extension = (ASSETS / "extensions" / "powerpack-tools" / "extension.yml").read_text(encoding="utf-8")
+    preset = (PRESET / "preset.yml").read_text(encoding="utf-8")
+    assert 'name: "Specify PowerPack Tools"' in extension
+    assert 'name: "Specify PowerPack Core"' in preset
+    assert "ds1david/specify-powerpack" in extension
+    assert "ds1david/specify-powerpack" in preset
+    assert "ds1david/speckit-powerpack" not in extension
+    assert "ds1david/speckit-powerpack" not in preset
 
 
 def test_deep_review_protocol_and_validator_are_packaged():
@@ -111,7 +126,7 @@ def test_implement_review_contract_routes_browserless_project_github_gate():
     assert "browserless ChatGPT Project + GitHub review" in text
     assert "[$github](app://<connector-id>)" in text
     assert "codex_apps MCP" in text
-    assert "speckit-powerpack review run" in text
+    assert "specify-powerpack review run" in text
     assert "--pr <number-or-canonical-github-pr-url>" in text
     assert "local `HEAD == PR head SHA`" in text
     assert "Chrome, CDP, Playwright, Web2API" in text
