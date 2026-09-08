@@ -1,6 +1,6 @@
 # Implementation review
 
-`/speckit-implement-review` reviews and converges an implementation that already has an explicit same-SPEC `speckit-implement` predecessor. It must not perform the initial implementation just to satisfy its prerequisite.
+`/speckit-implement-review` is a **Specify PowerPack** workflow command that reviews and converges an implementation that already has an explicit same-SPEC `speckit-implement` predecessor. It must not perform the initial implementation just to satisfy its prerequisite.
 
 ## Workflow contract
 
@@ -19,7 +19,7 @@ All review findings are current-flow work. They cannot be converted into technic
 ## Readiness
 
 ```bash
-speckit-powerpack doctor . --strict-review
+specify-powerpack doctor . --strict-review
 ```
 
 The repository must be bound to a ChatGPT Project and the GitHub App/connector must be live for the Codex-authenticated account.
@@ -29,14 +29,14 @@ The repository must be bound to a ChatGPT Project and the GitHub App/connector m
 The provider never guesses a PR:
 
 ```bash
-speckit-powerpack review run --path . --pr <number-or-canonical-url>
+specify-powerpack review run --path . --pr <number-or-canonical-url>
 ```
 
 The local Git origin must be GitHub and must match the PR repository.
 
 ## Immutable manifest
 
-Each round starts with a fresh GitHub-tool manifest containing base/head/merge-base and complete changed files. PowerPack binds the active SPEC to that manifest and hashes the canonical snapshot.
+Each round starts with a fresh GitHub-tool manifest containing base/head/merge-base and complete changed files. Specify PowerPack binds the active SPEC to that manifest and hashes the canonical snapshot.
 
 If local `HEAD != PR head SHA`, the review stops. Any implementation change therefore invalidates previous approval automatically because the next run produces a different head/snapshot.
 
@@ -105,7 +105,7 @@ The review must return:
 }
 ```
 
-PowerPack verifies that the literal excerpt actually occurs in the serialized context and is not merely the Project name.
+Specify PowerPack verifies that the literal excerpt actually occurs in the serialized context and is not merely the Project name.
 
 ## Output
 
@@ -122,7 +122,7 @@ The CLI prints a machine-readable completion summary including verdict, snapshot
 Use:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr <number> \
   --previous <previous-review.json>
