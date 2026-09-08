@@ -40,8 +40,9 @@ def test_incompatible_spec_kit_blocks_without_bootstrap(monkeypatch):
     try:
         cli.ensure_specify(bootstrap=False)
     except cli.PowerPackError as exc:
-        assert "--bootstrap-speckit" in str(exc)
-        assert ">= 1.0.0" in str(exc)
+        message = str(exc)
+        assert "0.14.3" in message
+        assert ">= 1.0.0" in message
     else:
         raise AssertionError("incompatible Spec Kit should block")
 
