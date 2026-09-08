@@ -85,6 +85,8 @@ def test_smoke_is_browserless_codex_apps_only() -> None:
     assert '"web2api_used": false' in folded
     assert '"direct_codex_responses_submit_used": false' in folded
     assert '"project_context_used": false' in folded
+    assert "speckit_powerpack.codex_apps_smoke_runtime" in text
+    assert "from smoke_chatgpt_github_codex_apps import" not in text
     assert "/backend-api/codex/responses" not in folded
     assert "/backend-api/f/conversation" not in folded
     assert "plugin:connector_" not in folded
@@ -187,6 +189,22 @@ def test_run_passes_only_with_structural_github_tool_result_and_consistent_list(
     assert report["repositories"] == ["ds1david/repo-a", "ds1david/repo-b"]
     assert report["evidence"]["no_local_shell_fallback"] is True
     assert report["evidence"]["no_web_search_fallback"] is True
+
+    timing = report["timing"]
+    assert timing["total_seconds"] >= 0
+    assert timing["measured_steps_seconds"] >= 0
+    assert [step["name"] for step in timing["steps"]] == [
+        "validate_working_directory",
+        "initialize_backend_client",
+        "github_chat_preflight",
+        "build_prompt",
+        "codex_exec",
+        "parse_codex_jsonl",
+        "parse_repository_listing",
+        "evaluate_contract",
+    ]
+    assert all(step["elapsed_seconds"] >= 0 for step in timing["steps"])
+    assert all(step["status"] == "ok" for step in timing["steps"])
 
 
 def test_run_fails_when_final_total_does_not_match(monkeypatch, tmp_path: Path) -> None:
