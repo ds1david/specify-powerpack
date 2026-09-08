@@ -51,6 +51,6 @@ speckit-powerpack review setup \
   --project '<project-id-or-unique-name-or-url>'
 ```
 
-The supported reviewer transport is browserless Codex Apps MCP. Chrome, Chromium, CDP, Playwright, Web2API, copied cookies and browser profiles are not readiness requirements.
+The supported reviewer transport is browserless Codex Apps MCP. No browser-automation component is part of review readiness.
 
 No password, MFA code, bearer token, raw cookie or connector secret may be written into version-controlled project state.
