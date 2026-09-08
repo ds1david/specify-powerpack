@@ -38,6 +38,40 @@ A PASS requires all of the following:
 
 This self-consistency contract proves that the connector was used and that the assistant returned a complete list *according to the selected connector's own enumeration*. It does not independently enumerate the GitHub account through a second transport, so it deliberately does not claim external completeness beyond the connector's accessible scope.
 
+## Timing diagnostics
+
+Every functional run logs the beginning and completion of each high-level step to stderr without contaminating the JSON emitted on stdout. Example:
+
+```text
+[timing] start github_chat_preflight
+[timing] done  github_chat_preflight: 1.234s status=ok
+[timing] start codex_exec
+[timing] done  codex_exec: 82.456s status=ok
+```
+
+The final JSON also contains:
+
+```json
+{
+  "timing": {
+    "total_seconds": 84.123,
+    "measured_steps_seconds": 84.101,
+    "steps": [
+      {"name": "validate_working_directory", "elapsed_seconds": 0.001, "status": "ok"},
+      {"name": "initialize_backend_client", "elapsed_seconds": 0.001, "status": "ok"},
+      {"name": "github_chat_preflight", "elapsed_seconds": 1.234, "status": "ok"},
+      {"name": "build_prompt", "elapsed_seconds": 0.001, "status": "ok"},
+      {"name": "codex_exec", "elapsed_seconds": 82.456, "status": "ok"},
+      {"name": "parse_codex_jsonl", "elapsed_seconds": 0.002, "status": "ok"},
+      {"name": "parse_repository_listing", "elapsed_seconds": 0.001, "status": "ok"},
+      {"name": "evaluate_contract", "elapsed_seconds": 0.001, "status": "ok"}
+    ]
+  }
+}
+```
+
+The main purpose is to isolate whether latency comes from account preflight, `codex exec`/Codex Apps/MCP execution, or local parsing/validation.
+
 ## Run
 
 ```bash
