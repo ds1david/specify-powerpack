@@ -6,7 +6,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 from typing import Any
 
 from .backend_compat import install_backend_compat
@@ -20,7 +19,6 @@ from .codex_apps_runtime import (
 from .github_connector_discovery import GitHubConnectorDiscoveryError, discover_github_connector
 from .review_context import (
     PullRequestTarget,
-    ReviewContextError,
     ReviewSnapshot,
     build_snapshot,
     current_head,
@@ -71,17 +69,20 @@ def load_project_binding(project: Path) -> ProjectBinding:
         raise BrowserlessReviewError(
             "Repository is not bound to a ChatGPT Project. Run 'speckit-powerpack review setup --path .' and select one."
         )
-    web = data.get("chatgpt_web") if isinstance(data.get("chatgpt_web"), dict) else {}
-    project_id = str(web.get("project_id") or "").strip()
-    project_name = str(web.get("project_name") or "").strip()
-    authorization = str(web.get("authorization") or "").strip()
+    binding = data.get("chatgpt_project") if isinstance(data.get("chatgpt_project"), dict) else {}
+    if not binding:
+        legacy = data.get("chatgpt_web") if isinstance(data.get("chatgpt_web"), dict) else {}
+        binding = legacy
+    project_id = str(binding.get("project_id") or "").strip()
+    project_name = str(binding.get("project_name") or "").strip()
+    authorization = str(binding.get("authorization") or "").strip()
     if not project_id.startswith("g-p-") or not project_name:
         raise BrowserlessReviewError("ChatGPT Project binding is incomplete.")
     if authorization != PROJECT_AUTHORIZATION:
         raise BrowserlessReviewError(
             f"ChatGPT Project binding authorization must be {PROJECT_AUTHORIZATION}; found {authorization or '<missing>'}."
         )
-    return ProjectBinding(project_id, project_name, str(web.get("project_url") or "").strip() or None)
+    return ProjectBinding(project_id, project_name, str(binding.get("project_url") or "").strip() or None)
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -117,7 +118,7 @@ You MUST use GitHub tools. Inspect the PR metadata and complete changed-file lis
 
 Do not run shell commands. Do not inspect the local checkout. Do not use web search. Do not mutate GitHub.
 
-Return JSON only with exactly these semantic fields (additional diagnostic fields are unnecessary):
+Return JSON only with exactly these semantic fields:
 {{
   "repository": "owner/repo",
   "pull_request_number": 1,
