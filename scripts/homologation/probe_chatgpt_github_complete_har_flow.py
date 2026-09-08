@@ -124,8 +124,10 @@ def _without_github_at(prompt: str) -> str:
     stripped = prompt.lstrip()
     if not stripped.casefold().startswith("@github"):
         raise ProbeError("complete HAR probe prompt must begin with @GitHub")
-    prefix_len = len(prompt) - len(stripped)
-    return (prompt[:prefix_len] + stripped[len("@GitHub"):].lstrip()).lstrip()
+    # The successful HAR context-change prepare removes only the '@' sigil.
+    # The literal token 'GitHub' remains in partial_query while connector
+    # identity moves into system_hints / ecosystemMention metadata.
+    return stripped[1:]
 
 
 def _connector_prepare_body(
