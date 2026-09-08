@@ -1,10 +1,10 @@
 ---
-description: "PowerPack implementation-quality convergence/review gate after an explicit speckit-implement."
+description: "Specify PowerPack implementation-quality convergence/review gate after an explicit speckit-implement."
 ---
 
-# SpecKit Implement Review
+# Spec Kit Implement Review
 
-This command reviews, converges and stabilizes an implementation **already produced by an explicit `speckit-implement`**.
+This Specify PowerPack command reviews, converges and stabilizes an implementation **already produced by an explicit `speckit-implement`**.
 
 Happy path:
 
@@ -51,13 +51,13 @@ It does **not** use Chrome, CDP, Playwright, Web2API, copied cookies or browser 
 Before convergence/review:
 
 ```bash
-speckit-powerpack doctor . --strict-review
-speckit-powerpack review status --path . --live
+specify-powerpack doctor . --strict-review
+specify-powerpack review status --path . --live
 ```
 
 Readiness requires:
 
-- official Spec Kit project and PowerPack runtime installed;
+- official Spec Kit project and Specify PowerPack runtime installed;
 - Codex CLI on `PATH` and `codex login` completed;
 - repository bound to one ChatGPT Project;
 - GitHub App/connector installed, OAuth active and repository access authorized;
@@ -112,7 +112,7 @@ This gate is mandatory after Sol is clean.
 The GitHub PR must already exist and must correspond to the current local HEAD. Run:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr <number-or-canonical-github-pr-url> \
   --prompt "Perform the complete Deep Review Evidence Protocol."
@@ -121,7 +121,7 @@ speckit-powerpack review run \
 Optional round-2+ continuity:
 
 ```bash
-speckit-powerpack review run \
+specify-powerpack review run \
   --path . \
   --pr <pr> \
   --previous <previous-review.json> \
@@ -130,7 +130,7 @@ speckit-powerpack review run \
 
 ### Phase A — immutable PR manifest
 
-PowerPack first asks the selected GitHub App to resolve:
+Specify PowerPack first asks the selected GitHub App to resolve:
 
 - exact repository and PR number;
 - base ref and full base SHA;
@@ -138,7 +138,7 @@ PowerPack first asks the selected GitHub App to resolve:
 - full head SHA;
 - complete changed-file list.
 
-PowerPack then:
+Specify PowerPack then:
 
 1. verifies local `HEAD == PR head SHA`;
 2. resolves exactly one active Spec Kit SPEC from the current branch;
@@ -148,7 +148,7 @@ A mismatch blocks review before a verdict can be emitted.
 
 ### Phase B — deep review
 
-PowerPack serializes:
+Specify PowerPack serializes:
 
 - bound ChatGPT Project metadata/instructions and recent Project conversations;
 - active Spec Kit artifacts (`spec.md`, plan/tasks/research/data-model/quickstart/contracts/checklists);
@@ -156,7 +156,7 @@ PowerPack serializes:
 - Deep Review Protocol 2.0;
 - previous findings when provided.
 
-Codex receives an explicit GitHub App mention and must inspect the exact PR/diff/files through `codex_apps` MCP. PowerPack rejects a run if it observes shell or web-search fallback, no GitHub tool call/result, a different snapshot, incomplete changed-file coverage, or missing literal Project-context evidence.
+Codex receives an explicit GitHub App mention and must inspect the exact PR/diff/files through `codex_apps` MCP. Specify PowerPack rejects a run if it observes shell or web-search fallback, no GitHub tool call/result, a different snapshot, incomplete changed-file coverage, or missing literal Project-context evidence.
 
 Reviewer output must be one schema `2.0` JSON object and cover all mandatory fronts:
 
@@ -169,7 +169,7 @@ Reviewer output must be one schema `2.0` JSON object and cover all mandatory fro
 - `DOCUMENTATION_AND_OPERABILITY`
 - `SECURITY_AND_SCOPE`
 
-PowerPack validates the artifact with:
+Specify PowerPack validates the artifact with:
 
 ```bash
 python .specify/powerpack/bin/review_protocol.py validate --input <review.json>
