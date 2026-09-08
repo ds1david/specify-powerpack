@@ -1,6 +1,6 @@
 # Codex-first installation
 
-For a new user, start with [`INSTALLATION.md`](INSTALLATION.md). This page records the Codex-specific path.
+For a new user, start with [`INSTALLATION.md`](INSTALLATION.md). This page records the Codex-specific path for **Specify PowerPack**.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ No browser automation dependency is part of the supported path.
 
 ## Install
 
-From a PowerPack clone:
+From a Specify PowerPack clone:
 
 ```bash
 ./install.sh --project /path/to/project --integration codex
@@ -35,7 +35,7 @@ On Windows:
 The equivalent installed-CLI command is:
 
 ```bash
-speckit-powerpack init /path/to/project --integration codex
+specify-powerpack init /path/to/project --integration codex
 ```
 
 ## Authenticate and bind the Project
@@ -43,9 +43,9 @@ speckit-powerpack init /path/to/project --integration codex
 ```bash
 codex login
 cd /path/to/project
-speckit-powerpack review project discover
-speckit-powerpack review setup --path .
-speckit-powerpack doctor . --strict-review
+specify-powerpack review project discover
+specify-powerpack review setup --path .
+specify-powerpack doctor . --strict-review
 ```
 
 The repository binding stores only Project identity/policy. OAuth bearer material stays in the user Codex authentication store.
@@ -66,9 +66,11 @@ The browserless PR reviewer is an external `codex exec --ephemeral --sandbox rea
 ## First review
 
 ```bash
-speckit-powerpack review run --path . --pr <number>
+specify-powerpack review run --path . --pr <number>
 ```
 
 Review output is written beneath `.specify/powerpack/reviews/` unless `--output` is supplied.
+
+The old `speckit-powerpack` executable is a migration alias only; new instructions should use `specify-powerpack`.
 
 For architecture and review invariants see [`PROCESS_ARCHITECTURE.md`](PROCESS_ARCHITECTURE.md) and [`IMPLEMENT_REVIEW.md`](IMPLEMENT_REVIEW.md).
