@@ -1,33 +1,56 @@
 ---
-description: "Diagnose a SpecKit PowerPack installation and mandatory review readiness."
+description: "Diagnose a SpecKit PowerPack installation and browserless review readiness."
 ---
 
-Run:
+# SpecKit PowerPack Doctor
+
+Run normal installation diagnostics:
 
 ```bash
-speckit-powerpack doctor
+speckit-powerpack doctor .
 ```
 
-Treat the CLI result as authoritative. Validate at least:
+Treat the CLI result as authoritative. Normal diagnostics validate the installation floor, including:
 
-1. official Spec Kit exists and satisfies the PowerPack minimum version;
-2. `.specify/powerpack/bin/*` managed runtimes exist;
-3. the configured primary executor exists;
-4. Playwright is installed and the current platform has a completed Chromium install receipt;
-5. `.specify/powerpack/review.json` requires the Web gate;
-6. the current platform/profile has an explicit `playwright-consent` grant;
-7. the exact ChatGPT Project alias/URL/profile binding matches that grant;
-8. legacy login/project bindings without `playwright-consent` do not count as ready;
-9. no password, MFA code, raw cookie or browser authentication material is stored in version-controlled project state.
+1. official Spec Kit CLI is available;
+2. the repository is a Spec Kit project (`.specify/` exists);
+3. PowerPack managed runtime is materialized;
+4. the configured primary executor is available;
+5. Codex CLI/auth and Project binding state are reported separately from hard installation failures.
 
-If Web authorization is missing, direct the user to the single explicit setup flow:
+For the mandatory browserless PR-review readiness gate run:
 
 ```bash
-speckit-powerpack review authorize \
-  --profile <profile> \
-  --project <alias> \
-  --url 'https://chatgpt.com/g/g-p-.../project' \
-  --path .
+speckit-powerpack doctor . --strict-review
 ```
 
-The PowerPack Playwright profile must remain separate from the user's default Windows Edge/Chrome profile.
+Strict review additionally requires:
+
+- Codex CLI on `PATH`;
+- valid Codex account authentication (`codex login`);
+- repository bound to one ChatGPT Project with `authorization = codex-backend-api`;
+- a live GitHub App/connector discovered for the authenticated account.
+
+Inspect detailed live state with:
+
+```bash
+speckit-powerpack review status --path . --live
+```
+
+If no Project is bound, configure it with:
+
+```bash
+speckit-powerpack review setup --path .
+```
+
+or select explicitly:
+
+```bash
+speckit-powerpack review setup \
+  --path . \
+  --project '<project-id-or-unique-name-or-url>'
+```
+
+The supported reviewer transport is browserless Codex Apps MCP. Chrome, Chromium, CDP, Playwright, Web2API, copied cookies and browser profiles are not readiness requirements.
+
+No password, MFA code, bearer token, raw cookie or connector secret may be written into version-controlled project state.
