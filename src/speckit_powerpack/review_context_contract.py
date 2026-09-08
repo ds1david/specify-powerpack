@@ -11,6 +11,9 @@ import subprocess
 from urllib.parse import urlparse
 
 
+GITHUB_PLUGIN_MENTION = "@github"
+
+
 @dataclass(frozen=True)
 class LocalReviewContext:
     branch: str
@@ -180,21 +183,25 @@ def web_context_prompt(
 ) -> str:
     if not github_plugin_authorized:
         raise ReviewContextError(
-            "Web code review requires the ChatGPT/GitHub plugin to have access to the repository. Grant the permission in ChatGPT first, then rerun with --github-plugin-authorized."
+            "Web code review requires the GitHub app/plugin to be installed and connected in ChatGPT Web or Desktop, with this repository authorized. Configure that first, then rerun with --github-plugin-authorized."
         )
     context = resolve_web_review_context(project, pull_request)
-    return f"""POWERPACK REVIEW CONTEXT — WEB PR MODE (authoritative)
+    return f"""{GITHUB_PLUGIN_MENTION}
+POWERPACK REVIEW CONTEXT — WEB PR MODE (authoritative)
 review_mode: web-pull-request
 repository: {context.repository}
 pull_request_number: {context.pull_request_number}
 pull_request_url: {context.pull_request_url}
 github_plugin_authorization: USER_CONFIRMED
+github_plugin_invocation: {GITHUB_PLUGIN_MENTION}
 
-Use the ChatGPT/GitHub plugin or connector to open and inspect exactly this pull request.
+The GitHub app/plugin must already be installed and connected in ChatGPT Web or Desktop for the authenticated account, with access to this repository. The leading {GITHUB_PLUGIN_MENTION} mention is intentional and required by the currently homologated Web flow to activate GitHub repository access.
+
+Use the GitHub plugin/connector to open and inspect exactly this pull request.
 The pull request parameter is authoritative: do not substitute another PR and do not perform a generic repository review.
 Inspect the PR base/head identity, changed files and relevant SPEC evidence before producing a verdict.
-If this session exposes no GitHub plugin/connector/tool at all, stop with BLOCKED_CAPABILITY and state that the current Web transport did not provide the required GitHub capability.
-If a GitHub plugin/connector/tool is available but cannot access this exact repository or pull request, stop with BLOCKED_CONFIGURATION and state that GitHub access must be granted or repaired.
+If this session exposes no GitHub plugin/connector/tool after the {GITHUB_PLUGIN_MENTION} invocation, stop with BLOCKED_CAPABILITY and state that the current Web transport did not provide the required GitHub capability.
+If a GitHub plugin/connector/tool is available but cannot access this exact repository or pull request, stop with BLOCKED_CONFIGURATION and state that GitHub app installation, connection or repository authorization must be granted or repaired in ChatGPT Web/Desktop and GitHub.
 Do not infer approval from Project memory, PR description, prior reviews, or green CI alone."""
 
 
@@ -209,9 +216,10 @@ def _blocked_review_status(text: str) -> str | None:
 def install_review_context_contract(provider_cli) -> None:
     """Install provider-specific code-review context rules without changing transport.
 
-    Web/ChatGPT Project reviews require an explicit PR and a user-confirmed
-    ChatGPT/GitHub plugin permission grant. Local Codex reviews derive their
-    context from the current Git branch and its current Spec Kit SPEC.
+    Web/ChatGPT Project reviews require an explicit PR, an installed/connected
+    GitHub app/plugin with repository access, a user-confirmed permission grant,
+    and an explicit @github invocation. Local Codex reviews derive their context
+    from the current Git branch and its current Spec Kit SPEC.
     """
 
     original_prepare_parser = provider_cli._prepare_parser
@@ -278,7 +286,7 @@ def install_review_context_contract(provider_cli) -> None:
             "--github-plugin-authorized",
             action="store_true",
             help=(
-                "Required attestation for Web review that the ChatGPT/GitHub plugin has been granted access to this repository"
+                "Required attestation that the GitHub app/plugin is installed and connected in ChatGPT Web/Desktop and authorized for this repository; Web prompts invoke @github automatically"
             ),
         )
         run.set_defaults(func=cmd_review_run)
