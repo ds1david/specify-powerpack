@@ -1,4 +1,4 @@
-# Feature Specification: Native Plugin Setup and Review Routing
+# Feature Specification: Native PowerPack Bundle, Setup and Review Routing
 
 **Feature Branch**: `002-plugin-setup-routing`
 
@@ -6,581 +6,694 @@
 
 **Status**: Draft
 
-**Input**: User description: "Migrate Specify PowerPack toward native Spec Kit extension installation and define first-install setup, reconfiguration, automatic integration/capability detection, local/cross-agent/Codex/GPT Web review routing, compatible ChatGPT Project binding, and configurable automatic review rounds."
+**Input**: User description: "Migrate Specify PowerPack to native Spec Kit primitives; define installation, setup, reconfiguration, review routing, companion presets for safe customization of upstream skills, persistent cross-session hook state, and local/cross-agent/GPT Web review configuration."
 
 ## Overview
 
 Evolve Specify PowerPack from a bootstrap-oriented companion CLI into a Spec Kit-native
-extension whose installation lifecycle is owned by `specify`, while preserving
-`implement-review` as the single functional PowerPack capability established by SPEC-001.
+composition whose lifecycle is owned by `specify`.
 
-The extension must provide a deterministic setup and reconfiguration flow that discovers the
-Spec Kit project's active/default AI integration, all installed integrations, relevant local
-CLI/authentication capabilities, and the review routes that are actually executable in the
-current environment. The user selects an explicit review strategy and a maximum automatic
-review-round budget; PowerPack persists only a fully validated configuration and never
-silently changes reviewer or evidence backend at runtime.
-
-The target installation relationship is:
+PowerPack SHALL use three distinct Spec Kit primitives for three distinct responsibilities:
 
 ```text
-Specify
-  -> installs/manages PowerPack extension
-       -> administrative setup/reconfiguration
-       -> implement-review
+PowerPack Bundle
+    |
+    +-- PowerPack Extension
+    |      -> runtime
+    |      -> configuration
+    |      -> administrative commands
+    |      -> PowerPack-owned functional commands
+    |      -> hooks
+    |      -> persistent PowerPack state
+    |
+    +-- PowerPack Preset(s)
+           -> compose/wrap/append/override upstream Spec Kit commands only when required
+           -> adapt upstream workflow skills without copying their lifecycle into PowerPack
 ```
 
-PowerPack must no longer conceptually own installation or upgrade of Spec Kit itself.
+The **extension is the runtime core**. Presets are a deliberately narrow customization layer,
+not an alternative runtime and not a return to the legacy monolithic `powerpack-core` preset.
+The **bundle is the preferred distribution/install unit** when the supported Spec Kit version
+provides the native bundle lifecycle, because bundles compose extensions and presets through
+their own native managers.
+
+PowerPack MUST NOT install, replace, downgrade, or upgrade the user's Spec Kit CLI as part of
+normal operation.
+
+The setup/reconfiguration engine discovers the current Spec Kit integration environment,
+validates executable review routes, lets the user explicitly select review policy, and commits
+only a complete validated candidate. Runtime execution never silently changes reviewer,
+backend, active integration, or evidence source.
+
+This specification also defines a reusable **persistent hook-state contract** for future
+PowerPack capabilities. Hook-relevant state MUST survive agent/terminal sessions through
+project-local JSON state. Environment variables MAY be projected from that JSON for the
+current process, but shell profiles such as `.bashrc`, `.zshrc`, PowerShell profiles, Windows
+user/global environment, or equivalent persistent host configuration MUST NOT be modified.
 
 ### Dependency on SPEC-001
 
-This specification depends on `001-single-skill-baseline` establishing `implement-review` as
-the only functional PowerPack capability. Administrative commands required to configure or
-diagnose the extension do not count as additional review/workflow capabilities and therefore
-do not violate the SPEC-001 functional baseline.
+SPEC-001 establishes `implement-review` as the only functional PowerPack capability at this
+baseline. This specification changes installation/lifecycle architecture but does not itself
+add another functional workflow capability.
 
-### Terminology
+Administrative setup commands, hook infrastructure, presets that customize upstream commands,
+and bundle metadata do not by themselves count as new functional PowerPack capabilities.
+Future specifications may intentionally expand the functional capability set.
 
-- **Workflow agent**: the Spec Kit `default_integration` currently driving the project.
-- **Installed integration**: an entry in Spec Kit `installed_integrations`; it may be
-  available as a secondary integration without being the workflow agent.
-- **Active-agent local review**: review performed by the same non-Codex AI CLI currently
-  driving the Spec Kit workflow, using the local `implement-review` contract.
-- **Codex same-session review**: when Codex is the Spec Kit workflow agent, local review is
-  performed in the current Codex workflow/session rather than launching a second reviewer
-  merely to simulate independence.
-- **Codex cross-agent review**: when another agent drives the Spec Kit workflow and Codex is
-  installed/ready as a secondary reviewer, PowerPack invokes Codex as the reviewer while the
-  original agent remains responsible for the workflow and fixes.
-- **Local backend**: review based on the local repository/SPEC context and the review flow
-  already implemented by `implement-review`.
-- **GPT Web / ChatGPT Project backend**: the existing browserless Codex-authenticated review
-  path that binds to a compatible ChatGPT Project, serializes Project context, and uses the
-  GitHub App/connector for immutable PR evidence. It does not mean browser automation.
-- **Review gate**: one configured review step in an ordered review plan. Multiple gates may
-  be composed; all final approvals must refer to the same immutable final snapshot.
-- **Candidate configuration**: a complete proposed configuration held in memory/temporary
-  state during setup. It is not active until fully validated and atomically committed.
+## Architectural Decisions
+
+### AD-001 — Native primitives, not a replacement framework
+
+PowerPack MUST use Spec Kit's supported extension, preset, hook, integration, and bundle
+mechanisms instead of maintaining an independent plugin framework.
+
+### AD-002 — Extension owns behavior; presets own composition
+
+The extension owns PowerPack runtime behavior and state. Companion presets are allowed only
+where PowerPack must compose an upstream Spec Kit command/skill and the extension API cannot
+provide the required command composition semantics.
+
+A preset MUST NOT become the authoritative home for PowerPack runtime, configuration, state,
+or business logic.
+
+### AD-003 — Bundle is the preferred install composition
+
+Where supported by the accepted Spec Kit compatibility range, PowerPack SHOULD ship a native
+bundle containing the PowerPack extension and required companion preset(s).
+
+Conceptually:
+
+```text
+specify bundle install <powerpack-bundle>
+```
+
+Development MAY install the primitives independently when that is more useful for debugging.
+The technical plan MUST define the exact development, release artifact, direct-install, and
+catalog paths for the supported Spec Kit range.
+
+### AD-004 — No permanent copy of upstream skills
+
+When PowerPack needs to customize an upstream skill such as `speckit.checklist`, it SHOULD use
+preset composition (`wrap`, `append`, `prepend`, or another native supported strategy as
+appropriate) rather than vendoring a permanent fork of the upstream command.
+
+A `replace` strategy that copies the complete upstream command is allowed only when no native
+composition strategy can satisfy an accepted requirement, and then it MUST have explicit
+compatibility/homologation coverage for upstream drift.
+
+### AD-005 — Persistent hook state is JSON; ENV is transient
+
+Persistent hook/workflow state MUST be represented by project-local JSON owned by PowerPack.
+Environment variables are a process-local projection only.
+
+```text
+persistent JSON state
+        |
+        +--> load + validate
+                 |
+                 +--> project required ENV for current process/hook
+```
+
+The inverse relationship is forbidden: ENV MUST NOT be treated as durable workflow authority.
+
+### AD-006 — No shell-profile mutation
+
+PowerPack MUST NOT persist hook ENV through `.bashrc`, `.bash_profile`, `.profile`, `.zshrc`,
+PowerShell profiles, Windows registry/user environment variables, or equivalent host-global
+configuration.
+
+## Terminology
+
+- **PowerPack Bundle**: native Spec Kit bundle used to distribute/install the set of PowerPack
+  primitives required by a release.
+- **PowerPack Extension**: primary runtime/configuration component, target id `powerpack`.
+- **PowerPack Companion Preset**: minimal native preset used only to compose/customize upstream
+  Spec Kit commands where extension commands/hooks are insufficient.
+- **Workflow agent**: Spec Kit `default_integration` currently driving the project.
+- **Installed integration**: integration recorded by Spec Kit in `installed_integrations`.
+- **Active-agent local review**: review executed through the current non-Codex workflow agent.
+- **Codex same-session review**: Codex review performed in the active Codex session when Codex
+  is the workflow agent.
+- **Codex cross-agent review**: Codex used as reviewer while another installed/default agent
+  remains responsible for the workflow and fixes.
+- **Local backend**: local repository/SPEC evidence and the local `implement-review` contract.
+- **GPT Web / ChatGPT Project backend**: existing browserless Codex-authenticated ChatGPT
+  Project + GitHub connector evidence path; it is not browser automation.
+- **Candidate configuration**: proposed complete configuration that is not active until fully
+  validated and atomically committed.
+- **Persistent Hook State**: JSON state that records hook-relevant workflow facts across
+  sessions.
+- **ENV Projection**: temporary environment variables reconstructed from validated persistent
+  state for one hook/child process.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Install PowerPack as a native Spec Kit extension (Priority: P1)
+### User Story 1 — Install PowerPack through native Spec Kit composition (Priority: P1)
 
-A user with an initialized Spec Kit project installs PowerPack through the native extension
-manager. PowerPack is registered as an ordinary extension, its managed files are owned by
-Spec Kit, and the project is left in a safe `PENDING` setup state until the user intentionally
-configures review routing.
+A user installs PowerPack using the native Spec Kit distribution path. The PowerPack extension
+and any companion presets required by that release are installed through their native Spec
+Kit managers, preferably as one PowerPack bundle.
 
-**Why this priority**: Native installation is the architectural boundary that allows
-PowerPack to evolve with Spec Kit instead of wrapping and managing Spec Kit itself.
+**Why this priority**: PowerPack must evolve with Spec Kit rather than wrap and own Spec Kit.
 
-**Independent Test**: Install a release or development copy using `specify extension add`,
-inspect `specify extension list/info`, verify PowerPack is registered, verify no PowerPack
-preset/bootstrap is required for `implement-review`, and verify setup state is pending rather
-than partially guessed.
+**Independent Test**: Install the release bundle into a clean compatible project and verify
+bundle provenance, extension registration, companion-preset registration, command exposure,
+and absence of any PowerPack-driven Spec Kit bootstrap/upgrade.
 
 **Acceptance Scenarios**:
 
-1. **Given** an initialized compatible Spec Kit project, **When** PowerPack is installed by
-   the native extension manager, **Then** it appears as an enabled installed extension.
-2. **Given** a fresh PowerPack installation, **When** no setup has yet been completed,
-   **Then** `implement-review` refuses to execute a configured review route and reports that
-   PowerPack setup is required.
-3. **Given** PowerPack is installed, **When** its installation is inspected, **Then** normal
-   operation does not require PowerPack to install, replace, or upgrade the `specify` CLI.
-4. **Given** the SPEC-001 baseline, **When** the PowerPack extension is enumerated, **Then**
-   `implement-review` remains the only functional review/workflow capability; setup is
-   administrative lifecycle functionality.
+1. **Given** a compatible Spec Kit project, **When** the PowerPack bundle is installed,
+   **Then** the required extension and preset components are installed through Spec Kit's
+   native component managers.
+2. **Given** a fresh PowerPack install, **When** setup has not run, **Then** review routing is
+   `PENDING`; PowerPack does not guess a reviewer/backend.
+3. **Given** a successful install, **When** native Spec Kit list/info commands are used,
+   **Then** PowerPack components and provenance are discoverable.
+4. **Given** normal installation, **When** the resulting environment is inspected, **Then**
+   PowerPack has not installed/replaced/upgraded `specify`.
 
 ---
 
-### User Story 2 - Setup detects the real Spec Kit/AI environment (Priority: P1)
+### User Story 2 — Customize upstream skills without forking them (Priority: P1)
 
-A user runs PowerPack setup after installation. PowerPack reads Spec Kit integration state,
-detects the workflow agent, detects installed secondary integrations and actual CLI/auth
-readiness, and presents only review strategies that are executable or clearly identifies the
-explicit action needed to enable an additional strategy.
+A future PowerPack capability needs to add workflow behavior to an upstream Spec Kit skill.
+PowerPack installs/uses a companion preset that composes the upstream command while the
+PowerPack extension provides the reusable runtime and state implementation.
 
-**Why this priority**: Review routing must be based on authoritative capabilities, not on
-hard-coded assumptions, filesystem heuristics, or the user's memory of how the project was
-initialized.
+**Why this priority**: Future skills such as checklist convergence need upstream workflow
+integration while still surviving Spec Kit evolution.
 
-**Independent Test**: Exercise fixtures whose `.specify/integration.json` contains Codex as
-default, Claude as default with no Codex, and Claude as default with Codex installed. Stub CLI
-and authentication availability and assert the resulting capability graph and offered routes.
+**Independent Test**: Compose an upstream command through a PowerPack companion preset,
+upgrade/re-render the integration, and verify that upstream behavior remains present while the
+PowerPack augmentation remains isolated and removable.
 
 **Acceptance Scenarios**:
 
-1. **Given** `default_integration = codex`, **When** setup discovers capabilities, **Then**
-   Codex same-session local review is offered.
-2. **Given** `default_integration = claude` and Codex is not an installed/ready secondary
-   integration, **When** setup runs, **Then** active-agent local review is offered and Codex
-   cross-agent review is not presented as currently ready.
-3. **Given** `default_integration = claude`, Codex is installed as a secondary integration,
-   Codex CLI is available and authentication is valid, **When** setup runs, **Then** both
-   Claude local and Codex cross-agent review routes are available.
-4. **Given** Codex is installed in Spec Kit state but the Codex executable or authentication
-   is unavailable, **When** setup evaluates capabilities, **Then** the affected Codex route is
-   marked unavailable and cannot be committed as a valid strategy.
-5. **Given** a non-default Codex integration, **When** PowerPack performs cross-agent review,
-   **Then** the Spec Kit default integration remains unchanged; PowerPack does not silently
-   run `specify integration use codex`.
+1. **Given** an upstream command can be augmented by a native preset composition strategy,
+   **When** PowerPack customization is installed, **Then** PowerPack MUST use composition
+   rather than copy the complete upstream command.
+2. **Given** the preset invokes PowerPack logic, **When** its implementation is inspected,
+   **Then** substantive behavior resides in extension/runtime code or PowerPack-owned command
+   logic rather than duplicated inside the preset prompt.
+3. **Given** the preset is removed/disabled, **When** the integration is rescaffolded,
+   **Then** upstream Spec Kit command behavior remains available without PowerPack-specific
+   augmentation.
+4. **Given** native composition is insufficient and `replace` is proposed, **When** the change
+   is planned, **Then** explicit upstream-drift tests and a documented reason are required.
 
 ---
 
-### User Story 3 - Configure local, cross-agent, and GPT Web review plans (Priority: P1)
+### User Story 3 — Setup detects the real Spec Kit/AI environment (Priority: P1)
 
-A user chooses the desired review topology from routes supported by the detected environment.
-PowerPack can use the active agent for local review, Codex in the same session when Codex is
-active, Codex as a cross-agent reviewer when another agent is active, and GPT Web/ChatGPT
-Project as an additional Codex-backed evidence gate when all of its prerequisites are valid.
-
-**Why this priority**: This is the core user value of the setup: the same `implement-review`
-capability must adapt cleanly to Codex, Claude, and other Spec Kit workflows without hidden
-reviewer changes.
-
-**Independent Test**: Build the review plan from representative environments and execute a
-mock round. Assert the selected executor/backend pair is honored exactly and that invalid
-combinations fail before persistence/execution.
+A user runs PowerPack setup. PowerPack reads authoritative Spec Kit integration state,
+validates actual local CLI/auth capabilities, and exposes only executable review strategies or
+explicit actions required to make another strategy executable.
 
 **Acceptance Scenarios**:
 
-1. **Given** a non-Codex workflow agent, **When** the user selects active-agent local review,
-   **Then** the existing local `implement-review` semantics execute in that workflow agent.
-2. **Given** Codex is the workflow agent, **When** the user selects Codex local review,
-   **Then** review executes as Codex same-session review without unnecessarily spawning a
-   separate cross-agent reviewer.
-3. **Given** Claude is the workflow agent and Codex is ready as a secondary integration,
-   **When** the user selects Codex cross-agent local review, **Then** Codex reviews while
-   Claude remains the workflow/fix agent.
-4. **Given** a Codex-backed local or cross-agent route and GPT Web prerequisites are valid,
-   **When** the user adds GPT Web as a review gate, **Then** the ChatGPT Project/GitHub gate
-   may execute after earlier configured gates are clean.
-5. **Given** a non-Codex active-agent-only route with no Codex reviewer, **When** GPT Web is
-   requested, **Then** setup rejects the combination rather than silently introducing Codex.
+1. `default_integration = codex` exposes Codex same-session local review.
+2. Non-Codex default with no ready Codex exposes active-agent local review only.
+3. Non-Codex default plus installed/ready/authenticated Codex exposes Codex cross-agent review.
+4. Codex recorded but executable/auth unavailable does not count as a ready Codex reviewer.
+5. Cross-agent review MUST NOT silently change `default_integration`.
 
 ---
 
-### User Story 4 - GPT Web binding is mandatory and setup is atomic (Priority: P1)
+### User Story 4 — Configure local, cross-agent, and GPT Web review plans (Priority: P1)
 
-A user chooses a GPT Web review route. PowerPack requires selection and validation of a
-compatible ChatGPT Project and GitHub evidence path before any new configuration becomes
-active. If the user cancels, cannot bind a compatible Project, rejects confirmation, or any
-validation fails, no setup/reconfiguration modification is committed.
-
-**Why this priority**: A partially written GPT Web configuration is operationally dangerous:
-it can make reviews appear configured while evidence guarantees are absent.
-
-**Independent Test**: Start from both unconfigured and already configured projects; simulate
-cancellation/failure at every wizard stage; compare persisted configuration before and after
-byte-for-byte or semantically and assert it is unchanged.
+The user chooses an explicit review topology and evidence/backend strategy. Local active-agent,
+Codex same-session, Codex cross-agent, and Codex-backed GPT Web gates are composed only when
+the detected environment supports them.
 
 **Acceptance Scenarios**:
 
-1. **Given** GPT Web is selected, **When** no compatible ChatGPT Project is successfully
-   bound, **Then** GPT Web cannot become active.
-2. **Given** the user cancels Project selection, **When** setup exits, **Then** the persisted
-   configuration is exactly the same as immediately before setup began.
-3. **Given** an existing valid configuration, **When** GPT Web reconfiguration fails during
-   Project/GitHub validation, **Then** the previous valid configuration remains active and
-   unchanged.
-4. **Given** first-time setup with only the installation-created `PENDING` defaults, **When**
-   setup is aborted, **Then** those defaults remain unchanged and no candidate selections are
-   persisted.
-5. **Given** a selected Project, **When** Project access, context readability, GitHub
-   connector readiness, repository authorization, or required evidence access cannot be
-   proven, **Then** the candidate is rejected as incompatible and is not committed.
+1. Active non-Codex integration can run the existing local review flow.
+2. Active Codex can run same-session local review without spawning another Codex merely to
+   simulate independence.
+3. Non-Codex + ready secondary Codex can run cross-agent review without changing workflow
+   ownership.
+4. GPT Web may be added only to a Codex-backed route.
+5. Invalid combinations fail during candidate validation and are never silently rewritten.
 
 ---
 
-### User Story 5 - Configure automatic sequential review rounds (Priority: P1)
+### User Story 5 — GPT Web requires a compatible bound Project (Priority: P1)
 
-During setup the user selects a maximum number of automatic review rounds. `implement-review`
-executes configured gates sequentially, carries previous findings forward, fixes authorized
-findings through the existing flow, creates a fresh snapshot after changes, and stops early
-as soon as all required gates approve the same snapshot.
-
-**Why this priority**: Automated rounds are useful only if they preserve evidence continuity,
-terminate when clean, and never transform budget exhaustion into approval.
-
-**Independent Test**: Run deterministic fake reviewers across budgets of 1, 3, and 5 rounds;
-assert early completion, previous-finding accounting, snapshot invalidation after fixes, and
-`BLOCKED_BUDGET` on unresolved findings at the limit.
+When GPT Web is selected, PowerPack requires explicit binding to a compatible ChatGPT Project
+and validates GitHub connector/repository evidence before configuration becomes active.
 
 **Acceptance Scenarios**:
 
-1. **Given** `max_rounds = 5`, **When** all configured gates approve in round 3, **Then**
-   rounds 4 and 5 are not executed.
-2. **Given** findings in round N, **When** round N+1 begins after fixes, **Then** every prior
-   finding is explicitly revalidated according to the existing review protocol.
-3. **Given** code changes after a finding, **When** review resumes, **Then** approvals tied to
-   the previous immutable snapshot are invalid and all required final gates approve the new
-   final snapshot.
-4. **Given** the configured round budget is exhausted with unresolved findings or an
-   unapproved mandatory gate, **When** the flow terminates, **Then** it returns
-   `BLOCKED_BUDGET`, never `APPROVED`.
+1. No valid ChatGPT Project binding means GPT Web cannot become `READY`.
+2. Project selection cancellation causes zero setup/reconfiguration modifications.
+3. Project/context/GitHub/repository validation failure causes zero candidate commit.
+4. A previous valid configuration survives failed reconfiguration unchanged.
+5. Credentials/tokens/cookies are never persisted in PowerPack project configuration.
 
 ---
 
-### User Story 6 - Reconfigure PowerPack at any time (Priority: P2)
+### User Story 6 — Setup is transactional and re-runnable (Priority: P1)
 
-A user can rerun setup whenever the environment or review policy changes. Setup shows the
-current configuration, rediscovers the current Spec Kit/CLI capabilities, allows selective
-changes, validates the complete resulting candidate, and atomically replaces the prior
-configuration only after success and confirmation.
-
-**Why this priority**: Spec Kit integrations, available CLIs, authentication, Project
-bindings, and review policies evolve during project life; configuration cannot be a one-time
-installation event.
-
-**Independent Test**: Start with a valid Claude+Codex-cross configuration, reconfigure only
-`max_rounds`, then reconfigure to GPT Web, then remove Codex from the environment and verify
-runtime drift detection blocks rather than silently falls back.
+Setup can be executed at installation time or any later time. It always builds a candidate,
+validates it completely, and atomically replaces the prior configuration only after success.
 
 **Acceptance Scenarios**:
 
-1. **Given** PowerPack is already `READY`, **When** setup is executed again, **Then** it
-   behaves as reconfiguration rather than reporting "already configured".
-2. **Given** only `max_rounds` is changed, **When** the complete candidate remains valid,
-   **Then** all unspecified valid settings are preserved.
-3. **Given** the user aborts reconfiguration, **When** the command exits, **Then** the prior
-   configuration is preserved exactly.
-4. **Given** the environment changed after configuration, **When** `implement-review` starts,
-   **Then** PowerPack rediscovers sufficient capabilities and blocks stale/invalid routing
-   with `BLOCKED_CONFIGURATION` instead of changing reviewer/backend automatically.
+1. Running setup against `READY` enters reconfiguration semantics.
+2. Selective changes preserve unspecified values only when the complete resulting candidate
+   is still valid.
+3. Abort/reject/failure preserves the prior configuration exactly.
+4. Runtime environment drift blocks with `BLOCKED_CONFIGURATION`; no silent fallback occurs.
+5. Reset is a distinct explicit operation, not an implicit consequence of reconfiguration.
 
 ---
 
-### User Story 7 - Run the same setup engine from an AI command or shell (Priority: P2)
+### User Story 7 — Setup works from AI skill and shell (Priority: P2)
 
-A user can configure PowerPack interactively from the installed AI integration using the
-PowerPack setup command, or from a normal shell using the extension's Python setup entrypoint.
-Both surfaces support parameters/non-interactive automation and invoke the same underlying
-setup engine and validation rules.
-
-**Why this priority**: Interactive agent workflows and repeatable CI/homologation need the
-same semantics. Two separate setup implementations would drift immediately.
-
-**Independent Test**: Feed equivalent arguments through both adapters and assert identical
-candidate configuration, validation result, exit semantics, and persisted output.
+A user can run setup through the active AI integration or from a shell. Both adapters invoke
+one setup engine.
 
 **Acceptance Scenarios**:
 
-1. **Given** an active AI CLI, **When** the user invokes the extension command with no
-   arguments, **Then** it starts the interactive setup flow.
-2. **Given** an active AI CLI, **When** setup parameters are supplied through `$ARGUMENTS`,
-   **Then** they are parsed as explicit setup intent and validated against discovered
-   capabilities.
-3. **Given** a shell, **When** the user invokes the installed extension Python setup script
-   with complete parameters, **Then** setup can run non-interactively without a global
-   `specify-powerpack` CLI dependency.
-4. **Given** incomplete parameters and an interactive TTY, **When** the shell entrypoint is
-   used, **Then** missing choices are collected by the same wizard semantics.
-5. **Given** equivalent requested settings, **When** the AI command and shell entrypoint run
-   separately against equivalent environments, **Then** they produce equivalent persisted
-   configuration.
+1. `speckit.powerpack.setup` supports interactive invocation.
+2. Agent command arguments are accepted where the integration provides an argument channel.
+3. A portable extension-owned Python entrypoint supports shell/non-interactive operation.
+4. Equivalent arguments through agent and shell produce equivalent validated configuration.
 
-### Edge Cases
+---
 
-- `default_integration` is missing or `.specify/integration.json` is unreadable: setup fails
-  closed and does not guess the workflow agent from `.claude`, `.agents`, or other folders.
-- `installed_integrations` says Codex is installed but the binary is absent: Codex routes are
-  unavailable until actual CLI readiness is restored.
-- Codex CLI exists but authentication is expired/missing: local cross-agent capability that
-  requires authenticated Codex is unavailable; GPT Web is always unavailable.
-- A user asks setup to install Codex as a secondary Spec Kit integration: PowerPack may show
-  the exact `specify integration install codex` action and may offer to execute it only after
-  explicit confirmation; it must never change Spec Kit integrations silently.
-- Codex is a non-default integration: Spec Kit need not register the PowerPack extension
-  command into Codex for cross-agent review; the active/default agent invokes the PowerPack
-  runtime, which uses Codex CLI as a secondary reviewer.
-- The default integration changes after setup: runtime rediscovery decides whether the
-  configured route is still valid; no silent fallback occurs.
-- GPT Web Project discovery returns zero, multiple ambiguous matches, inaccessible Projects,
-  or a Project without usable GitHub evidence: no GPT Web candidate is committed.
-- Setup is interrupted after user selections but before final commit: persistent
-  configuration remains unchanged.
-- Atomic rename/write fails: the previous configuration remains recoverable/active and setup
-  reports failure.
-- `max_rounds` is zero, negative, non-numeric, or above the supported safety limit: candidate
-  validation fails before commit.
-- A gate approves, a later gate finds a defect, and fixes change HEAD: all approvals for the
-  previous snapshot are invalidated and the new round restarts the required final gate set.
-- Extension update changes config schema: migration must produce a complete validated
-  candidate and preserve the prior config if migration cannot complete safely.
+### User Story 8 — Configure bounded automatic review rounds (Priority: P1)
+
+Setup stores a maximum automatic round budget. Review stops early when all required gates
+approve the same immutable snapshot and never treats budget exhaustion as approval.
+
+**Acceptance Scenarios**:
+
+1. Default `max_rounds` is 5 unless a later accepted specification changes it.
+2. Approval before the budget is exhausted stops further rounds.
+3. Findings are carried forward and accounted for in subsequent rounds.
+4. Any fix that changes the snapshot invalidates prior approval for that snapshot.
+5. Unresolved state at the limit returns `BLOCKED_BUDGET` or a more specific blocking state.
+
+---
+
+### User Story 9 — Persist hook state across sessions without shell profiles (Priority: P1)
+
+A PowerPack hook derives workflow facts that later hooks or later sessions need. PowerPack
+persists those facts in a project-local JSON state file. The current hook/process may project
+selected values into environment variables, but no persistent shell/user environment is
+modified.
+
+This contract is intentionally generic so future capabilities such as checklist convergence
+can persist facts such as pending gaps, ambiguities, conflicts, or clarification requirements
+without inventing their own persistence mechanism.
+
+**Independent Test**: Produce hook state in one agent session, terminate that session, start a
+new session (including a different supported agent), load the same checkout, execute a
+PowerPack hook, and verify that validated JSON state is recovered and the same effective hook
+facts are reconstructed.
+
+**Acceptance Scenarios**:
+
+1. **Given** a workflow state is produced after an upstream command, **When** PowerPack needs
+   the state later, **Then** it is loaded from JSON rather than a shell profile.
+2. **Given** a new terminal/AI session, **When** the relevant PowerPack hook runs, **Then** it
+   can recover the state from the same project checkout.
+3. **Given** a different supported AI integration in a later session, **When** it loads the
+   project, **Then** hook state semantics remain independent of the agent that produced them.
+4. **Given** persisted state no longer matches the referenced artifacts, **When** a hook loads
+   it, **Then** it is marked/recomputed as stale before consequential action.
+5. **Given** ENV values are needed by a child hook/runtime process, **When** the hook executes,
+   **Then** they are reconstructed from validated JSON only for that process/session.
+
+## Persistent Hook-State Model
+
+### Source of truth
+
+The source of truth is a PowerPack-owned JSON artifact under mutable project state, not inside
+extension-managed source files.
+
+The exact final path is resolved by the technical plan. A conceptual layout is:
+
+```text
+.specify/powerpack/state/
+    hooks/
+        <workflow-or-feature-key>.json
+```
+
+A future capability MAY use a more specific file such as:
+
+```text
+.specify/powerpack/state/checklist-state.json
+```
+
+provided it conforms to the common state contract.
+
+### Minimum envelope
+
+Persistent hook state SHOULD contain at minimum:
+
+```json
+{
+  "schema_version": 1,
+  "state_type": "<type>",
+  "spec": "<active-spec-id>",
+  "source_artifacts": [
+    {
+      "path": "<relative-path>",
+      "digest": "sha256:<digest>"
+    }
+  ],
+  "status": "<semantic-status>",
+  "facts": {},
+  "updated_at": "<timestamp>"
+}
+```
+
+Capability-specific specifications define the allowed `status` and `facts` values.
+
+### Hook execution flow
+
+The generic lifecycle is:
+
+```text
+upstream command completes
+        |
+        v
+PowerPack post hook executes
+        |
+        +--> discover relevant output/artifacts
+        +--> load prior JSON state when applicable
+        +--> validate artifact identity/digests
+        +--> analyze/refresh semantic state
+        +--> atomically persist JSON state
+        +--> project selected facts to current process ENV when useful
+        +--> decide/report next action
+```
+
+For later sessions:
+
+```text
+new AI/terminal session
+        |
+        v
+PowerPack hook/command
+        |
+        +--> load JSON
+        +--> validate freshness
+        +--> recompute if stale
+        +--> project runtime ENV
+        +--> continue
+```
+
+### ENV projection
+
+ENV names are implementation/API details defined by the capability that consumes them. They
+MUST be derived from validated persistent state and MUST NOT be the only copy of a workflow
+fact.
+
+Conceptually:
+
+```text
+ENV = projection(validated_persistent_state)
+```
+
+The following is explicitly forbidden:
+
+```text
+persistent_state = assumption_from_current_ENV
+```
+
+except for unrelated external environment configuration that is independently authoritative
+(e.g. an external tool's own documented authentication/config contract).
+
+### First post-hook rule
+
+A post hook that is responsible for discovering/persisting a workflow state MUST NOT require a
+pre-existing projected ENV in order to run. That would create a circular dependency.
+
+Therefore the initial state-producing hook executes unconditionally (subject to the normal
+hook enabled/disabled lifecycle), loads/analyzes its artifacts, writes/updates JSON, and only
+then projects runtime ENV or routes subsequent internal behavior.
+
+This rule is especially important for a future `after_checklist` integration: the hook cannot
+be conditioned on `POWERPACK_CHECKLIST_*` ENV before the first checklist state has been
+produced.
+
+## Edge Cases
+
+- Missing/unreadable `.specify/integration.json`: fail closed; do not infer the active agent
+  from `.claude`, `.agents`, or similar directories.
+- Codex registered but executable/auth missing: Codex-backed routes are unavailable.
+- User asks PowerPack to add Codex integration: show/offer the native Spec Kit action only
+  after explicit consent; never mutate integration state silently.
+- Default integration changes: rediscover and revalidate; do not rewrite review policy
+  automatically.
+- GPT Web Project ambiguous/inaccessible or GitHub evidence unavailable: no GPT Web commit.
+- Setup interrupted before commit: active configuration unchanged.
+- Bundle installation failure: PowerPack MUST NOT claim setup readiness. Because native bundle
+  rollback is best-effort, diagnostics MUST detect partial primitive state and provide an
+  actionable cleanup/retry path rather than assuming perfect rollback.
+- Companion preset removed while extension remains: PowerPack-owned commands continue where
+  independent; upstream augmentation is reported unavailable rather than silently recreated
+  outside the native preset lifecycle.
+- Preset drift after a Spec Kit upgrade: compatibility/homologation catches unsupported
+  command-composition behavior before expanding the declared supported version range.
+- Hook JSON missing: treat state as not evaluated and rebuild when source artifacts allow it.
+- Hook JSON malformed/schema-incompatible: fail closed for consequential actions and rebuild
+  only when deterministic.
+- Hook JSON digest differs from current source artifact: mark `STALE`, re-evaluate before use.
+- Multiple sessions write the same state concurrently: persistence MUST use atomic replacement
+  and SHOULD use conflict detection/serialization defined by the technical plan.
+- Repository is copied to another machine: project-local hook state remains usable only after
+  artifact digests and environment-dependent facts are revalidated.
 
 ## Requirements *(mandatory)*
 
-### Functional Requirements
+### Native distribution and ownership
 
-#### Native extension installation and ownership
+- **FR-001**: PowerPack MUST use native Spec Kit primitives for supported installation and
+  lifecycle management.
+- **FR-002**: The PowerPack extension SHALL be the authoritative runtime/config/state core.
+- **FR-003**: PowerPack MAY ship one or more companion presets when upstream command
+  composition/customization is required.
+- **FR-004**: Where native Spec Kit bundles are supported by the accepted compatibility range,
+  PowerPack SHOULD provide a bundle as the preferred release/install unit containing the
+  required extension and companion presets.
+- **FR-005**: PowerPack MUST NOT install/replace/downgrade/upgrade the Spec Kit CLI in normal
+  operation.
+- **FR-006**: Extension/preset/bundle manifests MUST declare explicit compatible Spec Kit
+  version constraints according to their native schemas.
+- **FR-007**: A fresh install MUST leave review setup `PENDING`; no review route is guessed.
+- **FR-008**: Because stable extension `on_install` execution is not assumed, installation
+  MUST NOT depend on an automatic interactive post-install wizard. Users are directed to
+  `speckit.powerpack.setup` when configuration is required.
 
-- **FR-001**: PowerPack MUST be installable as a native Spec Kit extension using the
-  officially supported extension lifecycle (`add`, `list/info`, `update`, `enable`,
-  `disable`, `remove`) and MUST declare an explicit supported `speckit_version` range in its
-  extension manifest.
-- **FR-002**: Normal PowerPack installation MUST NOT install, replace, downgrade, or upgrade
-  Spec Kit. The user/Spec Kit owns the `specify` CLI lifecycle.
-- **FR-003**: The native extension MUST expose `implement-review` under the extension
-  namespace (target command: `speckit.powerpack.implement-review`) and MUST NOT require a
-  PowerPack preset merely to provide this capability.
-- **FR-004**: The extension MUST expose an administrative setup command (target command:
-  `speckit.powerpack.setup`) without treating setup as an additional functional skill in the
-  SPEC-001 baseline.
-- **FR-005**: A fresh extension installation MUST materialize only safe defaults and a setup
-  state equivalent to `PENDING`; it MUST NOT guess or activate a reviewer/backend before
-  capability discovery and user selection.
-- **FR-006**: Because the current Spec Kit extension API does not provide a stable mandatory
-  post-install interactive `on_install` wizard contract, PowerPack MUST NOT depend on such a
-  hook. Installation documentation/output and `implement-review` readiness behavior MUST
-  direct an unconfigured user to `speckit.powerpack.setup`.
-- **FR-007**: Invoking `implement-review` while setup is not `READY` MUST fail closed with an
-  actionable setup requirement; it MUST NOT generate a default review route implicitly.
+### Preset customization contract
 
-#### Environment and capability discovery
+- **FR-009**: Companion presets MUST be narrowly scoped to upstream Spec Kit command
+  composition/customization and MUST NOT become the primary PowerPack runtime.
+- **FR-010**: PowerPack SHOULD prefer native non-destructive composition (`wrap`, `append`,
+  `prepend`, or equivalent supported semantics) over copying/replacing an upstream command.
+- **FR-011**: A full `replace` of an upstream command MUST require documented necessity and
+  explicit compatibility tests against every supported Spec Kit version boundary.
+- **FR-012**: Presets MUST delegate reusable logic/state handling to the PowerPack extension
+  runtime or PowerPack-owned commands rather than duplicate complex logic in prompt text.
+- **FR-013**: Removing/disabling a PowerPack companion preset MUST leave the upstream core
+  command available through normal Spec Kit behavior.
+- **FR-014**: The technical plan MUST define how companion presets are versioned relative to
+  the extension and bundle and how compatibility drift is homologated.
 
-- **FR-008**: PowerPack MUST use `.specify/integration.json` (or an equivalent stable Spec Kit
-  machine-readable interface when the supported version provides one) as the authority for
-  `default_integration`, `installed_integrations`, and relevant integration state. Agent
-  filesystem directories MUST NOT be the primary source of truth.
-- **FR-009**: Setup MUST detect the current workflow agent from `default_integration` and
-  MUST distinguish it from secondary installed integrations.
-- **FR-010**: Setup MUST validate real runtime capabilities separately from Spec Kit
-  registration. For Codex routes this includes, as applicable: Codex present in the relevant
-  installed-integration state, Codex CLI executable availability, and usable Codex
-  authentication.
-- **FR-011**: Setup MUST construct a capability model before presenting/accepting review
-  strategies. A user-supplied parameter expresses intent but MUST NOT bypass capability
-  validation.
-- **FR-012**: When a requested optional capability requires adding Codex as a secondary Spec
-  Kit integration, PowerPack MUST NOT perform that integration change silently. It MAY offer
-  the explicit action only with user confirmation; aborting/rejecting that action leaves the
-  pre-setup PowerPack configuration unchanged.
-- **FR-013**: PowerPack MUST NOT change `default_integration` merely to execute a cross-agent
-  Codex review.
+### Environment and capability discovery
 
-#### Review topology and backend model
+- **FR-015**: `.specify/integration.json` or an equivalent stable machine-readable Spec Kit
+  interface is authoritative for `default_integration` and `installed_integrations`.
+- **FR-016**: Agent-specific directories MUST NOT be the primary source of integration truth.
+- **FR-017**: Runtime executable/auth readiness MUST be validated independently from Spec Kit
+  registration.
+- **FR-018**: Setup MUST build a capability model before offering/accepting strategies.
+- **FR-019**: User parameters express intent but do not bypass capability validation.
+- **FR-020**: Optional integration changes require explicit user consent.
+- **FR-021**: Cross-agent review MUST NOT silently change `default_integration`.
 
-- **FR-014**: Review routing MUST model executor/topology separately from evidence backend;
-  the implementation MUST NOT collapse `local`, `cross-agent`, `Codex`, and `GPT Web` into a
-  single mutually exclusive enum whose combinations are implicit.
-- **FR-015**: When `default_integration != codex`, PowerPack MUST support active-agent local
-  review using the existing local `implement-review` flow, provided the active integration
-  can execute the command/runtime contract.
-- **FR-016**: When `default_integration == codex`, PowerPack MUST support Codex same-session
-  local review and MUST NOT spawn a second Codex process solely to simulate cross-agent
-  independence when same-session was selected.
-- **FR-017**: When `default_integration != codex` and Codex is a ready secondary reviewer,
-  PowerPack MUST support Codex cross-agent local review while leaving the workflow/fix agent
-  unchanged.
-- **FR-018**: PowerPack MAY support an ordered list of review gates. Earlier local/cross-agent
-  gates SHOULD run before the more expensive GPT Web/ChatGPT Project gate when both are
-  configured. All mandatory final gates MUST approve the exact same final immutable snapshot.
-- **FR-019**: PowerPack MUST NOT silently change the configured reviewer, executor topology,
-  gate order, or backend because one becomes unavailable. Runtime invalidation returns
-  `BLOCKED_CONFIGURATION` with an actionable reconfiguration path.
+### Review routing
 
-#### GPT Web / ChatGPT Project contract
+- **FR-022**: Executor/topology and evidence backend MUST be modeled as separate dimensions.
+- **FR-023**: Non-Codex workflow agents MUST support active-agent local review where the
+  integration can execute the local contract.
+- **FR-024**: Codex default MUST support same-session local review.
+- **FR-025**: Non-Codex default plus ready secondary Codex MUST support Codex cross-agent local
+  review.
+- **FR-026**: Ordered review gates MAY be configured; cheaper/local gates SHOULD precede GPT
+  Web when both are enabled.
+- **FR-027**: All required final gates MUST approve the same immutable final snapshot.
+- **FR-028**: Runtime capability loss MUST return `BLOCKED_CONFIGURATION`; no silent reviewer,
+  topology, backend, or gate-order fallback is allowed.
 
-- **FR-020**: GPT Web review MUST use the existing browserless ChatGPT Project + GitHub
-  evidence flow. This specification MUST NOT introduce Chrome, Playwright, CDP,
-  ChatGPT-Web2API, copied browser profiles, or copied web-session cookies as a fallback.
-- **FR-021**: GPT Web MUST be available only on a Codex-backed route: Codex same-session or
-  Codex cross-agent. A non-Codex active-agent route MUST NOT directly activate GPT Web unless
-  a future specification adds a separately validated provider.
-- **FR-022**: `backend == chatgpt-project` MUST imply a successfully validated compatible
-  ChatGPT Project binding. PowerPack MUST NOT persist an active GPT Web backend with a null,
-  missing, ambiguous, or incompatible Project.
-- **FR-023**: Before a ChatGPT Project binding can be committed, PowerPack MUST validate at
-  minimum: current Codex-authenticated account can access the Project; Project identity is
-  uniquely resolved; required Project context is readable; the GitHub App/connector is
-  ready; the target repository is authorized/accessibly resolvable; and the required review
-  evidence path can be obtained.
-- **FR-024**: If GPT Web is selected and Project discovery/binding is aborted or any
-  compatibility validation fails, setup/reconfiguration MUST commit no new configuration.
-- **FR-025**: Project metadata needed for deterministic rebinding MAY be persisted, but raw
-  Codex/ChatGPT tokens, cookies, OAuth secrets, or equivalent credentials MUST NOT be stored
-  in the project configuration.
+### GPT Web / ChatGPT Project
 
-#### Transactional setup and persistence
+- **FR-029**: GPT Web MUST reuse the browserless ChatGPT Project + GitHub evidence provider;
+  browser automation/cookie/profile fallbacks are prohibited.
+- **FR-030**: GPT Web MUST be Codex-backed unless a future accepted specification adds another
+  validated provider.
+- **FR-031**: `backend == chatgpt-project` implies a successfully validated compatible Project
+  binding.
+- **FR-032**: Binding validation MUST include Project access/identity/context plus GitHub
+  connector, repository access, and required evidence readiness.
+- **FR-033**: Cancelled/failed GPT Web binding MUST commit no candidate configuration.
+- **FR-034**: Secrets/tokens/cookies/OAuth credentials MUST NOT be persisted in PowerPack
+  project configuration.
 
-- **FR-026**: Setup and reconfiguration MUST be transactional: load current configuration,
-  construct a complete candidate, apply requested selections in candidate state, validate
-  the complete candidate, obtain final confirmation when interactive, and only then commit.
-- **FR-027**: Before final commit, setup MUST NOT progressively persist executor, backend,
-  Project binding, round budget, or other candidate fields.
-- **FR-028**: User cancellation, explicit abort, rejected confirmation, invalid parameter,
-  capability failure, Project/GitHub validation failure, or other setup error MUST preserve
-  the exact previously valid configuration. For first-time setup, the installation-created
-  `PENDING` defaults remain unchanged.
-- **FR-029**: Configuration persistence MUST use an atomic replacement strategy or equivalent
-  mechanism that prevents a partially written candidate from becoming the active config.
-- **FR-030**: Setup MUST distinguish `PENDING`, `READY`, and failure/blocked execution state;
-  transient setup failures MUST NOT overwrite a previously `READY` configuration with a
-  failed candidate.
-- **FR-031**: Environment-owned facts such as current `default_integration` and
-  `installed_integrations` MUST be rediscovered from Spec Kit rather than duplicated as
-  PowerPack authority. PowerPack persists the chosen review policy/route, not an independent
-  competing integration registry.
+### Transactional setup and reconfiguration
 
-#### Setup and reconfiguration interfaces
+- **FR-035**: Setup/reconfiguration MUST build a complete candidate in memory/temporary state,
+  validate it, obtain required confirmation, then atomically commit it.
+- **FR-036**: Candidate fields MUST NOT be progressively persisted before final commit.
+- **FR-037**: Abort/cancel/rejection/validation failure MUST preserve the previous active
+  configuration exactly.
+- **FR-038**: First-time failed/aborted setup leaves installation-created `PENDING` state.
+- **FR-039**: Configuration commit MUST use atomic replacement or an equivalent partial-write
+  safe mechanism.
+- **FR-040**: Reconfiguration MUST be available at any time.
+- **FR-041**: Reset/removal of configuration MUST be a distinct explicit action.
+- **FR-042**: Environment-owned integration facts MUST be rediscovered, not duplicated as
+  competing PowerPack authority.
 
-- **FR-032**: PowerPack MUST allow setup/reconfiguration at any time. Running the setup
-  command against an already configured project MUST enter reconfiguration semantics rather
-  than fail merely because configuration exists.
-- **FR-033**: The AI-agent command `speckit.powerpack.setup` MUST support interactive setup
-  and MUST consume command arguments (`$ARGUMENTS` or the integration-equivalent parameter
-  channel) for explicit/non-interactive configuration intent where the active integration
-  supports arguments.
-- **FR-034**: PowerPack MUST provide a shell/command-line setup entrypoint that does not
-  require the legacy global `specify-powerpack` CLI. For the first native-extension
-  implementation, the canonical portable entrypoint SHALL be the extension-owned Python
-  script, conceptually:
-  `python .specify/extensions/powerpack/scripts/python/setup.py [options]`.
-- **FR-035**: The AI command adapter and shell Python adapter MUST invoke the same setup
-  engine for discovery, candidate construction, validation, persistence, and result codes;
-  there MUST NOT be two independently implemented wizards.
-- **FR-036**: The shell entrypoint MUST support fully non-interactive configuration when all
-  required parameters are supplied and MUST support interactive prompting for missing choices
-  when a TTY is available.
-- **FR-037**: Reconfiguration SHOULD support selective changes (for example only
-  `max_rounds`) while retaining unspecified prior values only when the resulting complete
-  candidate remains valid in the newly discovered environment.
-- **FR-038**: Resetting/removing PowerPack configuration MUST be a distinct explicit action;
-  ordinary reconfiguration MUST NOT imply reset or deletion of existing valid bindings.
-- **FR-039**: Interactive reconfiguration MUST display the current effective PowerPack review
-  policy and the newly discovered capabilities before final confirmation.
+### Setup interfaces
 
-#### Automatic round budget and review execution
+- **FR-043**: `speckit.powerpack.setup` MUST support interactive setup and argument-driven
+  intent where the active integration supports arguments.
+- **FR-044**: A portable shell entrypoint MUST exist without requiring the legacy global
+  `specify-powerpack` CLI; the initial target is an extension-owned Python script.
+- **FR-045**: Agent and shell adapters MUST use one setup engine.
+- **FR-046**: Full parameters MUST enable non-interactive setup; TTY execution MAY prompt for
+  missing required choices.
+- **FR-047**: Interactive reconfiguration MUST show current effective policy and newly
+  discovered capabilities before commit.
 
-- **FR-040**: Setup MUST ask for/configure a **maximum automatic review-round budget**, not a
-  mandatory exact number of rounds. The product default SHALL be `5` unless a later accepted
-  specification changes it.
-- **FR-041**: `max_rounds` MUST be a positive bounded integer. The technical plan MUST define
-  the supported upper bound and validate it consistently across AI-command and shell setup
-  adapters.
-- **FR-042**: `implement-review` MUST stop early as soon as all configured mandatory gates
-  approve the same current immutable snapshot; unused budget MUST NOT trigger redundant
-  reviews.
-- **FR-043**: Every round after the first MUST account for findings from the prior round
-  according to the existing review protocol (for example resolved, still present,
-  superseded, or invalidated with evidence). Findings MUST NOT silently disappear from
-  continuity accounting.
-- **FR-044**: Any implementation/fix that changes the reviewed snapshot MUST invalidate
-  approvals tied to the prior snapshot and require the configured final gate set to evaluate
-  the fresh snapshot.
-- **FR-045**: Exhausting `max_rounds` with unresolved findings, blocked evidence, or an
-  unapproved mandatory gate MUST terminate as `BLOCKED_BUDGET` or the more specific blocking
-  state defined by the existing protocol; it MUST NOT be converted into approval.
-- **FR-046**: The local review path, whether active-agent or Codex same-session/cross-agent,
-  MUST preserve the existing `implement-review` convergence, quality-gate, finding repair,
-  and fresh-review semantics unless explicitly superseded by a later specification.
+### Automatic review rounds
 
-#### Drift, migration, update, and removal
+- **FR-048**: Setup MUST configure a maximum automatic review-round budget; default is 5.
+- **FR-049**: `max_rounds` MUST be a positive bounded integer; the plan defines the upper
+  bound.
+- **FR-050**: Review stops early when all mandatory gates approve the current common snapshot.
+- **FR-051**: Later rounds MUST explicitly account for earlier findings.
+- **FR-052**: Snapshot-changing fixes invalidate prior approvals for the old snapshot.
+- **FR-053**: Budget exhaustion with unresolved state MUST NOT produce approval.
+- **FR-054**: Existing local `implement-review` convergence, quality-gate, repair, and fresh
+  review semantics remain unless explicitly changed by a later specification.
 
-- **FR-047**: Before every `implement-review` execution, PowerPack MUST rediscover enough
-  environment/capability state to prove the configured route remains executable. Stale
-  configuration fails closed and recommends setup/reconfiguration.
-- **FR-048**: Changing the Spec Kit default integration MUST NOT automatically rewrite
-  PowerPack review policy. On the next execution/setup, PowerPack revalidates the configured
-  route against the new environment and either keeps it (if still valid) or blocks for
-  explicit reconfiguration.
-- **FR-049**: Migration from legacy PowerPack configuration MUST distinguish managed runtime,
-  mutable user configuration, ChatGPT Project binding metadata, and generated review
-  evidence. Migration MUST NOT silently destroy valid configuration or historical review
-  artifacts.
-- **FR-050**: An extension update that requires config-schema migration MUST apply the same
-  candidate/validate/atomic-commit rule. A failed migration MUST leave the previous
-  recoverable configuration intact and report an actionable incompatibility.
-- **FR-051**: Extension removal/update MUST treat generated review evidence separately from
-  extension-managed code. Removing or replacing managed extension files MUST NOT silently
-  delete historical review evidence unless the user explicitly requests data deletion.
+### Persistent hook-state contract
 
-### Key Entities *(include if feature involves data)*
+- **FR-055**: Durable hook/workflow facts MUST be persisted in PowerPack-owned project-local
+  JSON state, not persistent environment variables.
+- **FR-056**: PowerPack MUST NOT modify `.bashrc`, `.bash_profile`, `.profile`, `.zshrc`,
+  PowerShell profiles, Windows user/global environment, or equivalent host profiles to persist
+  hook state.
+- **FR-057**: Environment variables required by hooks MAY be projected only from validated
+  persistent JSON for the current process/child process/session.
+- **FR-058**: A state-producing post hook MUST NOT require those projected ENV values in order
+  to execute for the first time.
+- **FR-059**: The state-producing post hook MUST load relevant prior JSON when present,
+  validate source-artifact identity/freshness, derive current semantic state, and atomically
+  persist the refreshed JSON before exposing consequential state to later execution.
+- **FR-060**: Persistent hook state MUST carry schema version and sufficient artifact identity
+  (including digest or equivalent) to detect stale state.
+- **FR-061**: Stale hook state MUST be recomputed/revalidated before it can authorize/block a
+  consequential workflow transition.
+- **FR-062**: The same persisted hook state MUST be consumable across separate AI/terminal
+  sessions and across different supported active integrations working on the same checkout.
+- **FR-063**: Capability-specific specifications MUST define their own semantic statuses/facts
+  while reusing this common persistence/projection contract.
+- **FR-064**: Concurrent writes to one hook-state record MUST not expose partial JSON; the
+  technical plan MUST define atomic write and conflict/serialization behavior.
 
-- **PowerPack Setup State**: lifecycle state (`PENDING` or `READY`), configuration schema
-  version, and metadata needed to determine whether `implement-review` may start.
-- **Environment Capability Snapshot**: transient discovery result containing current Spec Kit
-  default integration, installed integrations, CLI availability, auth/readiness facts, and
-  supported route combinations. It is evidence for setup/runtime validation, not an
-  independent persistent integration registry.
-- **Review Policy**: user-selected ordered review gates, executor/topology choices, backend
-  choices, `max_rounds`, and early-stop behavior.
-- **Review Gate**: an ordered unit such as active-agent/local, Codex same-session/local,
-  Codex cross-agent/local, or Codex-backed ChatGPT Project/GitHub review.
-- **ChatGPT Project Binding**: non-secret stable identity metadata for the explicitly selected
-  compatible Project plus enough validation metadata to re-check readiness; credentials stay
-  in the Codex/auth provider store.
-- **Candidate Configuration**: temporary complete proposed setup state used to guarantee
-  transactional validation and no partial persistence.
-- **Review Round**: one attempt against an immutable snapshot, linked to prior findings and
-  the configured gate sequence.
+### Drift, migration, update and removal
 
-## Success Criteria *(mandatory)*
+- **FR-065**: Before `implement-review`, PowerPack MUST rediscover enough runtime capability
+  state to prove the configured route remains executable.
+- **FR-066**: Changing Spec Kit default integration MUST not automatically rewrite PowerPack
+  policy; it triggers later validation/reconfiguration as needed.
+- **FR-067**: Legacy migration MUST distinguish managed code, mutable config, persistent hook
+  state, Project binding metadata, and generated review evidence.
+- **FR-068**: Extension/preset/bundle update migrations MUST preserve the previous recoverable
+  config/state if migration cannot complete safely.
+- **FR-069**: Removal/update MUST NOT silently delete historical review evidence or other
+  mutable user/workflow state unless explicitly requested.
+- **FR-070**: PowerPack MUST homologate the complete bundle composition against supported Spec
+  Kit versions, including extension registration, preset composition, integration switching,
+  hook behavior, and state persistence.
 
-### Measurable Outcomes
+## Key Entities
 
-- **SC-001**: 100% of clean supported installations can be identified by `specify extension
-  list/info` as an installed PowerPack extension without requiring PowerPack to bootstrap the
-  Spec Kit CLI.
-- **SC-002**: In automated capability fixtures for Codex-default, non-Codex-default, and
-  non-Codex+secondary-Codex environments, setup offers exactly the valid configured review
-  route set and zero known-invalid selectable routes.
-- **SC-003**: Across cancellation/failure injection at every setup stage, persisted
-  configuration after the failed/aborted run equals the configuration before setup began in
-  100% of cases.
-- **SC-004**: GPT Web can never reach `READY` in automated tests without a validated compatible
-  ChatGPT Project and GitHub evidence path; all missing/incompatible binding cases fail before
-  commit.
-- **SC-005**: Equivalent settings submitted through the AI-agent setup command and shell
-  Python setup entrypoint produce semantically identical configuration and validation results
-  in 100% of cross-interface contract tests.
-- **SC-006**: A configured route whose required CLI/integration/auth capability disappears is
-  blocked on the next review attempt with zero silent fallback events in the contract suite.
-- **SC-007**: For `max_rounds = N`, automated review never executes more than N rounds, stops
-  immediately after all mandatory gates approve a common snapshot, and never reports approval
-  after budget exhaustion with unresolved findings.
-- **SC-008**: Cross-agent review leaves Spec Kit `default_integration` unchanged in all
-  supported cross-agent tests.
-- **SC-009**: Extension update/reconfiguration failure tests preserve the previous valid
-  configuration and historical review evidence with zero partial active configurations.
+- **PowerPack Bundle**: versioned install composition referencing the release's extension and
+  companion preset set.
+- **PowerPack Extension**: runtime/configuration/hooks/commands/state core.
+- **PowerPack Companion Preset**: narrow upstream-command composition adapter.
+- **PowerPack Setup State**: `PENDING`/`READY`, schema version, and setup metadata.
+- **Environment Capability Snapshot**: transient discovery of Spec Kit integrations, local
+  executables, authentication and supported routes.
+- **Review Policy**: ordered gates, executor/topology, backend, `max_rounds`, early-stop rules.
+- **ChatGPT Project Binding**: non-secret stable Project identity/validation metadata.
+- **Candidate Configuration**: temporary complete proposed setup state.
+- **Review Round**: one immutable-snapshot review attempt linked to prior findings.
+- **Persistent Hook State**: cross-session JSON facts plus artifact freshness metadata.
+- **ENV Projection**: ephemeral current-process representation derived from Persistent Hook
+  State.
+
+## Success Criteria
+
+- **SC-001**: Clean supported installation can install/discover PowerPack through native Spec
+  Kit component/bundle lifecycle without PowerPack bootstrapping Spec Kit.
+- **SC-002**: Removing PowerPack companion presets leaves upstream Spec Kit commands intact.
+- **SC-003**: No supported customization requires a permanent copied upstream skill unless an
+  explicitly documented/validated `replace` exception exists.
+- **SC-004**: Capability fixtures expose exactly valid review routes for Codex-default,
+  non-Codex-default, and non-Codex+secondary-Codex environments.
+- **SC-005**: Setup cancellation/failure injection preserves pre-run active configuration in
+  100% of tested stages.
+- **SC-006**: GPT Web never reaches `READY` without validated compatible Project + GitHub
+  evidence.
+- **SC-007**: Equivalent agent/shell setup inputs produce equivalent configuration.
+- **SC-008**: Runtime capability removal yields zero silent fallback events.
+- **SC-009**: Review never exceeds `max_rounds`, stops early on common approval, and never
+  reports approval after unresolved budget exhaustion.
+- **SC-010**: A hook-state fixture persisted in one session can be recovered in another
+  session and produce equivalent semantic state after freshness validation.
+- **SC-011**: Homologation detects zero writes to user shell profiles/host-global ENV while
+  exercising persistent hook state on Linux/WSL and Windows.
+- **SC-012**: Stale/malformed hook-state fixtures never authorize a consequential transition
+  without validation/recomputation.
 
 ## Assumptions
 
-- SPEC-001 has removed or re-based unrelated PowerPack capabilities so `implement-review` is
-  the only functional capability being migrated/configured here.
-- The supported Spec Kit version exposes native extensions and machine-readable integration
-  state including `default_integration` and `installed_integrations`.
-- Spec Kit may register enabled extension commands only for the current/default integration;
-  PowerPack cross-agent Codex review therefore uses Codex as a secondary CLI reviewer and does
-  not require switching the Spec Kit default integration or registering the PowerPack command
-  into non-default Codex.
-- Codex and any other external reviewer CLI remain separately installable/authenticated tools;
-  PowerPack detects readiness but does not own user credentials.
-- The existing browserless ChatGPT Project/GitHub review provider and Deep Review evidence
-  protocol are preserved and adapted into the native extension runtime rather than replaced.
-- Python remains available in supported installation environments. The extension-owned Python
-  setup script is the first portable shell entrypoint until/unless a future stable Spec Kit
-  extension API provides a native extension subcommand execution mechanism.
-- Interactive setup defaults to `max_rounds = 5` and early stop on common clean approval.
-- Installation may create a default `PENDING` configuration as part of extension-managed
-  files. "No modification on abort" means setup/reconfiguration leaves persistent state
-  exactly as it existed immediately before that setup invocation.
+- SPEC-001 has reduced the current functional PowerPack capability set to `implement-review`.
+- The supported Spec Kit range provides native extensions, presets, hooks, machine-readable
+  integration state, and—where selected as the preferred install path—bundles.
+- Bundle installation composes primitive managers; PowerPack does not assume bundle rollback
+  is perfectly atomic and therefore performs post-install diagnostics before setup readiness.
+- Codex and other reviewer CLIs own their own installation/authentication; PowerPack detects
+  readiness but does not persist credentials.
+- The browserless ChatGPT Project/GitHub provider is migrated into the native PowerPack
+  runtime rather than replaced.
+- Python is available in supported environments for the initial portable shell entrypoint.
+- Persistent hook state is project/workflow state and is stored outside extension-managed
+  immutable source assets.
 
 ## Non-Goals
 
-- Adding new functional PowerPack review/workflow skills beyond `implement-review`.
-- Forking or modifying Spec Kit to add an `on_install` hook or custom extension CLI
-  subcommand.
-- Automatically switching the user's default Spec Kit AI integration to Codex.
-- Automatically installing a secondary Codex integration without explicit user consent.
-- Implementing browser automation for GPT Web.
-- Persisting ChatGPT/Codex/GitHub credentials in repository configuration.
-- Preserving the legacy `specify-powerpack` CLI as a runtime requirement; it may remain
-  temporarily only for development/migration tooling until separately removed.
-- Making every installed Spec Kit integration a review executor. This SPEC defines the active
-  agent plus Codex-backed routes; additional cross-agent reviewers require explicit future
-  capability work.
+- Adding a new functional PowerPack workflow capability beyond `implement-review` in this
+  specification.
+- Forking Spec Kit to add lifecycle behavior.
+- Making presets the main PowerPack runtime.
+- Maintaining a permanent fork of upstream Spec Kit skills when native composition suffices.
+- Automatically changing the user's default Spec Kit integration.
+- Automatically installing another integration without explicit consent.
+- Browser automation for GPT Web.
+- Persisting reviewer credentials in project files.
+- Persisting hook/workflow state through shell profiles or global environment configuration.
+- Treating ENV as cross-session workflow authority.
 
 ## Core Invariants
 
@@ -589,7 +702,49 @@ PowerPack lifecycle owner == Specify
 ```
 
 ```text
+PowerPack distribution
+  == native bundle when supported/preferred
+  == extension + required companion presets
+```
+
+```text
+PowerPack runtime authority == extension
+```
+
+```text
+preset responsibility == upstream command composition only
+```
+
+```text
 functional PowerPack capabilities == {implement-review}
+```
+
+```text
+PERSISTENT_HOOK_STATE == project_local_json
+ENV == projection(validated(PERSISTENT_HOOK_STATE))
+```
+
+```text
+persistent_hook_state
+  != bashrc
+  != shell_profile
+  != host_global_environment
+```
+
+```text
+STATE_PRODUCING_POST_HOOK
+  => executes without requiring preexisting projected ENV
+  => validates artifacts
+  => atomically persists JSON
+  => may then project ENV
+```
+
+```text
+new_session
+  => load JSON
+  => validate freshness
+  => recompute if stale
+  => project runtime ENV
 ```
 
 ```text
@@ -602,11 +757,6 @@ GPT_WEB_ENABLED
 ```text
 SETUP_ABORTED or SETUP_FAILED
   => persisted_configuration_after == persisted_configuration_before
-```
-
-```text
-AI_SETUP_ADAPTER and SHELL_SETUP_ADAPTER
-  => SAME_SETUP_ENGINE
 ```
 
 ```text
