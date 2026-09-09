@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,17 +31,21 @@
 
 ## Notes
 
-- **2 [NEEDS CLARIFICATION] markers open** — must be resolved via `/speckit-clarify` or
-  direct answer before `/speckit-plan`:
-  1. Treatment of `speckit.implement` + `speckit.converge` as dependencies of
-     `implement-review` (preserve / re-base / minimal-runtime-only).
-  2. Whether the browserless ChatGPT Project + GitHub review path (and its
-     `scripts/homologation/` + `docs/` material) is intrinsic to `implement-review` or
-     trimmable removed-command support.
+- **All clarifications resolved** in the 2026-09-09 session (see spec `## Clarifications`):
+  1. `speckit.implement` + `speckit.converge` are **removed**; `implement-review` is re-based
+     onto upstream Spec Kit `speckit-implement` / `speckit-converge` (FR-018, FR-013).
+  2. Browserless ChatGPT Project + GitHub review **stays** in the `implement-review` contract
+     (runtime + smoke + smoke doc); exploratory scaffolding (`probe_*`, `*.har`,
+     `WEB_GITHUB_HEADLESS_PROBE.md`) is removed (FR-020, FR-021).
+  3. `powerpack-tools` extension (`doctor`, `update`) preserved as infrastructure; exact-set
+     assertion scoped to the `powerpack-core` preset only.
+  4. Officially supported install paths: `install.sh`, `install.py`, `install.ps1`, one
+     canonical integration (FR-005, FR-019, SC-004).
 - **"Written for non-technical stakeholders" marked partial (`[~]`) by nature**: this is an
   internal repository-cleanup spec whose subject is installers, presets, and manifests.
   Command/file names appear because they are the product contract, not an implementation
   choice. Recorded here rather than mangling the spec to force a pass.
 - **"No implementation details" reading**: file/command/config names are treated as contract
   identifiers (what is removed), not as prescribed implementation. Passes on that basis.
-- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`.
+- Only `[~]` item remaining ("written for non-technical stakeholders") is a documented
+  by-nature exception, not a blocker. Spec is ready for `/speckit-plan`.

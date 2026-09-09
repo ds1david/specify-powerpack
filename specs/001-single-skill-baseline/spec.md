@@ -21,6 +21,15 @@ smoke/homologation coverage must all describe the same product contract.
 This is a deliberate scope decision, not a statement that any removed capability was
 defective. Removed capabilities may be redesigned and reintroduced later through new specs.
 
+## Clarifications
+
+### Session 2026-09-09
+
+- Q: Should `implement-review` keep depending on the PowerPack `speckit.implement` / `speckit.converge` wraps, or be re-based on the upstream Spec Kit commands so the wraps can be removed? → A: Remove both wraps; re-base the `implement-review` prerequisite gate and Phase 1 convergence onto upstream Spec Kit `speckit-implement` / `speckit-converge`. Preserved set stays exactly `{implement-review}`.
+- Q: Is the browserless ChatGPT Project + GitHub review path intrinsic to `implement-review` or an optional gate that can be trimmed? → A: Keep it as part of the `implement-review` contract (runtime + `smoke_chatgpt_github_browserless.py` + smoke doc), but remove the exploratory scaffolding: `scripts/homologation/probe_*`, `*.har` dumps, `docs/WEB_GITHUB_HEADLESS_PROBE.md`.
+- Q: Should the `powerpack-tools` extension (`doctor`, `update`) be preserved as infrastructure, or do those commands count toward the single-command contract? → A: Preserve `powerpack-tools` intact as runtime infrastructure; the exact-set assertion is scoped to the `powerpack-core` preset only → `{"speckit.implement-review"}`.
+- Q: Which installation paths are officially supported and must be validated for the parity contract? → A: `install.sh`, `install.py`, and `install.ps1`, each validated to produce `{"speckit.implement-review"}` for one canonical integration. Full installer×integration matrix is not required as an end-to-end gate.
+
 ## Terminology *(reconciliation — mandatory reading)*
 
 The previous draft of this spec used the word "skill" throughout. The repository does not
@@ -36,18 +45,25 @@ preset (`src/speckit_powerpack/assets/presets/powerpack-core/preset.yml`, entrie
 - **Preserved capability**: `implement-review` (the `speckit.implement-review` command plus
   every supporting asset, runtime, and integration it needs to remain installable,
   discoverable, and operational).
-- **Removed command**: any PowerPack-provided command in the baseline preset that is not
-  `speckit.implement-review`, unless a `[NEEDS CLARIFICATION]` resolution below explicitly
-  preserves it as a required dependency of `implement-review`.
+- **Removed command**: every PowerPack-provided command in the baseline preset that is not
+  `speckit.implement-review` — including `speckit.implement` and `speckit.converge` (see
+  Clarifications 2026-09-09: the `implement-review` flow is re-based onto the upstream Spec
+  Kit commands instead of these wraps).
 - **Out of scope for removal**: the upstream Spec Kit workflow commands / agent skills
   (`speckit-plan`, `speckit-tasks`, `speckit-specify`, `speckit-analyze`, `speckit-clarify`,
   `speckit-constitution`, `speckit-checklist`, `speckit-converge`, `speckit-implement`,
   `speckit-taskstoissues`, `graphify`, …) that PowerPack does not own. They live under the
   host project's `.claude/skills/` and are installed by Spec Kit / other tooling, not by
   PowerPack. Nothing in this spec deletes or renames them.
+- **Preserved infrastructure (not a product command)**: the `powerpack-tools` extension and
+  its `speckit.powerpack-tools.doctor` / `speckit.powerpack-tools.update` commands, plus the
+  `bin/powerpack.py` runtime. `doctor` is an operational prerequisite of `implement-review`.
+  The extension is kept intact (see Clarifications 2026-09-09); only code paths that exist
+  solely for a removed `powerpack-core` command are trimmed from it.
 
-The exact-set assertions in this spec are always scoped to **PowerPack-provided commands**,
-never to the host project's full command or skill inventory.
+The exact-set assertions in this spec are always scoped to **`powerpack-core` preset
+commands** (the `provides.templates` list), never to the `powerpack-tools` extension
+namespace and never to the host project's full command or skill inventory.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -93,13 +109,15 @@ only for legitimate configuration reasons unrelated to the removed commands).
 
 **Acceptance Scenarios**:
 
-1. **Given** a clean installation and a project with a valid completed implementation
-   receipt, **When** the `implement-review` prerequisite check runs, **Then** it passes.
+1. **Given** a clean installation and a project whose implementation was completed via
+   upstream `speckit-implement`, **When** the re-based `implement-review` prerequisite check
+   runs, **Then** it passes without any PowerPack `speckit.implement` receipt.
 2. **Given** the `implement-review` flow is executing, **When** it needs to converge or
-   re-run implementation for authorized appended work, **Then** the mechanism it depends on
-   for that step is still present and functional.
-3. **Given** the mandatory readiness checks for `implement-review`, **When** they run,
-   **Then** every command/runtime they invoke still exists after the cleanup.
+   re-run implementation for authorized appended work, **Then** it invokes upstream
+   `speckit-converge` / `speckit-implement` and that step completes.
+3. **Given** the mandatory readiness checks for `implement-review` (including
+   `specify-powerpack doctor` and `review status`), **When** they run, **Then** every
+   command/runtime they invoke still exists after the cleanup.
 
 ### User Story 3 - No removed command survives as a hidden path (Priority: P2)
 
@@ -148,15 +166,16 @@ the suite; the baseline contract test must fail.
 
 ### Edge Cases
 
-- A platform-specific installer (Linux/WSL vs Windows, shell vs PowerShell vs Python vs
-  package vs local-dev) copies legacy content even after preset cleanup → the contract is
-  verified against the resulting install state, not only installer source.
+- One of `install.sh` / `install.py` / `install.ps1` copies legacy content even after preset
+  cleanup → the contract is verified against the resulting install state, not only installer
+  source.
 - A helper or runtime module used by a removed command is also required by `implement-review`
   → it is classified as shared core infrastructure and preserved (see FR-013).
 - A removed command name still appears in a completed spec, changelog, ADR, or merged-PR
   record → allowed as `HISTORICAL_REFERENCE` provided it does not imply current support.
-- The `implement-review` flow calls `speckit-converge` / `speckit-implement` internally →
-  resolution of the dependency clarification below determines whether those remain.
+- The `implement-review` flow calls convergence / implementation steps internally → after
+  re-basing (FR-018) it MUST call upstream Spec Kit `speckit-converge` / `speckit-implement`,
+  never the removed PowerPack `speckit.converge` / `speckit.implement` wraps.
 - Smoke test only checks `"speckit.implement-review" in commands` → insufficient; exact-set
   equality is required.
 
@@ -182,10 +201,11 @@ the suite; the baseline contract test must fail.
   registration, manifest, filesystem scan, metadata scan, command generator, or equivalent)
   MUST expose exactly one PowerPack-provided command: `speckit.implement-review`.
 - **FR-005**: Every officially supported installation path MUST install only
-  `implement-review` as PowerPack command content. The implementation MUST review all
-  applicable entrypoints (Linux/WSL, Windows, Python, shell, PowerShell, package-based,
-  local-development, and agent-specific). No installer MAY copy, register, generate, or
-  reference a removed command.
+  `implement-review` as `powerpack-core` command content. The officially supported paths
+  (per Clarifications 2026-09-09) are the three entrypoints the README advertises:
+  `install.sh` (Linux/WSL/macOS), `install.py` (any platform with Python), and `install.ps1`
+  (Windows PowerShell). No installer MAY copy, register, generate, or reference a removed
+  command.
 - **FR-006**: A fresh installation into a clean target MUST result in exactly one
   PowerPack-provided command — `{"speckit.implement-review"}` — with no residual file that
   belongs exclusively to a removed command present in the generated install state.
@@ -215,8 +235,9 @@ the suite; the baseline contract test must fail.
   config keys, registry entries, and templates used exclusively by removed commands MUST be
   removed. This includes removed-command entries in `config/default-model-routing.json`,
   `config/default-full-cycle.json`, `config/default-technical-debt.json`,
-  `prerequisites.json` defaults, and runtime prerequisite maps — except entries that the
-  dependency clarification below preserves.
+  `prerequisites.json` defaults, and runtime prerequisite maps. The `implement-review`
+  prerequisite entry MUST be re-based onto an upstream `speckit-implement` signal (FR-018),
+  not deleted.
 - **FR-013**: Generic infrastructure MUST remain when required by `implement-review`, the
   installation lifecycle, cross-agent support, shared tests, or the reusable PowerPack core.
   The `powerpack-tools` extension and `bin/powerpack.py` runtime remain in scope only for
@@ -236,37 +257,37 @@ the suite; the baseline contract test must fail.
 - **FR-017**: At least one automated test MUST encode the single-command baseline as an
   explicit exact-set contract so that adding or restoring a PowerPack-provided command
   requires an intentional contract change through a new spec or equivalent scope decision.
-- **FR-018** *(dependency treatment)*: The implementation MUST keep the `implement-review`
-  flow operational end to end. `implement-review` currently depends on a `COMPLETED`
-  `implement` state receipt (recorded today by `speckit.implement`) and on `speckit-converge`
-  for its Phase 1 convergence loop. The baseline MUST resolve this per
-  `[NEEDS CLARIFICATION #1]` below: either preserve `speckit.implement` and `speckit.converge`
-  as required dependencies of `implement-review`, or re-base the `implement-review`
-  prerequisite gate and convergence step onto upstream Spec Kit `speckit-implement` /
-  `speckit-converge` so the PowerPack wraps can be removed without breaking the flow.
-- **FR-019**: Installation MUST produce the same PowerPack command inventory on every
-  supported platform. A platform-specific installer MAY differ internally but MUST NOT
-  produce a different command set.
+- **FR-018** *(dependency re-basing — resolved 2026-09-09)*: The implementation MUST keep the
+  `implement-review` flow operational end to end while removing the `speckit.implement` and
+  `speckit.converge` wraps. Specifically: (a) the `implement-review` prerequisite gate MUST
+  be satisfiable from an upstream Spec Kit `speckit-implement` run (not from a PowerPack
+  `speckit.implement` completion receipt); any PowerPack receipt/state mechanism the gate
+  needs MUST be preserved as core infrastructure (FR-013) or re-based onto an upstream
+  signal, but the `speckit.implement` command template MUST be removed. (b) The
+  `implement-review` Phase 1 convergence loop (including re-implementation of appended tasks)
+  MUST call upstream `speckit-converge` / `speckit-implement`, and the PowerPack
+  `speckit.converge` command template MUST be removed. No `speckit.implement` /
+  `speckit.converge` behavior may survive as an alias, shim, or hidden copy (FR-014).
+- **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to
+  produce the same `powerpack-core` command inventory — `{"speckit.implement-review"}` — for
+  one canonical integration (the project's default). A platform-specific installer MAY differ
+  internally but MUST NOT produce a different command set. Cross-integration parity
+  (`codex` vs `claude`) is assumed by inspection, not required as an end-to-end gate.
 
-### Open Clarifications
+### Browserless review path — scope (resolved 2026-09-09)
 
-- **[NEEDS CLARIFICATION #1]**: `implement-review` depends on `speckit.implement` (records
-  the `COMPLETED` implement receipt its prereq gate checks) and `speckit.converge` (its
-  Phase 1 convergence loop, and re-implementation of appended tasks). Which is the baseline?
-  (A) Preserve `speckit.implement` + `speckit.converge` as required dependencies →
-  preserved set becomes `{implement-review, implement, converge}`. (B) Re-base the
-  `implement-review` gate and convergence step onto upstream Spec Kit `speckit-implement` /
-  `speckit-converge` and remove both PowerPack wraps → preserved set stays exactly
-  `{implement-review}`. (C) Preserve only the minimal receipt-recording runtime as core
-  infrastructure (FR-013), remove the `speckit.implement` / `speckit.converge` command
-  templates.
-- **[NEEDS CLARIFICATION #2]**: Documentation and homologation scripts under
-  `scripts/homologation/` and `docs/` currently cover browserless ChatGPT/GitHub review,
-  full-cycle, and technical-debt. Which of these are (a) part of `implement-review`'s own
-  supported contract and preserved, versus (b) removed-command support material to delete?
-  Specifically: is the browserless ChatGPT Project + GitHub review path an intrinsic part of
-  `implement-review` (preserve all its scripts/docs/tests) or an optional gate that may also
-  be trimmed?
+- **FR-020**: The browserless ChatGPT Project + GitHub review gate (Codex CLI +
+  `~/.codex/auth.json` + GitHub connector, read-only) REMAINS part of the `implement-review`
+  contract. Its runtime, the `smoke_chatgpt_github_browserless.py` homologation smoke, and
+  `docs/CHATGPT_GITHUB_BROWSERLESS_SMOKE.md` MUST be preserved and kept working.
+- **FR-021**: Exploratory discovery scaffolding for that path MUST be removed — the
+  `scripts/homologation/probe_*` probes, captured `*.har` traffic dumps, and
+  `docs/WEB_GITHUB_HEADLESS_PROBE.md`. These are historical investigation artifacts, are not
+  exercised by the minimum smoke, and MUST NOT be treated as part of the supported contract.
+  Any test whose sole purpose is a removed probe MUST be deleted (FR-009); tests covering the
+  preserved smoke and connector preflight MUST stay.
+- Documentation and homologation material for `full-cycle` and technical-debt follows the
+  normal removed-command rule (FR-003, FR-007): delete or convert to labelled history.
 
 ### Key Entities
 
@@ -294,8 +315,9 @@ the suite; the baseline contract test must fail.
 - **SC-003**: The minimum supported `implement-review` flow completes on a fixture project
   with a valid completed implementation, with no failure attributable to a removed command
   or a removed runtime helper.
-- **SC-004**: Every supported installer produces an identical PowerPack command inventory
-  (`{"speckit.implement-review"}`) — zero cross-platform divergence.
+- **SC-004**: `install.sh`, `install.py`, and `install.ps1` each produce an identical
+  `powerpack-core` command inventory (`{"speckit.implement-review"}`) for the canonical
+  integration — zero divergence across the three entrypoints.
 - **SC-005**: The full automated test suite passes, and it includes at least one exact-set
   baseline contract test that fails if a second PowerPack-provided command is added.
 - **SC-006**: No installed file belonging exclusively to a removed command is present in the
@@ -321,8 +343,9 @@ the suite; the baseline contract test must fail.
   and explain any inventory delta between `a825557` and the chosen baseline (notably the
   browserless code-review and project-evolution-policy merges #9 and #10).
 - The technical-debt lifecycle commands (`debt-create`, `debt-list`, `debt-consult`,
-  `debt-start`, `debt-close`), `full-cycle`, and `checklist-converge` are `REMOVE` unless a
-  clarification says otherwise — they are not dependencies of `implement-review`.
+  `debt-start`, `debt-close`), `full-cycle`, `checklist-converge`, `implement`, and
+  `converge` are all `REMOVE` — none is a preserved dependency of `implement-review` (the
+  review flow is re-based onto upstream Spec Kit for implementation/convergence, per FR-018).
 - This change is intentionally breaking for consumers of removed commands; no migration
   shim is provided.
 - "No implementation details / written for non-technical stakeholders" is only partially
@@ -338,7 +361,7 @@ Every supported installation path MUST converge on this logical state:
 Specify PowerPack
 ├── core infrastructure (shared runtime, doctor, model routing, state receipts, review status)
 └── commands
-    └── speckit.implement-review   (+ dependencies preserved per NEEDS CLARIFICATION #1)
+    └── speckit.implement-review   (re-based on upstream speckit-implement / speckit-converge)
 ```
 
 A platform-specific installer MAY differ internally but MUST NOT produce a different
@@ -381,12 +404,14 @@ contract through a new spec or an equivalent explicit scope decision.
   (FR-002, FR-013).
 - **R-004 — Weak smoke assertion**: checking only that `implement-review` exists lets legacy
   commands linger. *Mitigation*: exact-set equality (FR-011).
-- **R-005 — Platform divergence**: Linux/WSL and Windows installers generate different
-  inventories. *Mitigation*: enforce the same post-install contract on every platform
-  (FR-019, SC-004).
+- **R-005 — Platform divergence**: `install.sh` / `install.py` / `install.ps1` generate
+  different inventories. *Mitigation*: enforce the same post-install contract on all three
+  entrypoints (FR-019, SC-004).
 - **R-006 — Breaking `implement-review`**: removing `speckit.implement` / `speckit.converge`
-  silently breaks the review flow's prereq gate and convergence loop. *Mitigation*: resolve
-  `[NEEDS CLARIFICATION #1]` before implementation; User Story 2 acceptance scenarios.
+  breaks the review flow's prereq gate and convergence loop unless it is re-based first.
+  *Mitigation*: FR-018 — re-base the gate onto upstream `speckit-implement` and the Phase 1
+  loop onto upstream `speckit-converge` / `speckit-implement`, verified by User Story 2
+  acceptance scenarios, before deleting either wrap.
 
 ## Migration Strategy
 
@@ -394,7 +419,8 @@ Intentionally breaking for consumers of removed commands. No deprecation compati
 layer. Sequence:
 
 1. Record the actual baseline SHA and inventory the preset.
-2. Identify shared dependencies and resolve the `implement-review` dependency clarification.
+2. Identify shared dependencies; re-base the `implement-review` prerequisite gate and Phase 1
+   convergence onto upstream Spec Kit before deleting `speckit.implement` / `speckit.converge`.
 3. Remove non-`implement-review` commands (and preserved dependencies excepted).
 4. Clean preset registration and configuration.
 5. Update installers.
@@ -409,7 +435,8 @@ with the architecture current at that time.
 ## Definition of Done
 
 This spec is complete when every officially supported installation path results in a
-PowerPack command inventory of exactly `{"speckit.implement-review"}` (plus any dependency
-preserved by `[NEEDS CLARIFICATION #1]`), and implementation, preset registration,
+PowerPack command inventory of exactly `{"speckit.implement-review"}`, with the
+`implement-review` flow re-based onto upstream `speckit-implement` / `speckit-converge`, and
+implementation, preset registration,
 installation, current-state documentation, and smoke-test expectations all describe that
 same state.
