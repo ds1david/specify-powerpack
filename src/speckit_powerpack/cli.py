@@ -170,8 +170,6 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
         "runtime/powerpack_runtime.py": "powerpack.py",
         "runtime/powerpack_capabilities.py": "capabilities.py",
         "runtime/powerpack_review_protocol.py": "review_protocol.py",
-        "runtime/powerpack_debt.py": "debt.py",
-        "runtime/powerpack_full_cycle.py": "full_cycle.py",
     }
     for source_name, dest_name in runtime_assets.items():
         with asset(source_name) as source:
@@ -181,8 +179,6 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
                 dest.chmod(0o755)
     for source_name, dest_name in {
         "review/deep-review-protocol.md": "deep-review-protocol.md",
-        "policies/technical-debt.md": "technical-debt-policy.md",
-        "templates/technical-debt-backlog.md": "technical-debt-template.md",
     }.items():
         with asset(source_name) as source:
             shutil.copy2(source, base / dest_name)
@@ -192,17 +188,14 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
     write_json(base / "model-routing.json", routing, overwrite=reset_config)
     _migrate_review_config(project, reset=reset_config)
     for config, filename in (
-        ("config/default-technical-debt.json", "technical-debt.json"),
-        ("config/default-full-cycle.json", "full-cycle.json"),
         ("config/default-update.json", "update.json"),
     ):
         write_json(base / filename, read_asset_json(config), overwrite=reset_config)
     write_json(base / "prerequisites.json", {
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": "strict",
         "steps": {
-            "checklist-converge": [{"step": "checklist", "statuses": ["COMPLETED"]}],
-            "implement-review": [{"step": "implement", "statuses": ["COMPLETED"]}],
+            "implement-review": [{"check": "implementation-evidence"}],
         },
     }, overwrite=reset_config)
     write_json(base / "quality-gates.json", {

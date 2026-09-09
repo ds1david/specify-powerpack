@@ -56,29 +56,64 @@ def test_receipts_are_isolated_by_spec(tmp_path: Path):
     assert result["ok"] is False
 
 
-def test_implement_delta_ignores_preexisting_dirty_file(tmp_path: Path, monkeypatch):
-    root, feature = repo(tmp_path)
-    (root / "dirty.txt").write_text("before\n")
-    monkeypatch.chdir(root)
-    args = type("Args", (), {"feature_dir": str(feature)})()
-    assert rt.cmd_implement_begin(args) == 0
-    (feature / "tasks.md").write_text("# Tasks\nchanged\n")
-    assert rt.cmd_implement_end(args) == 0
-    changed = rt.latest_implement_files(root, feature)
-    assert "specs/001-demo/tasks.md" in changed
-    assert "dirty.txt" not in changed
+def _complete_tasks(feature: Path) -> None:
+    feature.joinpath("tasks.md").write_text("# Tasks\n\n- [X] T001 Do the thing in src/app.py\n")
 
 
-def test_implement_delta_detects_second_change_to_dirty_file(tmp_path: Path, monkeypatch):
+def test_implement_evidence_missing_tasks(tmp_path: Path):
     root, feature = repo(tmp_path)
-    path = root / "README.md"
-    path.write_text("dirty-before\n")
+    feature.joinpath("tasks.md").unlink()
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": False, "step": "implement-review", "reason": "MISSING_TASKS"}
+
+
+def test_implement_evidence_tasks_incomplete(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text("- [X] T001 done\n- [ ] T002 not done\n")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1
+
+
+def test_implement_evidence_no_implementation_delta(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    feature.joinpath("plan.md").write_text("# Plan\ndocs-only change\n")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_ok_with_code_delta(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
+def test_implement_evidence_degrades_without_git(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    import shutil as _sh
+    _sh.rmtree(root / ".git")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is True
+    assert result["git_unavailable"] is True
+
+
+def test_prereq_check_implement_review_uses_evidence(tmp_path: Path, monkeypatch, capsys):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("x = 1\n")
     monkeypatch.chdir(root)
-    args = type("Args", (), {"feature_dir": str(feature)})()
-    rt.cmd_implement_begin(args)
-    path.write_text("changed-during-implement\n")
-    rt.cmd_implement_end(args)
-    assert "README.md" in rt.latest_implement_files(root, feature)
+    args = type("Args", (), {"step": "implement-review", "feature_dir": str(feature)})()
+    assert rt.cmd_prereq_check(args) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True and out["reason"] == "OK"
 
 
 def test_documentation_only_gate_is_not_applicable(tmp_path: Path):

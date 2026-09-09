@@ -188,3 +188,11 @@ tests, `scripts/homologation/smoke_chatgpt_github_browserless.py`.
 `powerpack_debt` / `powerpack_full_cycle`; confirm `default-model-routing.json` generic
 stages (`economical`, `coding`, …) are still consumed by `cmd_model_route`; confirm
 `egg-info/SOURCES.txt` regenerates (build artifact, not hand-edited).
+
+## Baseline confirmation (implementation, 2026-09-09)
+
+Implementation started from `489f5355f7d2b32e50f0c0daa7b6bdb577655338` (branch
+`chore/spec-001-baseline-and-repo-sync`). No inventory delta vs the SHA recorded in
+`spec.md` — the preset still had the same 10 command entries. Full per-command decisions,
+the shared-dependency scan and the config-key classification are in `inventory.md`; the
+residual-reference scan is in `reference-classification.md` (0 `ACTIVE_REFERENCE`).

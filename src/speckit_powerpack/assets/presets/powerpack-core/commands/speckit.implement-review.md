@@ -22,6 +22,8 @@ speckit-analyze
 
 `implement-review` never performs the initial implementation merely to satisfy its own prerequisite.
 
+Throughout this document `speckit-implement` and `speckit-converge` are the **upstream Spec Kit** commands. Specify PowerPack no longer wraps them.
+
 ## Invariants
 
 Always use:
@@ -73,7 +75,11 @@ Run:
 python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 ```
 
-If it fails, STOP and return to `speckit-implement`. A receipt from another SPEC never satisfies this prerequisite.
+This checks **repository evidence** of a prior implementation for the active SPEC: a
+`tasks.md` whose task checkboxes are all `[X]`, plus a non-documentation change delta on the
+branch/worktree. Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`,
+`NO_IMPLEMENTATION_DELTA`. If it fails, STOP and run upstream `speckit-implement` for this
+SPEC. Evidence from another SPEC's directory never satisfies this prerequisite.
 
 ## Phase 1 — convergence
 

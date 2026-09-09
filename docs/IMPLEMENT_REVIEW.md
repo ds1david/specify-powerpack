@@ -14,7 +14,7 @@ implement receipt
       → approved current snapshot? COMPLETE
 ```
 
-All review findings are current-flow work. They cannot be converted into technical debt merely to make the workflow finish.
+All review findings are current-flow work. They cannot be deferred merely to make the workflow finish; they return to implementation until the same final snapshot is approved.
 
 ## Readiness
 

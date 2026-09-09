@@ -87,7 +87,7 @@ wheels = [
 ]
 
 [[package]]
-name = "speckit-powerpack"
+name = "specify-powerpack"
 version = "0.1.0.dev0"
 source = { editable = "." }
 

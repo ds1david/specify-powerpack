@@ -86,6 +86,6 @@ The correctness gain is preferred because a fast review against the wrong snapsh
 
 **Decision:** ChatGPT backend compatibility, Project context, connector discovery, Codex Apps JSONL and review orchestration live in separate modules.
 
-**Benefit:** unstable external boundaries can change without contaminating generic Spec Kit/full-cycle/debt runtimes.
+**Benefit:** unstable external boundaries can change without contaminating the generic Spec Kit runtime.
 
 **Cost:** more explicit interfaces and tests are required.

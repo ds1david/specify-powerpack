@@ -15,6 +15,12 @@ guard (R-006).
 
 **Organization**: By user story. US1 + US2 are both P1 and together form the MVP.
 
+**Implementation status (2026-09-09)**: T001–T024, T026–T039, T041–T043 complete on branch
+`chore/spec-001-baseline-and-repo-sync`; `pytest` = 90 passed. Not auto-completable here:
+**T025** (live Codex + ChatGPT Project + GitHub PR needed), **T040 §4–§6** (Windows runner /
+live env), **T044** (PR description), **T045** (reviewer sign-off). Static parts of the
+quickstart (§1–§3, §7, §8) were walked and pass.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependency on an incomplete task)
@@ -92,7 +98,7 @@ terminal state; re-based prereq passes without any PowerPack `implement` receipt
 - [ ] T022 [P] [US2] Confirm the `powerpack-tools` extension (`src/speckit_powerpack/assets/extensions/powerpack-tools/`) is untouched and still provides `doctor` + `update`; trim only removed-command references inside `commands/update.md` if any exist (CHK004, D4).
 - [ ] T023 [US2] Update `tests/test_powerpack_runtime.py` (and any review/capabilities test) so the `implement-review` readiness + prereq path uses the re-based evidence gate; add a case proving `prereq check --step implement-review` returns `ok:true` with only a completed `tasks.md` + code delta present (no `state mark implement`).
 - [ ] T024 [US2] Keep `scripts/homologation/smoke_chatgpt_github_browserless.py` and `src/speckit_powerpack/github_browserless_smoke.py` / `github_connector_preflight.py`; run the browserless smoke (or its contract test `tests/test_browserless_review.py`) to confirm the deep-review gate still functions (FR-020).
-- [ ] T025 [US2] Execute quickstart §6 on a fixture project: readiness (`specify-powerpack doctor`, `review status`) → convergence via upstream `speckit-converge` → quality gate → Sol route → browserless review; record that no step fails due to a removed command/helper (SC-003).
+- [ ] T025 [US2] Execute quickstart §6 on a fixture project: readiness (`specify-powerpack doctor`, `review status`) → convergence via upstream `speckit-converge` → quality gate → Sol route → browserless review; record that no step fails due to a removed command/helper (SC-003). **Blocked on live env**: needs Codex login, a repo↔ChatGPT-Project binding and a real GitHub PR. Static coverage in place: `test_powerpack_runtime` (evidence gate, gate detection), `test_browserless_review`, `test_review_*`.
 
 **Checkpoint**: MVP complete — clean baseline install **and** working `implement-review`.
 

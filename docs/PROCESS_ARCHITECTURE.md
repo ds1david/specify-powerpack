@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-Specify PowerPack is an enhancement layer over official GitHub Spec Kit. Spec Kit owns specification artifacts and its canonical workflow; Specify PowerPack adds convergence, state, review evidence, technical-debt governance, model routing and installation/update support.
+Specify PowerPack is an enhancement layer over official GitHub Spec Kit. Spec Kit owns specification artifacts and its canonical workflow; Specify PowerPack adds one command, `speckit-implement-review` — an evidence-validated review gate that drives convergence (through upstream `speckit-converge`), quality gates, an independent Sol review and a browserless GitHub PR review — plus the model-routing and installation/update support it needs.
 
 Canonical flow:
 

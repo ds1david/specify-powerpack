@@ -63,7 +63,7 @@ Resetting mutable PowerPack configuration is a separate, explicit operation:
 specify-powerpack update . --project-only --reset-config
 ```
 
-This may recreate `review.json`, model routing, full-cycle, technical-debt and other packaged defaults. It can remove the current ChatGPT Project binding, so `specify-powerpack review setup --path .` may be required afterward.
+This may recreate `review.json`, `model-routing.json`, `prerequisites.json` and other packaged defaults. It can remove the current ChatGPT Project binding, so `specify-powerpack review setup --path .` may be required afterward.
 
 Never add `--reset-config` merely to fix a managed runtime file.
 

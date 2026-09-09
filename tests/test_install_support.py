@@ -15,13 +15,20 @@ def test_install_support_materializes_browserless_project_contract(tmp_path: Pat
         "bin/powerpack.py",
         "bin/capabilities.py",
         "bin/review_protocol.py",
-        "bin/debt.py",
-        "bin/full_cycle.py",
         "deep-review-protocol.md",
-        "technical-debt-policy.md",
-        "technical-debt-template.md",
     ):
         assert (base / relative).is_file(), relative
+
+    # SPEC-001 single-skill baseline: removed-command assets must not land.
+    for gone in (
+        "bin/debt.py",
+        "bin/full_cycle.py",
+        "technical-debt-policy.md",
+        "technical-debt-template.md",
+        "technical-debt.json",
+        "full-cycle.json",
+    ):
+        assert not (base / gone).exists(), gone
 
     review = json.loads((base / "review.json").read_text(encoding="utf-8"))
     assert review["schema_version"] == 5
@@ -31,13 +38,15 @@ def test_install_support_materializes_browserless_project_contract(tmp_path: Pat
     assert review["github_app"]["runtime"] == "codex_apps"
     assert review["github_app"]["allow_shell_fallback"] is False
 
-    debt = json.loads((base / "technical-debt.json").read_text(encoding="utf-8"))
-    assert debt["template_path"] == ".specify/powerpack/technical-debt-template.md"
-    full_cycle = json.loads((base / "full-cycle.json").read_text(encoding="utf-8"))
-    assert full_cycle["behavior"]["same_spec_only"] is True
-    assert full_cycle["behavior"]["allow_debt_escape_hatch"] is False
+    prereq = json.loads((base / "prerequisites.json").read_text(encoding="utf-8"))
+    assert prereq["schema_version"] == 2
+    assert "checklist-converge" not in prereq["steps"]
+    assert prereq["steps"]["implement-review"] == [{"check": "implementation-evidence"}]
+    assert '"statuses": ["COMPLETED"]' not in json.dumps(prereq)
+
     routing = json.loads((base / "model-routing.json").read_text(encoding="utf-8"))
     assert routing["active_integration"] == "claude"
+    assert routing["stages"] == {"implement-review": "orchestration"}
 
 
 def test_codex_install_materializes_terra_parent_and_sol_reviewer_defaults(tmp_path: Path):

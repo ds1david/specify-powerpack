@@ -2,34 +2,28 @@
 
 > **Status: pre-release / evolving.** This is a personal project in continuous evolution. It is driven by the workflow, quality and safety criteria I consider useful, while being progressively generalized into a reusable PowerPack for projects of different contexts. Changes must distinguish a real defect from a new capability request.
 
-Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds convergence, review evidence, full-cycle orchestration, technical-debt governance, model routing, managed updates and a browserless ChatGPT Project + GitHub code-review gate.
+Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds one command — `speckit-implement-review` — a deep, evidence-validated implementation-review gate: convergence, capability-based quality gates, an independent Sol review and a browserless ChatGPT Project + GitHub code-review gate.
 
 The canonical repository is `ds1david/specify-powerpack`. The canonical CLI is `specify-powerpack`; the previous `speckit-powerpack` command is retained as a compatibility alias during migration.
+
+> **Single-command baseline (SPEC-001).** Earlier releases also shipped `speckit-implement`, `speckit-converge`, `speckit-checklist-converge`, `speckit-full-cycle` and a `speckit-debt-*` lifecycle. Those were removed to consolidate the supported surface; `implement-review` now re-uses upstream Spec Kit `speckit-implement` / `speckit-converge` directly. Removed capabilities may return through new specs.
 
 ## Workflow
 
 ```text
-speckit-specify
-→ speckit-clarify
-→ speckit-plan
-→ speckit-checklist
-→ speckit-checklist-converge
-→ speckit-tasks
-→ speckit-analyze
-→ speckit-implement
-→ speckit-implement-review
+speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speckit-analyze
+→ speckit-implement            (upstream Spec Kit)
+→ speckit-implement-review     (Specify PowerPack)
 ```
 
-`implement-review` owns convergence, quality gates, independent Sol review and the final Project-aware GitHub review. Findings return to implementation; any implementation change invalidates approvals bound to an earlier snapshot.
+`implement-review` owns convergence (via upstream `speckit-converge`), quality gates, independent Sol review and the final Project-aware GitHub review. Findings return to implementation; any implementation change invalidates approvals bound to an earlier snapshot.
 
 ## What is implemented
 
-- same-SPEC predecessor enforcement;
-- explicit implementation receipts;
+- repository-evidence predecessor enforcement (a completed `tasks.md` plus a real change delta);
 - convergence and review repair loops;
 - Deep Review Evidence Protocol schema 2.0 + validator;
 - capability-based quality gates instead of hard-coded Maven/npm/pytest assumptions;
-- technical-debt governance that forbids hiding current-flow findings as debt;
 - Codex/Claude executor routing;
 - browserless ChatGPT Project context;
 - GitHub App/connector discovery and OAuth readiness checks;
@@ -233,15 +227,11 @@ specify-powerpack update . --project-only --reset-config
     ├── bin/
     │   ├── powerpack.py
     │   ├── capabilities.py
-    │   ├── review_protocol.py
-    │   ├── debt.py
-    │   └── full_cycle.py
+    │   └── review_protocol.py
     ├── model-routing.json
     ├── prerequisites.json
     ├── quality-gates.json
     ├── review.json
-    ├── full-cycle.json
-    ├── technical-debt.json
     ├── update.json
     ├── deep-review-protocol.md
     └── reviews/            # local generated review artifacts

@@ -163,12 +163,102 @@ def git_head(root: Path) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def _branch_base(root: Path) -> str | None:
+    for ref in ("origin/HEAD", "origin/main", "main", "origin/master", "master"):
+        proc = run(["git", "merge-base", "HEAD", ref], root)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    return None
+
+
+def changed_paths(root: Path) -> tuple[bool, list[str]]:
+    """Return (git_available, changed non-runtime files) for the active feature.
+
+    Combines the working tree (`git status --porcelain`) with the branch delta
+    (`git diff <base> HEAD`). Excludes `.specify/powerpack/` so PowerPack's own
+    state never counts as an implementation delta. This is the repository-evidence
+    signal that replaced the removed `speckit.implement` delta-capture receipt.
+    """
+    if run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
+        return False, []
+    paths: set[str] = set()
+    porcelain = run(["git", "status", "--porcelain", "-z"], root)
+    if porcelain.returncode == 0:
+        for entry in porcelain.stdout.split("\0"):
+            if len(entry) > 3:
+                paths.add(entry[3:])
+    base = _branch_base(root)
+    if base:
+        diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
+        if diff.returncode == 0:
+            paths.update(p for p in diff.stdout.split("\0") if p)
+    return True, sorted(
+        p for p in paths if p and not p.startswith(".specify/powerpack/")
+    )
+
+
+def task_checkbox_counts(path: Path) -> tuple[int, int]:
+    """Return (total, unchecked) GitHub task checkboxes in a markdown file."""
+    total = unchecked = 0
+    in_fence = False
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = re.match(r"- \[([ xX])\]\s", stripped)
+        if match:
+            total += 1
+            if match.group(1) == " ":
+                unchecked += 1
+    return total, unchecked
+
+
+def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
+    """Repository-evidence prerequisite for `implement-review` (replaces the
+    removed PowerPack `implement` completion receipt).
+
+    An explicit prior implementation is proven by: a `tasks.md` whose task
+    checkboxes are all checked, plus a non-documentation change delta on the
+    branch/worktree. When git is unavailable the delta check is skipped.
+    """
+    tasks = feature / "tasks.md"
+    if not tasks.is_file():
+        return {"ok": False, "step": "implement-review", "reason": "MISSING_TASKS"}
+    total, unchecked = task_checkbox_counts(tasks)
+    if total == 0 or unchecked > 0:
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "TASKS_INCOMPLETE",
+            "unchecked": unchecked,
+            "total": total,
+        }
+    git_ok, changed = changed_paths(root)
+    if not git_ok:
+        return {
+            "ok": True,
+            "step": "implement-review",
+            "reason": "OK",
+            "git_unavailable": True,
+        }
+    if is_documentation_only(changed):
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "NO_IMPLEMENTATION_DELTA",
+        }
+    return {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
 def intent_files(feature: Path, step: str) -> list[Path]:
     names = ["spec.md", "plan.md"]
-    if step in {"tasks", "analyze", "implement", "converge", "implement-review"}:
+    if step in {"tasks", "analyze", "implement-review"}:
         names.append("tasks.md")
     files = [feature / name for name in names if (feature / name).is_file()]
-    if step in {"checklist", "checklist-converge"}:
+    if step == "checklist":
         checklist_dir = feature / "checklists"
         if checklist_dir.is_dir():
             files.extend(sorted(checklist_dir.glob("*.md")))
@@ -186,7 +276,7 @@ def intent_fingerprint(feature: Path, step: str) -> str:
 def load_feature_state(root: Path, feature: Path) -> dict[str, Any]:
     return read_json(
         state_path(root, feature),
-        {"schema_version": 2, "feature": feature_id(root, feature), "steps": {}, "implement_runs": []},
+        {"schema_version": 2, "feature": feature_id(root, feature), "steps": {}},
     )
 
 
@@ -206,6 +296,10 @@ def checklist_artifact_evidence(feature: Path) -> bool:
 
 
 def cmd_state_mark(args: argparse.Namespace) -> int:
+    # Generic per-step receipt API, retained as reusable infrastructure (FR-013).
+    # It has no first-party command caller under the single-skill baseline; the
+    # `implement-review` prerequisite is now `implement_evidence` (repository
+    # evidence), not a receipt.
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
     if args.step == "checklist" and not checklist_artifact_evidence(feature):
@@ -271,10 +365,8 @@ def cmd_state_check(args: argparse.Namespace) -> int:
 
 
 def default_prerequisites() -> dict[str, list[dict[str, Any]]]:
-    return {
-        "checklist-converge": [{"step": "checklist", "statuses": ["COMPLETED"]}],
-        "implement-review": [{"step": "implement", "statuses": ["COMPLETED"]}],
-    }
+    # `implement-review` is handled by `implement_evidence`, not a receipt list.
+    return {}
 
 
 def cmd_prereq_check(args: argparse.Namespace) -> int:
@@ -285,6 +377,16 @@ def cmd_prereq_check(args: argparse.Namespace) -> int:
     if config.get("mode") in {"off", "disabled"}:
         print(json.dumps({"ok": True, "step": args.step, "mode": config.get("mode")}))
         return 0
+    if args.step == "implement-review":
+        # Repository-evidence gate. Any legacy
+        # {"step": "implement", "statuses": ["COMPLETED"]} entry in an existing
+        # prerequisites.json is intentionally ignored in favour of this check.
+        result = implement_evidence(root, feature)
+        result["feature"] = feature_id(root, feature)
+        if not result["ok"]:
+            result["next_action"] = "speckit-implement"
+        print(json.dumps(result))
+        return 0 if result["ok"] else 9
     requirements = config.get("steps", {}).get(args.step, default_prerequisites().get(args.step, []))
     results: list[dict[str, Any]] = []
     for req in requirements:
@@ -307,92 +409,6 @@ def cmd_prereq_check(args: argparse.Namespace) -> int:
             return 9
     print(json.dumps({"ok": True, "step": args.step, "feature": feature_id(root, feature), "requirements": results}))
     return 0
-
-
-def git_candidate_files(root: Path) -> list[str]:
-    proc = run(["git", "ls-files", "-co", "--exclude-standard", "-z"], root)
-    if proc.returncode != 0:
-        return []
-    return sorted({item for item in proc.stdout.split("\0") if item})
-
-
-def workspace_snapshot(root: Path) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for raw in git_candidate_files(root):
-        path = root / raw
-        if path.is_file() and not raw.startswith(".specify/powerpack/"):
-            try:
-                result[raw] = sha_file(path)
-            except OSError:
-                continue
-    return result
-
-
-def snapshot_delta(before: dict[str, str], after: dict[str, str]) -> list[str]:
-    paths = set(before) | set(after)
-    return sorted(path for path in paths if before.get(path) != after.get(path))
-
-
-def cmd_implement_begin(args: argparse.Namespace) -> int:
-    root = find_root()
-    feature = resolve_feature_dir(root, args.feature_dir)
-    data = load_feature_state(root, feature)
-    runs = data.setdefault("implement_runs", [])
-    if any(item.get("status") == "RUNNING" for item in runs):
-        print("BLOCKED: an implement run is already RUNNING for this SPEC.")
-        return 12
-    run_id = datetime.now(timezone.utc).strftime("impl-%Y%m%dT%H%M%S%fZ")
-    runs.append({
-        "run_id": run_id,
-        "status": "RUNNING",
-        "started_at": utc_now(),
-        "before": workspace_snapshot(root),
-        "git_head_before": git_head(root),
-    })
-    save_feature_state(root, feature, data)
-    print(json.dumps({"run_id": run_id, "feature": feature_id(root, feature), "status": "RUNNING"}))
-    return 0
-
-
-def cmd_implement_end(args: argparse.Namespace) -> int:
-    root = find_root()
-    feature = resolve_feature_dir(root, args.feature_dir)
-    data = load_feature_state(root, feature)
-    running = [item for item in data.get("implement_runs", []) if item.get("status") == "RUNNING"]
-    if not running:
-        print("BLOCKED: no RUNNING implement receipt exists for this SPEC.")
-        return 13
-    item = running[-1]
-    after = workspace_snapshot(root)
-    changed = snapshot_delta(item.get("before", {}), after)
-    item.update({
-        "status": "COMPLETED",
-        "completed_at": utc_now(),
-        "changed_files": changed,
-        "git_head_after": git_head(root),
-    })
-    item.pop("before", None)
-    data["steps"]["implement"] = {
-        "status": "COMPLETED",
-        "recorded_at": utc_now(),
-        "intent_sha256": intent_fingerprint(feature, "implement"),
-        "git_head": git_head(root),
-        "run_id": item["run_id"],
-        "changed_files": changed,
-    }
-    save_feature_state(root, feature, data)
-    print(json.dumps({
-        "run_id": item["run_id"],
-        "feature": feature_id(root, feature),
-        "status": "COMPLETED",
-        "changed_files": changed,
-    }, ensure_ascii=False))
-    return 0
-
-
-def latest_implement_files(root: Path, feature: Path) -> list[str]:
-    runs = [item for item in load_feature_state(root, feature).get("implement_runs", []) if item.get("status") == "COMPLETED"]
-    return list(runs[-1].get("changed_files", [])) if runs else []
 
 
 def is_documentation_only(paths: Iterable[str]) -> bool:
@@ -473,7 +489,7 @@ def gate_for_project(root: Path, files: list[str]) -> dict[str, Any]:
 def cmd_gate_detect(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, latest_implement_files(root, feature))
+    result = gate_for_project(root, changed_paths(root)[1])
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["status"] != "BLOCKED_CONFIGURATION" else 7
 
@@ -481,7 +497,7 @@ def cmd_gate_detect(args: argparse.Namespace) -> int:
 def cmd_gate_run(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, latest_implement_files(root, feature))
+    result = gate_for_project(root, changed_paths(root)[1])
     print(json.dumps(result, ensure_ascii=False))
     if result["status"] == "NOT_APPLICABLE":
         return 0
@@ -570,7 +586,7 @@ def save_review_state(root: Path, feature: Path, data: dict[str, Any]) -> None:
 def cmd_review_start(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    prereq = evaluate_receipt(root, feature, "implement", {"COMPLETED"}, require_current=False)
+    prereq = implement_evidence(root, feature)
     if not prereq["ok"]:
         print(json.dumps({"status": "BLOCKED", "reason": "missing-implement-predecessor", "detail": prereq}))
         return 9
@@ -913,11 +929,6 @@ def build_parser() -> argparse.ArgumentParser:
     prereq = sub.add_parser("prereq")
     psub = prereq.add_subparsers(dest="prereq_command", required=True)
     p = psub.add_parser("check"); p.add_argument("--step", required=True); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_prereq_check)
-
-    implement = sub.add_parser("implement")
-    isub = implement.add_subparsers(dest="implement_command", required=True)
-    p = isub.add_parser("begin"); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_implement_begin)
-    p = isub.add_parser("end"); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_implement_end)
 
     gate = sub.add_parser("gate")
     gsub = gate.add_subparsers(dest="gate_command", required=True)
