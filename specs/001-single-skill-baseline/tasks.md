@@ -175,3 +175,13 @@ silent redirect.
 **Increment 3 = Phase 6** (US4): regression guard locks the baseline.
 
 **Increment 4 = Phase 7**: docs, changelog, PR, quickstart parity.
+
+---
+
+## Phase 8: Convergence
+
+Assessed 2026-09-09 after `/speckit-implement`. One CRITICAL regression plus its
+missing test coverage; everything else in the specified scope is satisfied.
+
+- [ ] T046 CRITICAL: Re-base the quality gate in `src/speckit_powerpack/assets/runtime/powerpack_capabilities.py` per FR-001 / FR-018 (contradicts). Its standalone `latest_implement_files()` (lines ~132-140) still reads `implement_runs` from feature state, which nothing populates after the wrap removal, so `capabilities.py gate detect` / `gate run` — the gate `speckit.implement-review.md` actually invokes — always sees `[]` and returns `NOT_APPLICABLE`. Give `capabilities.py` its own git-evidence `changed_paths(root)` helper mirroring `powerpack_runtime.changed_paths` (working tree via `git status --porcelain` + branch delta via `git diff <base> HEAD`, excluding `.specify/powerpack/`) and call it at the `main()` gate site instead of `latest_implement_files`; drop `latest_implement_files`.
+- [ ] T047 Add coverage for T046 in `tests/test_capabilities.py` per SC-003 / US2 (missing): a test that runs the `gate detect` path through `main()` (or the `changed_paths`-backed call site) in a temp git repo with a real code change and asserts the gate resolves to `REQUIRED`/`BLOCKED_CONFIGURATION` (architecture-dependent) rather than `NOT_APPLICABLE`, and with a docs-only change asserts `NOT_APPLICABLE`.
