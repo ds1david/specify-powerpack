@@ -6,335 +6,326 @@
 
 **Status**: Draft
 
-**Input**: User description: "Migrate Specify PowerPack to native Spec Kit primitives; define installation, setup, reconfiguration, review routing, companion presets for safe customization of upstream skills, persistent cross-session hook state, and local/cross-agent/GPT Web review configuration."
+**Input**: User description: "Migrate Specify PowerPack to native Spec Kit primitives; define installation, setup, reconfiguration, review routing, companion presets for safe customization of upstream skills, persistent cross-session hook state, modular capability setup, component coherence, diagnostics, and local/cross-agent/GPT Web review configuration."
 
 ## Overview
 
-Evolve Specify PowerPack from a bootstrap-oriented companion CLI into a Spec Kit-native
-composition whose lifecycle is owned by `specify`.
+Evolve Specify PowerPack from a bootstrap-oriented companion CLI into a Spec Kit-native composition whose lifecycle is owned by `specify`.
 
-PowerPack SHALL use three distinct Spec Kit primitives for three distinct responsibilities:
+PowerPack SHALL use native Spec Kit primitives with explicit responsibility boundaries:
 
 ```text
 PowerPack Bundle
     |
     +-- PowerPack Extension
     |      -> runtime
-    |      -> configuration
+    |      -> capability registry
+    |      -> setup/configuration engine
     |      -> administrative commands
     |      -> PowerPack-owned functional commands
-    |      -> hooks
+    |      -> hooks/events adapters
     |      -> persistent PowerPack state
+    |      -> diagnostics
     |
     +-- PowerPack Preset(s)
-           -> compose/wrap/append/override upstream Spec Kit commands only when required
-           -> adapt upstream workflow skills without copying their lifecycle into PowerPack
+           -> compose/wrap/append/prepend upstream Spec Kit commands when required
+           -> adapt upstream workflow skills without permanently copying them
 ```
 
-The **extension is the runtime core**. Presets are a deliberately narrow customization layer,
-not an alternative runtime and not a return to the legacy monolithic `powerpack-core` preset.
-The **bundle is the preferred distribution/install unit** when the supported Spec Kit version
-provides the native bundle lifecycle, because bundles compose extensions and presets through
-their own native managers.
+The **extension is the runtime authority**. Presets are a narrow composition layer, not a second runtime and not a return to the legacy monolithic `powerpack-core` preset. The **bundle is the preferred release/install composition** where the supported Spec Kit range provides the native bundle lifecycle.
 
-PowerPack MUST NOT install, replace, downgrade, or upgrade the user's Spec Kit CLI as part of
-normal operation.
+PowerPack MUST NOT install, replace, downgrade, or upgrade the user's Spec Kit CLI during normal operation.
 
-The setup/reconfiguration engine discovers the current Spec Kit integration environment,
-validates executable review routes, lets the user explicitly select review policy, and commits
-only a complete validated candidate. Runtime execution never silently changes reviewer,
-backend, active integration, or evidence source.
+The setup engine MUST be modular by capability. It aggregates capability descriptors, discovers the environment once, builds a complete candidate configuration, validates global and capability-local invariants, and commits only a complete valid candidate. Adding a future capability MUST NOT require turning `setup.py` into a hard-coded chain of feature-specific conditionals.
 
-This specification also defines a reusable **persistent hook-state contract** for future
-PowerPack capabilities. Hook-relevant state MUST survive agent/terminal sessions through
-project-local JSON state. Environment variables MAY be projected from that JSON for the
-current process, but shell profiles such as `.bashrc`, `.zshrc`, PowerShell profiles, Windows
-user/global environment, or equivalent persistent host configuration MUST NOT be modified.
+This specification also defines a reusable persistent hook-state contract. Durable workflow facts live in project-local JSON. Environment variables are optional child-process projections only; they are not cross-hook or cross-session authority and MUST NOT be persisted through shell profiles or host-global environment configuration.
 
 ### Dependency on SPEC-001
 
-SPEC-001 establishes `implement-review` as the only functional PowerPack capability at this
-baseline. This specification changes installation/lifecycle architecture but does not itself
-add another functional workflow capability.
+SPEC-001 establishes `implement-review` as the only functional PowerPack capability at this baseline. SPEC-002 changes installation/runtime architecture and adds administrative infrastructure but does not itself add a new functional workflow capability.
 
-Administrative setup commands, hook infrastructure, presets that customize upstream commands,
-and bundle metadata do not by themselves count as new functional PowerPack capabilities.
-Future specifications may intentionally expand the functional capability set.
+Administrative setup, doctor/diagnostics, capability registry, state handling, presets, hooks/events adapters, bundle metadata, and machine-readable status surfaces do not count as additional functional capabilities.
 
 ## Architectural Decisions
 
 ### AD-001 — Native primitives, not a replacement framework
 
-PowerPack MUST use Spec Kit's supported extension, preset, hook, integration, and bundle
-mechanisms instead of maintaining an independent plugin framework.
+PowerPack MUST use supported Spec Kit extensions, presets, hooks/events, integrations, workflows/bundles where appropriate, rather than maintaining an independent plugin framework.
 
-### AD-002 — Extension owns behavior; presets own composition
+### AD-002 — Extension owns runtime; presets own upstream composition
 
-The extension owns PowerPack runtime behavior and state. Companion presets are allowed only
-where PowerPack must compose an upstream Spec Kit command/skill and the extension API cannot
-provide the required command composition semantics.
+Reusable logic, state, validation, configuration, routing, and diagnostics belong to the extension runtime. Presets MAY compose upstream Spec Kit commands when the extension API alone cannot supply the required composition behavior.
 
-A preset MUST NOT become the authoritative home for PowerPack runtime, configuration, state,
-or business logic.
+Preset prompt text MUST remain thin and MUST delegate substantive logic to PowerPack-owned commands/runtime.
 
-### AD-003 — Bundle is the preferred install composition
+### AD-003 — Bundle is the preferred release composition
 
-Where supported by the accepted Spec Kit compatibility range, PowerPack SHOULD ship a native
-bundle containing the PowerPack extension and required companion preset(s).
+Where supported by the accepted Spec Kit compatibility range, PowerPack SHOULD ship a native bundle containing the extension and all required companion presets.
+
+Development MAY install components independently for debugging. Release/homologation MUST validate the exact component set delivered to users.
+
+### AD-004 — No permanent fork of upstream skills
+
+PowerPack SHOULD use `wrap`, `append`, `prepend`, or another native composition mechanism to augment upstream skills. A full `replace` is an exception requiring documented necessity and explicit upstream-drift tests.
+
+### AD-005 — Capability registry is the setup/runtime expansion point
+
+Each PowerPack capability MUST be representable by a capability descriptor that can declare, as applicable:
+
+```text
+id
+version
+kind: functional | administrative
+configuration schema/defaults
+runtime dependencies
+readiness evaluator
+hook/event registrations
+persistent-state schema(s)
+migration provider
+health checks
+machine-readable status fields
+```
+
+The setup engine, doctor, status output, migration engine, and future UI adapters SHOULD consume this common registry rather than maintain independent capability lists.
+
+### AD-006 — Installation health and capability readiness are separate
+
+PowerPack MUST distinguish installation/component health from individual capability readiness.
+
+```text
+installation_health:
+  HEALTHY | DEGRADED | BROKEN
+
+capability_state:
+  UNCONFIGURED | READY | BLOCKED | DISABLED
+```
+
+A healthy installation MAY legitimately contain a disabled or unconfigured optional capability. A blocked optional capability MUST NOT make unrelated ready capabilities unusable unless there is an explicit dependency.
+
+### AD-007 — Component coherence is verified, not assumed
+
+Bundle, extension, presets, and any future distribution components MUST expose enough identity/version metadata for PowerPack to verify that the installed component set is compatible.
+
+Because bundle/component installation can be idempotent by component id rather than guaranteed version replacement, merely finding a component installed is insufficient proof of coherence.
+
+A component-set check MUST detect extension/preset/bundle skew before declaring the relevant capability ready.
+
+### AD-008 — Persistent state is JSON; ENV is child-process projection only
+
+Durable hook/workflow facts MUST be stored in PowerPack-owned project-local JSON.
+
+```text
+JSON persistent state
+    -> load
+    -> schema/freshness/concurrency validation
+    -> optional ENV projection for a child process controlled by PowerPack
+```
+
+An ENV value exported by one hook MUST NOT be assumed to survive after that hook exits or propagate back to the parent agent process. Separate hooks/commands MUST reload authoritative JSON or invoke a PowerPack state resolver.
+
+### AD-009 — No shell-profile or host-global ENV mutation
+
+PowerPack MUST NOT persist workflow state by modifying `.bashrc`, `.bash_profile`, `.profile`, `.zshrc`, PowerShell profiles, Windows user/global environment, registry environment entries, or equivalent host-global configuration.
+
+### AD-010 — Atomic write plus optimistic concurrency
+
+Atomic replacement prevents partial JSON but does not by itself prevent lost updates. Persistent state MUST therefore carry a revision/generation token and writes MUST detect whether the record changed since it was read.
 
 Conceptually:
 
 ```text
-specify bundle install <powerpack-bundle>
+read revision N
+compute candidate
+verify current revision still N
+commit revision N+1
+or reload/reconcile on conflict
 ```
 
-Development MAY install the primitives independently when that is more useful for debugging.
-The technical plan MUST define the exact development, release artifact, direct-install, and
-catalog paths for the supported Spec Kit range.
+The technical plan MAY use a portable lock in addition to revision checking.
 
-### AD-004 — No permanent copy of upstream skills
+### AD-011 — Config, state, and evidence are different data classes
 
-When PowerPack needs to customize an upstream skill such as `speckit.checklist`, it SHOULD use
-preset composition (`wrap`, `append`, `prepend`, or another native supported strategy as
-appropriate) rather than vendoring a permanent fork of the upstream command.
-
-A `replace` strategy that copies the complete upstream command is allowed only when no native
-composition strategy can satisfy an accepted requirement, and then it MUST have explicit
-compatibility/homologation coverage for upstream drift.
-
-### AD-005 — Persistent hook state is JSON; ENV is transient
-
-Persistent hook/workflow state MUST be represented by project-local JSON owned by PowerPack.
-Environment variables are a process-local projection only.
+PowerPack MUST keep different lifecycle semantics for:
 
 ```text
-persistent JSON state
-        |
-        +--> load + validate
-                 |
-                 +--> project required ENV for current process/hook
+CONFIG     -> durable user intent/policy
+STATE      -> mutable workflow/runtime continuity
+EVIDENCE   -> historical/audit review outputs
 ```
 
-The inverse relationship is forbidden: ENV MUST NOT be treated as durable workflow authority.
+The technical plan MUST define concrete paths and git-ignore behavior. Mutable runtime state SHOULD be gitignored by default. Cross-machine synchronization of mutable state is not implicit and requires a future explicit capability if desired.
 
-### AD-006 — No shell-profile mutation
+### AD-012 — Native runtime events are an optional accelerator, not a portability dependency
 
-PowerPack MUST NOT persist hook ENV through `.bashrc`, `.bash_profile`, `.profile`, `.zshrc`,
-PowerShell profiles, Windows registry/user environment variables, or equivalent host-global
-configuration.
+When the active integration supports Spec Kit agent-native events such as `session_start`, PowerPack MAY use them to bootstrap/validate state, component coherence, or health. Capabilities MUST still work through the portable command/hook contract when such native events are unavailable.
+
+### AD-013 — UI/canvas integrations consume machine-readable state; they do not own workflow semantics
+
+PowerPack MUST expose enough machine-readable capability/status information that a future Copilot Canvas or other UI adapter can discover and render PowerPack state.
+
+The PowerPack runtime MUST remain agent-agnostic. A Copilot-specific canvas is an optional adapter layer and MUST NOT become required for PowerPack operation.
 
 ## Terminology
 
-- **PowerPack Bundle**: native Spec Kit bundle used to distribute/install the set of PowerPack
-  primitives required by a release.
-- **PowerPack Extension**: primary runtime/configuration component, target id `powerpack`.
-- **PowerPack Companion Preset**: minimal native preset used only to compose/customize upstream
-  Spec Kit commands where extension commands/hooks are insufficient.
-- **Workflow agent**: Spec Kit `default_integration` currently driving the project.
-- **Installed integration**: integration recorded by Spec Kit in `installed_integrations`.
-- **Active-agent local review**: review executed through the current non-Codex workflow agent.
-- **Codex same-session review**: Codex review performed in the active Codex session when Codex
-  is the workflow agent.
-- **Codex cross-agent review**: Codex used as reviewer while another installed/default agent
-  remains responsible for the workflow and fixes.
-- **Local backend**: local repository/SPEC evidence and the local `implement-review` contract.
-- **GPT Web / ChatGPT Project backend**: existing browserless Codex-authenticated ChatGPT
-  Project + GitHub connector evidence path; it is not browser automation.
-- **Candidate configuration**: proposed complete configuration that is not active until fully
-  validated and atomically committed.
-- **Persistent Hook State**: JSON state that records hook-relevant workflow facts across
-  sessions.
-- **ENV Projection**: temporary environment variables reconstructed from validated persistent
-  state for one hook/child process.
+- **PowerPack Bundle**: native Spec Kit release composition for the extension plus required companion presets/components.
+- **PowerPack Extension**: authoritative runtime/configuration/hooks/state component, target id `powerpack`.
+- **PowerPack Companion Preset**: thin native preset that composes an upstream Spec Kit command.
+- **Capability Descriptor**: machine-readable/internal contract describing one PowerPack functional or administrative capability.
+- **Installation Health**: health of the installed PowerPack component set independent from individual capability configuration.
+- **Capability State**: readiness state of one capability.
+- **Component Set**: bundle/extension/preset versions and compatibility identity expected to operate together.
+- **Persistent Hook State**: project-local JSON workflow facts that survive sessions.
+- **ENV Projection**: temporary child-process environment derived from validated JSON.
+- **Workflow agent**: Spec Kit `default_integration` driving the project.
+- **Installed integration**: integration recorded in Spec Kit `installed_integrations`.
+- **Codex same-session review**: review performed in the active Codex workflow/session.
+- **Codex cross-agent review**: Codex used as secondary reviewer while another agent remains workflow/fix owner.
+- **GPT Web / ChatGPT Project backend**: browserless Codex-authenticated ChatGPT Project + GitHub connector evidence route.
+- **Candidate configuration**: complete proposed setup state that is inactive until validated and atomically committed.
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing
 
 ### User Story 1 — Install PowerPack through native Spec Kit composition (Priority: P1)
 
-A user installs PowerPack using the native Spec Kit distribution path. The PowerPack extension
-and any companion presets required by that release are installed through their native Spec
-Kit managers, preferably as one PowerPack bundle.
-
-**Why this priority**: PowerPack must evolve with Spec Kit rather than wrap and own Spec Kit.
-
-**Independent Test**: Install the release bundle into a clean compatible project and verify
-bundle provenance, extension registration, companion-preset registration, command exposure,
-and absence of any PowerPack-driven Spec Kit bootstrap/upgrade.
+A user installs the PowerPack bundle in a compatible Spec Kit project. Spec Kit manages the extension and presets; PowerPack does not bootstrap or upgrade Spec Kit.
 
 **Acceptance Scenarios**:
 
-1. **Given** a compatible Spec Kit project, **When** the PowerPack bundle is installed,
-   **Then** the required extension and preset components are installed through Spec Kit's
-   native component managers.
-2. **Given** a fresh PowerPack install, **When** setup has not run, **Then** review routing is
-   `PENDING`; PowerPack does not guess a reviewer/backend.
-3. **Given** a successful install, **When** native Spec Kit list/info commands are used,
-   **Then** PowerPack components and provenance are discoverable.
-4. **Given** normal installation, **When** the resulting environment is inspected, **Then**
-   PowerPack has not installed/replaced/upgraded `specify`.
-
----
+1. Required components are installed through their native Spec Kit managers.
+2. Fresh installation has healthy component metadata but capability setup may remain `UNCONFIGURED`/`PENDING`.
+3. Native list/info surfaces can discover installed components and provenance.
+4. PowerPack does not install/replace/upgrade `specify`.
+5. Post-install diagnostics detect partial or skewed component sets before setup reports ready.
 
 ### User Story 2 — Customize upstream skills without forking them (Priority: P1)
 
-A future PowerPack capability needs to add workflow behavior to an upstream Spec Kit skill.
-PowerPack installs/uses a companion preset that composes the upstream command while the
-PowerPack extension provides the reusable runtime and state implementation.
-
-**Why this priority**: Future skills such as checklist convergence need upstream workflow
-integration while still surviving Spec Kit evolution.
-
-**Independent Test**: Compose an upstream command through a PowerPack companion preset,
-upgrade/re-render the integration, and verify that upstream behavior remains present while the
-PowerPack augmentation remains isolated and removable.
+A PowerPack capability augments an upstream Spec Kit command through a narrow companion preset while substantive logic stays in the extension runtime.
 
 **Acceptance Scenarios**:
 
-1. **Given** an upstream command can be augmented by a native preset composition strategy,
-   **When** PowerPack customization is installed, **Then** PowerPack MUST use composition
-   rather than copy the complete upstream command.
-2. **Given** the preset invokes PowerPack logic, **When** its implementation is inspected,
-   **Then** substantive behavior resides in extension/runtime code or PowerPack-owned command
-   logic rather than duplicated inside the preset prompt.
-3. **Given** the preset is removed/disabled, **When** the integration is rescaffolded,
-   **Then** upstream Spec Kit command behavior remains available without PowerPack-specific
-   augmentation.
-4. **Given** native composition is insufficient and `replace` is proposed, **When** the change
-   is planned, **Then** explicit upstream-drift tests and a documented reason are required.
+1. Native composition is preferred over copying the complete upstream command.
+2. Removing the preset leaves the upstream core command functional.
+3. `replace` requires documented necessity and upstream compatibility tests.
+4. Multiple composing presets from different sources are included in homologation for ordering/priority/conflict behavior.
 
----
+### User Story 3 — Setup aggregates capability modules (Priority: P1)
 
-### User Story 3 — Setup detects the real Spec Kit/AI environment (Priority: P1)
-
-A user runs PowerPack setup. PowerPack reads authoritative Spec Kit integration state,
-validates actual local CLI/auth capabilities, and exposes only executable review strategies or
-explicit actions required to make another strategy executable.
+The setup engine discovers registered PowerPack capabilities and asks each applicable descriptor to validate/configure its own section, while sharing one environment discovery and one transactional candidate.
 
 **Acceptance Scenarios**:
 
-1. `default_integration = codex` exposes Codex same-session local review.
+1. Adding a new capability descriptor does not require a duplicate setup engine.
+2. One capability may be `READY` while another is `UNCONFIGURED` or `DISABLED`.
+3. A blocked optional capability does not silently disable unrelated capabilities.
+4. Capability-local validation and global cross-capability validation both run before commit.
+5. Agent and shell setup adapters invoke the same registry-driven engine.
+
+### User Story 4 — Verify component coherence (Priority: P1)
+
+PowerPack verifies that installed bundle/extension/preset versions form a supported component set before capability execution.
+
+**Acceptance Scenarios**:
+
+1. Matching supported components yield `HEALTHY` installation health.
+2. Missing required preset, extension/preset skew, or unsupported Spec Kit range yields `DEGRADED` or `BROKEN` with actionable diagnostics.
+3. PowerPack never silently rewrites/reinstalls components outside native lifecycle commands.
+4. Re-running native bundle update followed by doctor can restore health.
+
+### User Story 5 — Setup detects the real Spec Kit/AI environment (Priority: P1)
+
+Setup reads authoritative Spec Kit integration state and validates actual executable/auth capabilities before offering review routes.
+
+**Acceptance Scenarios**:
+
+1. Codex default exposes same-session review.
 2. Non-Codex default with no ready Codex exposes active-agent local review only.
-3. Non-Codex default plus installed/ready/authenticated Codex exposes Codex cross-agent review.
-4. Codex recorded but executable/auth unavailable does not count as a ready Codex reviewer.
-5. Cross-agent review MUST NOT silently change `default_integration`.
+3. Non-Codex default plus ready authenticated Codex exposes cross-agent review.
+4. Registration without executable/auth readiness does not count as runnable capability.
+5. Cross-agent review never silently changes `default_integration`.
 
----
+### User Story 6 — Configure review topology and GPT Web safely (Priority: P1)
 
-### User Story 4 — Configure local, cross-agent, and GPT Web review plans (Priority: P1)
-
-The user chooses an explicit review topology and evidence/backend strategy. Local active-agent,
-Codex same-session, Codex cross-agent, and Codex-backed GPT Web gates are composed only when
-the detected environment supports them.
+The user selects explicit review gates/topology. GPT Web is available only when its Codex-backed ChatGPT Project/GitHub evidence prerequisites validate.
 
 **Acceptance Scenarios**:
 
-1. Active non-Codex integration can run the existing local review flow.
-2. Active Codex can run same-session local review without spawning another Codex merely to
-   simulate independence.
-3. Non-Codex + ready secondary Codex can run cross-agent review without changing workflow
-   ownership.
-4. GPT Web may be added only to a Codex-backed route.
-5. Invalid combinations fail during candidate validation and are never silently rewritten.
+1. Executor/topology and evidence backend are separate dimensions.
+2. Invalid combinations fail before persistence.
+3. GPT Web requires a uniquely validated compatible Project and repository evidence path.
+4. Cancellation/failure preserves the previous valid configuration exactly.
+5. Credentials/tokens/cookies are never stored in project configuration.
 
----
+### User Story 7 — Run bounded sequential review rounds (Priority: P1)
 
-### User Story 5 — GPT Web requires a compatible bound Project (Priority: P1)
-
-When GPT Web is selected, PowerPack requires explicit binding to a compatible ChatGPT Project
-and validates GitHub connector/repository evidence before configuration becomes active.
+`implement-review` executes configured gates against immutable snapshots and stops early on common approval.
 
 **Acceptance Scenarios**:
 
-1. No valid ChatGPT Project binding means GPT Web cannot become `READY`.
-2. Project selection cancellation causes zero setup/reconfiguration modifications.
-3. Project/context/GitHub/repository validation failure causes zero candidate commit.
-4. A previous valid configuration survives failed reconfiguration unchanged.
-5. Credentials/tokens/cookies are never persisted in PowerPack project configuration.
+1. Default `max_rounds` is 5 unless superseded later.
+2. Findings are explicitly accounted for in later rounds.
+3. Snapshot-changing fixes invalidate previous approvals.
+4. Exhausted budget with unresolved findings returns blocking state, never approval.
 
----
+### User Story 8 — Persist hook state safely across sessions (Priority: P1)
 
-### User Story 6 — Setup is transactional and re-runnable (Priority: P1)
-
-Setup can be executed at installation time or any later time. It always builds a candidate,
-validates it completely, and atomically replaces the prior configuration only after success.
+A state-producing hook writes validated JSON that can be recovered by later commands/hooks/sessions, including another supported agent using the same checkout.
 
 **Acceptance Scenarios**:
 
-1. Running setup against `READY` enters reconfiguration semantics.
-2. Selective changes preserve unspecified values only when the complete resulting candidate
-   is still valid.
-3. Abort/reject/failure preserves the prior configuration exactly.
-4. Runtime environment drift blocks with `BLOCKED_CONFIGURATION`; no silent fallback occurs.
-5. Reset is a distinct explicit operation, not an implicit consequence of reconfiguration.
+1. Later consumers reload JSON; they do not depend on ENV exported by a previous hook.
+2. JSON includes schema, revision and artifact identity/freshness metadata.
+3. Stale or malformed state cannot authorize/block a consequential transition without revalidation/recomputation.
+4. No shell profile or global ENV is changed.
+5. ENV may be projected only into a child process/runtime controlled by PowerPack.
 
----
+### User Story 9 — Prevent lost updates across simultaneous sessions (Priority: P1)
 
-### User Story 7 — Setup works from AI skill and shell (Priority: P2)
-
-A user can run setup through the active AI integration or from a shell. Both adapters invoke
-one setup engine.
+Two PowerPack sessions can inspect the same state concurrently without silently overwriting one another.
 
 **Acceptance Scenarios**:
 
-1. `speckit.powerpack.setup` supports interactive invocation.
-2. Agent command arguments are accepted where the integration provides an argument channel.
-3. A portable extension-owned Python entrypoint supports shell/non-interactive operation.
-4. Equivalent arguments through agent and shell produce equivalent validated configuration.
+1. State records carry a revision/generation.
+2. A writer verifies the revision before commit.
+3. A conflict reloads/reconciles or fails explicitly rather than silently overwriting a newer write.
+4. Readers never observe partial JSON.
 
----
+### User Story 10 — Diagnose PowerPack consistently (Priority: P1)
 
-### User Story 8 — Configure bounded automatic review rounds (Priority: P1)
-
-Setup stores a maximum automatic round budget. Review stops early when all required gates
-approve the same immutable snapshot and never treats budget exhaustion as approval.
+A user or homologation script runs `speckit.powerpack.doctor` to inspect component coherence, configuration, state, integration readiness and capability health.
 
 **Acceptance Scenarios**:
 
-1. Default `max_rounds` is 5 unless a later accepted specification changes it.
-2. Approval before the budget is exhausted stops further rounds.
-3. Findings are carried forward and accounted for in subsequent rounds.
-4. Any fix that changes the snapshot invalidates prior approval for that snapshot.
-5. Unresolved state at the limit returns `BLOCKED_BUDGET` or a more specific blocking state.
+1. `doctor` is administrative and does not expand the functional-capability set.
+2. Human-readable output identifies actionable failures.
+3. `doctor --json` (or equivalent machine-readable mode defined by the plan) exposes stable result codes/fields for automation.
+4. Doctor detects stale/malformed state, missing presets, unsupported Spec Kit version, command registration drift, hook/event registration drift and review-backend readiness.
 
----
+### User Story 11 — Bootstrap through native session events where available (Priority: P2)
 
-### User Story 9 — Persist hook state across sessions without shell profiles (Priority: P1)
-
-A PowerPack hook derives workflow facts that later hooks or later sessions need. PowerPack
-persists those facts in a project-local JSON state file. The current hook/process may project
-selected values into environment variables, but no persistent shell/user environment is
-modified.
-
-This contract is intentionally generic so future capabilities such as checklist convergence
-can persist facts such as pending gaps, ambiguities, conflicts, or clarification requirements
-without inventing their own persistence mechanism.
-
-**Independent Test**: Produce hook state in one agent session, terminate that session, start a
-new session (including a different supported agent), load the same checkout, execute a
-PowerPack hook, and verify that validated JSON state is recovered and the same effective hook
-facts are reconstructed.
+When an integration supports native runtime events, PowerPack may validate health/state on `session_start` without requiring the user to invoke a command first.
 
 **Acceptance Scenarios**:
 
-1. **Given** a workflow state is produced after an upstream command, **When** PowerPack needs
-   the state later, **Then** it is loaded from JSON rather than a shell profile.
-2. **Given** a new terminal/AI session, **When** the relevant PowerPack hook runs, **Then** it
-   can recover the state from the same project checkout.
-3. **Given** a different supported AI integration in a later session, **When** it loads the
-   project, **Then** hook state semantics remain independent of the agent that produced them.
-4. **Given** persisted state no longer matches the referenced artifacts, **When** a hook loads
-   it, **Then** it is marked/recomputed as stale before consequential action.
-5. **Given** ENV values are needed by a child hook/runtime process, **When** the hook executes,
-   **Then** they are reconstructed from validated JSON only for that process/session.
+1. Event-based bootstrap is advisory/preparatory and does not silently perform destructive migrations or user-intent changes.
+2. Integrations without native events retain equivalent behavior when a PowerPack command/hook is invoked.
+3. Event registration is part of compatibility/homologation testing.
+
+### User Story 12 — Support future visual/UI adapters without coupling the runtime (Priority: P2)
+
+A future Copilot Canvas or other UI can read capability/status information and invoke registered PowerPack commands, while the extension remains the workflow authority.
+
+**Acceptance Scenarios**:
+
+1. Core PowerPack operation has no dependency on a canvas/UI.
+2. Machine-readable status includes capability ids, readiness, relevant workflow state and recommended actions.
+3. UI adapters invoke the same commands/runtime contracts used by CLI/agent workflows.
+4. UI-specific allowlists or stage rendering do not redefine PowerPack semantics.
 
 ## Persistent Hook-State Model
 
 ### Source of truth
 
-The source of truth is a PowerPack-owned JSON artifact under mutable project state, not inside
-extension-managed source files.
-
-The exact final path is resolved by the technical plan. A conceptual layout is:
+Durable workflow state lives under PowerPack-owned mutable project state, conceptually:
 
 ```text
 .specify/powerpack/state/
@@ -342,358 +333,223 @@ The exact final path is resolved by the technical plan. A conceptual layout is:
         <workflow-or-feature-key>.json
 ```
 
-A future capability MAY use a more specific file such as:
+Capability specifications MAY define more specific paths while conforming to the common envelope.
 
-```text
-.specify/powerpack/state/checklist-state.json
-```
+### Common envelope
 
-provided it conforms to the common state contract.
-
-### Minimum envelope
-
-Persistent hook state SHOULD contain at minimum:
+Persistent state SHOULD contain at minimum:
 
 ```json
 {
   "schema_version": 1,
   "state_type": "<type>",
   "spec": "<active-spec-id>",
+  "revision": 7,
+  "producer_run_id": "<run-id>",
   "source_artifacts": [
     {
       "path": "<relative-path>",
       "digest": "sha256:<digest>"
     }
   ],
-  "status": "<semantic-status>",
+  "validity": "FRESH",
+  "status": "<capability-semantic-status>",
   "facts": {},
   "updated_at": "<timestamp>"
 }
 ```
 
-Capability-specific specifications define the allowed `status` and `facts` values.
+`validity` and semantic `status` are separate dimensions. Capability-specific specifications define their semantic statuses/facts.
 
-### Hook execution flow
-
-The generic lifecycle is:
+### Hook/command consumption
 
 ```text
-upstream command completes
-        |
-        v
-PowerPack post hook executes
-        |
-        +--> discover relevant output/artifacts
-        +--> load prior JSON state when applicable
-        +--> validate artifact identity/digests
-        +--> analyze/refresh semantic state
-        +--> atomically persist JSON state
-        +--> project selected facts to current process ENV when useful
-        +--> decide/report next action
+consumer starts
+  -> load JSON
+  -> validate schema
+  -> validate component/state version
+  -> validate artifact digests/freshness
+  -> validate/reconcile revision if writing
+  -> recompute if stale when deterministic
+  -> optionally project ENV to controlled child process
+  -> execute/report
 ```
 
-For later sessions:
+A state-producing post-hook MUST NOT require a pre-existing projected ENV. Separate consumers MUST reload JSON or use the common resolver.
 
-```text
-new AI/terminal session
-        |
-        v
-PowerPack hook/command
-        |
-        +--> load JSON
-        +--> validate freshness
-        +--> recompute if stale
-        +--> project runtime ENV
-        +--> continue
-```
-
-### ENV projection
-
-ENV names are implementation/API details defined by the capability that consumes them. They
-MUST be derived from validated persistent state and MUST NOT be the only copy of a workflow
-fact.
+## Capability Registry and Setup Model
 
 Conceptually:
 
 ```text
-ENV = projection(validated_persistent_state)
+PowerPack Setup
+    -> discover environment once
+    -> discover capability descriptors
+    -> load current config
+    -> ask each capability to contribute candidate/default/readiness
+    -> validate capability-local constraints
+    -> validate cross-capability constraints
+    -> present complete candidate
+    -> confirm
+    -> atomic commit
 ```
 
-The following is explicitly forbidden:
+A capability descriptor MUST NOT directly persist partial setup state while the global candidate is being assembled.
+
+## Component Coherence Model
+
+The plan MUST define a machine-readable component-set representation including at least:
 
 ```text
-persistent_state = assumption_from_current_ENV
+bundle identity/version
+extension identity/version
+required preset identities/versions or compatible ranges
+supported Spec Kit range
+component-set fingerprint or equivalent
 ```
 
-except for unrelated external environment configuration that is independently authoritative
-(e.g. an external tool's own documented authentication/config contract).
+A capability that depends on a missing/skewed preset MUST report unavailable/degraded rather than silently recreate the preset outside native lifecycle management.
 
-### First post-hook rule
+## Requirements
 
-A post hook that is responsible for discovering/persisting a workflow state MUST NOT require a
-pre-existing projected ENV in order to run. That would create a circular dependency.
+### Native distribution and composition
 
-Therefore the initial state-producing hook executes unconditionally (subject to the normal
-hook enabled/disabled lifecycle), loads/analyzes its artifacts, writes/updates JSON, and only
-then projects runtime ENV or routes subsequent internal behavior.
+- **FR-001**: PowerPack MUST use native Spec Kit lifecycle primitives.
+- **FR-002**: The extension SHALL be runtime/config/state authority.
+- **FR-003**: Companion presets MAY augment upstream commands but MUST remain thin.
+- **FR-004**: A native bundle SHOULD be the preferred release/install composition where supported.
+- **FR-005**: PowerPack MUST NOT own Spec Kit CLI installation/upgrade.
+- **FR-006**: Component manifests MUST declare explicit compatibility constraints.
+- **FR-007**: PowerPack MUST homologate composition with third-party presets and priority/order interactions, not only core+PowerPack in isolation.
 
-This rule is especially important for a future `after_checklist` integration: the hook cannot
-be conditioned on `POWERPACK_CHECKLIST_*` ENV before the first checklist state has been
-produced.
+### Capability registry and readiness
 
-## Edge Cases
+- **FR-008**: PowerPack MUST maintain a single capability registry/descriptor mechanism used by setup and diagnostics.
+- **FR-009**: Setup MUST be registry-driven rather than feature-specific branching for every capability.
+- **FR-010**: Installation health and capability state MUST be modeled separately.
+- **FR-011**: Optional capability failure MUST NOT disable unrelated ready capabilities without an explicit dependency.
+- **FR-012**: Capability status MUST be available in machine-readable form.
+- **FR-013**: Functional/admin classification MUST be explicit per capability.
 
-- Missing/unreadable `.specify/integration.json`: fail closed; do not infer the active agent
-  from `.claude`, `.agents`, or similar directories.
-- Codex registered but executable/auth missing: Codex-backed routes are unavailable.
-- User asks PowerPack to add Codex integration: show/offer the native Spec Kit action only
-  after explicit consent; never mutate integration state silently.
-- Default integration changes: rediscover and revalidate; do not rewrite review policy
-  automatically.
-- GPT Web Project ambiguous/inaccessible or GitHub evidence unavailable: no GPT Web commit.
-- Setup interrupted before commit: active configuration unchanged.
-- Bundle installation failure: PowerPack MUST NOT claim setup readiness. Because native bundle
-  rollback is best-effort, diagnostics MUST detect partial primitive state and provide an
-  actionable cleanup/retry path rather than assuming perfect rollback.
-- Companion preset removed while extension remains: PowerPack-owned commands continue where
-  independent; upstream augmentation is reported unavailable rather than silently recreated
-  outside the native preset lifecycle.
-- Preset drift after a Spec Kit upgrade: compatibility/homologation catches unsupported
-  command-composition behavior before expanding the declared supported version range.
-- Hook JSON missing: treat state as not evaluated and rebuild when source artifacts allow it.
-- Hook JSON malformed/schema-incompatible: fail closed for consequential actions and rebuild
-  only when deterministic.
-- Hook JSON digest differs from current source artifact: mark `STALE`, re-evaluate before use.
-- Multiple sessions write the same state concurrently: persistence MUST use atomic replacement
-  and SHOULD use conflict detection/serialization defined by the technical plan.
-- Repository is copied to another machine: project-local hook state remains usable only after
-  artifact digests and environment-dependent facts are revalidated.
+### Component coherence
 
-## Requirements *(mandatory)*
+- **FR-014**: PowerPack MUST verify installed component coherence before relevant capability execution.
+- **FR-015**: Installed-by-id alone MUST NOT be treated as proof of version compatibility.
+- **FR-016**: Missing/skewed required components return actionable degraded/broken state; no silent self-repair outside native lifecycle.
+- **FR-017**: Homologation MUST cover install, update, disable, enable, remove, integration switch/rescaffold and partial bundle failure.
 
-### Native distribution and ownership
+### Environment and review routing
 
-- **FR-001**: PowerPack MUST use native Spec Kit primitives for supported installation and
-  lifecycle management.
-- **FR-002**: The PowerPack extension SHALL be the authoritative runtime/config/state core.
-- **FR-003**: PowerPack MAY ship one or more companion presets when upstream command
-  composition/customization is required.
-- **FR-004**: Where native Spec Kit bundles are supported by the accepted compatibility range,
-  PowerPack SHOULD provide a bundle as the preferred release/install unit containing the
-  required extension and companion presets.
-- **FR-005**: PowerPack MUST NOT install/replace/downgrade/upgrade the Spec Kit CLI in normal
-  operation.
-- **FR-006**: Extension/preset/bundle manifests MUST declare explicit compatible Spec Kit
-  version constraints according to their native schemas.
-- **FR-007**: A fresh install MUST leave review setup `PENDING`; no review route is guessed.
-- **FR-008**: Because stable extension `on_install` execution is not assumed, installation
-  MUST NOT depend on an automatic interactive post-install wizard. Users are directed to
-  `speckit.powerpack.setup` when configuration is required.
+- **FR-018**: Spec Kit machine-readable integration state is authoritative for default/installed integrations.
+- **FR-019**: Runtime executable/auth readiness is validated independently.
+- **FR-020**: Cross-agent review MUST NOT silently change the default integration.
+- **FR-021**: Executor/topology and evidence backend remain separate configuration dimensions.
+- **FR-022**: Runtime route invalidation returns `BLOCKED_CONFIGURATION`; no silent fallback.
+- **FR-023**: GPT Web remains browserless and Codex-backed unless explicitly superseded by a later accepted capability.
+- **FR-024**: GPT Web activation requires validated compatible ChatGPT Project + GitHub evidence readiness.
+- **FR-025**: Secrets/credentials MUST NOT be persisted in project config/state.
 
-### Preset customization contract
+### Transactional setup
 
-- **FR-009**: Companion presets MUST be narrowly scoped to upstream Spec Kit command
-  composition/customization and MUST NOT become the primary PowerPack runtime.
-- **FR-010**: PowerPack SHOULD prefer native non-destructive composition (`wrap`, `append`,
-  `prepend`, or equivalent supported semantics) over copying/replacing an upstream command.
-- **FR-011**: A full `replace` of an upstream command MUST require documented necessity and
-  explicit compatibility tests against every supported Spec Kit version boundary.
-- **FR-012**: Presets MUST delegate reusable logic/state handling to the PowerPack extension
-  runtime or PowerPack-owned commands rather than duplicate complex logic in prompt text.
-- **FR-013**: Removing/disabling a PowerPack companion preset MUST leave the upstream core
-  command available through normal Spec Kit behavior.
-- **FR-014**: The technical plan MUST define how companion presets are versioned relative to
-  the extension and bundle and how compatibility drift is homologated.
+- **FR-026**: Setup/reconfiguration MUST build one complete candidate before commit.
+- **FR-027**: Capability modules MUST NOT progressively persist candidate fields.
+- **FR-028**: Abort/failure preserves previous valid configuration exactly.
+- **FR-029**: Agent and shell setup adapters MUST share the same setup engine.
+- **FR-030**: Reconfiguration/reset are distinct; reset requires explicit intent.
+- **FR-031**: Configuration writes MUST be atomic/partial-write safe.
 
-### Environment and capability discovery
+### Review execution
 
-- **FR-015**: `.specify/integration.json` or an equivalent stable machine-readable Spec Kit
-  interface is authoritative for `default_integration` and `installed_integrations`.
-- **FR-016**: Agent-specific directories MUST NOT be the primary source of integration truth.
-- **FR-017**: Runtime executable/auth readiness MUST be validated independently from Spec Kit
-  registration.
-- **FR-018**: Setup MUST build a capability model before offering/accepting strategies.
-- **FR-019**: User parameters express intent but do not bypass capability validation.
-- **FR-020**: Optional integration changes require explicit user consent.
-- **FR-021**: Cross-agent review MUST NOT silently change `default_integration`.
+- **FR-032**: `max_rounds` is a positive bounded maximum; default is 5.
+- **FR-033**: Review stops early when all mandatory gates approve the same immutable snapshot.
+- **FR-034**: Prior findings are explicitly accounted for in later rounds.
+- **FR-035**: Snapshot-changing fixes invalidate prior approvals.
+- **FR-036**: Budget exhaustion never implies approval.
 
-### Review routing
+### Persistent state and ENV
 
-- **FR-022**: Executor/topology and evidence backend MUST be modeled as separate dimensions.
-- **FR-023**: Non-Codex workflow agents MUST support active-agent local review where the
-  integration can execute the local contract.
-- **FR-024**: Codex default MUST support same-session local review.
-- **FR-025**: Non-Codex default plus ready secondary Codex MUST support Codex cross-agent local
-  review.
-- **FR-026**: Ordered review gates MAY be configured; cheaper/local gates SHOULD precede GPT
-  Web when both are enabled.
-- **FR-027**: All required final gates MUST approve the same immutable final snapshot.
-- **FR-028**: Runtime capability loss MUST return `BLOCKED_CONFIGURATION`; no silent reviewer,
-  topology, backend, or gate-order fallback is allowed.
+- **FR-037**: Durable workflow facts MUST live in project-local JSON, not ENV.
+- **FR-038**: PowerPack MUST NOT modify shell profiles/global environment to persist workflow state.
+- **FR-039**: ENV projection is allowed only for the current PowerPack-controlled process/child process.
+- **FR-040**: A later independent hook/command MUST reload JSON or call the common state resolver; it MUST NOT assume prior hook ENV survived.
+- **FR-041**: State records MUST carry schema version, artifact identity/digests, revision and timestamp.
+- **FR-042**: Validity/freshness MUST be distinct from capability semantic status.
+- **FR-043**: Stale/malformed state cannot authorize/block consequential transitions without validation/recomputation.
+- **FR-044**: Persistent state writes MUST use atomic replacement plus conflict/lost-update detection.
+- **FR-045**: Concurrent revision conflicts MUST be reconciled or surfaced explicitly, never silently overwritten.
+- **FR-046**: Mutable state SHOULD be gitignored by default; the plan defines exact policy.
 
-### GPT Web / ChatGPT Project
+### Diagnostics and lifecycle
 
-- **FR-029**: GPT Web MUST reuse the browserless ChatGPT Project + GitHub evidence provider;
-  browser automation/cookie/profile fallbacks are prohibited.
-- **FR-030**: GPT Web MUST be Codex-backed unless a future accepted specification adds another
-  validated provider.
-- **FR-031**: `backend == chatgpt-project` implies a successfully validated compatible Project
-  binding.
-- **FR-032**: Binding validation MUST include Project access/identity/context plus GitHub
-  connector, repository access, and required evidence readiness.
-- **FR-033**: Cancelled/failed GPT Web binding MUST commit no candidate configuration.
-- **FR-034**: Secrets/tokens/cookies/OAuth credentials MUST NOT be persisted in PowerPack
-  project configuration.
+- **FR-047**: PowerPack MUST provide administrative `speckit.powerpack.doctor` or equivalent command.
+- **FR-048**: Doctor MUST inspect component coherence, Spec Kit compatibility, command/preset/hook/event registration, configuration schemas, persistent state and capability readiness.
+- **FR-049**: Doctor MUST expose machine-readable output for homologation automation.
+- **FR-050**: Migration MUST distinguish managed code, config, mutable state and evidence.
+- **FR-051**: Update/removal MUST NOT silently delete mutable user/workflow state or historical evidence unless explicitly requested.
 
-### Transactional setup and reconfiguration
+### Runtime events and UI adapters
 
-- **FR-035**: Setup/reconfiguration MUST build a complete candidate in memory/temporary state,
-  validate it, obtain required confirmation, then atomically commit it.
-- **FR-036**: Candidate fields MUST NOT be progressively persisted before final commit.
-- **FR-037**: Abort/cancel/rejection/validation failure MUST preserve the previous active
-  configuration exactly.
-- **FR-038**: First-time failed/aborted setup leaves installation-created `PENDING` state.
-- **FR-039**: Configuration commit MUST use atomic replacement or an equivalent partial-write
-  safe mechanism.
-- **FR-040**: Reconfiguration MUST be available at any time.
-- **FR-041**: Reset/removal of configuration MUST be a distinct explicit action.
-- **FR-042**: Environment-owned integration facts MUST be rediscovered, not duplicated as
-  competing PowerPack authority.
-
-### Setup interfaces
-
-- **FR-043**: `speckit.powerpack.setup` MUST support interactive setup and argument-driven
-  intent where the active integration supports arguments.
-- **FR-044**: A portable shell entrypoint MUST exist without requiring the legacy global
-  `specify-powerpack` CLI; the initial target is an extension-owned Python script.
-- **FR-045**: Agent and shell adapters MUST use one setup engine.
-- **FR-046**: Full parameters MUST enable non-interactive setup; TTY execution MAY prompt for
-  missing required choices.
-- **FR-047**: Interactive reconfiguration MUST show current effective policy and newly
-  discovered capabilities before commit.
-
-### Automatic review rounds
-
-- **FR-048**: Setup MUST configure a maximum automatic review-round budget; default is 5.
-- **FR-049**: `max_rounds` MUST be a positive bounded integer; the plan defines the upper
-  bound.
-- **FR-050**: Review stops early when all mandatory gates approve the current common snapshot.
-- **FR-051**: Later rounds MUST explicitly account for earlier findings.
-- **FR-052**: Snapshot-changing fixes invalidate prior approvals for the old snapshot.
-- **FR-053**: Budget exhaustion with unresolved state MUST NOT produce approval.
-- **FR-054**: Existing local `implement-review` convergence, quality-gate, repair, and fresh
-  review semantics remain unless explicitly changed by a later specification.
-
-### Persistent hook-state contract
-
-- **FR-055**: Durable hook/workflow facts MUST be persisted in PowerPack-owned project-local
-  JSON state, not persistent environment variables.
-- **FR-056**: PowerPack MUST NOT modify `.bashrc`, `.bash_profile`, `.profile`, `.zshrc`,
-  PowerShell profiles, Windows user/global environment, or equivalent host profiles to persist
-  hook state.
-- **FR-057**: Environment variables required by hooks MAY be projected only from validated
-  persistent JSON for the current process/child process/session.
-- **FR-058**: A state-producing post hook MUST NOT require those projected ENV values in order
-  to execute for the first time.
-- **FR-059**: The state-producing post hook MUST load relevant prior JSON when present,
-  validate source-artifact identity/freshness, derive current semantic state, and atomically
-  persist the refreshed JSON before exposing consequential state to later execution.
-- **FR-060**: Persistent hook state MUST carry schema version and sufficient artifact identity
-  (including digest or equivalent) to detect stale state.
-- **FR-061**: Stale hook state MUST be recomputed/revalidated before it can authorize/block a
-  consequential workflow transition.
-- **FR-062**: The same persisted hook state MUST be consumable across separate AI/terminal
-  sessions and across different supported active integrations working on the same checkout.
-- **FR-063**: Capability-specific specifications MUST define their own semantic statuses/facts
-  while reusing this common persistence/projection contract.
-- **FR-064**: Concurrent writes to one hook-state record MUST not expose partial JSON; the
-  technical plan MUST define atomic write and conflict/serialization behavior.
-
-### Drift, migration, update and removal
-
-- **FR-065**: Before `implement-review`, PowerPack MUST rediscover enough runtime capability
-  state to prove the configured route remains executable.
-- **FR-066**: Changing Spec Kit default integration MUST not automatically rewrite PowerPack
-  policy; it triggers later validation/reconfiguration as needed.
-- **FR-067**: Legacy migration MUST distinguish managed code, mutable config, persistent hook
-  state, Project binding metadata, and generated review evidence.
-- **FR-068**: Extension/preset/bundle update migrations MUST preserve the previous recoverable
-  config/state if migration cannot complete safely.
-- **FR-069**: Removal/update MUST NOT silently delete historical review evidence or other
-  mutable user/workflow state unless explicitly requested.
-- **FR-070**: PowerPack MUST homologate the complete bundle composition against supported Spec
-  Kit versions, including extension registration, preset composition, integration switching,
-  hook behavior, and state persistence.
+- **FR-052**: PowerPack MAY declare native runtime events for integrations that support them.
+- **FR-053**: Native events MUST NOT be required for portable capability correctness.
+- **FR-054**: `session_start` MAY validate/bootstrap health/state but MUST NOT silently alter user intent or perform destructive migrations.
+- **FR-055**: Machine-readable capability/status output MUST be sufficient for future UI/canvas adapters.
+- **FR-056**: UI adapters MUST invoke the same authoritative PowerPack command/runtime contracts and MUST NOT become a second workflow engine.
 
 ## Key Entities
 
-- **PowerPack Bundle**: versioned install composition referencing the release's extension and
-  companion preset set.
-- **PowerPack Extension**: runtime/configuration/hooks/commands/state core.
-- **PowerPack Companion Preset**: narrow upstream-command composition adapter.
-- **PowerPack Setup State**: `PENDING`/`READY`, schema version, and setup metadata.
-- **Environment Capability Snapshot**: transient discovery of Spec Kit integrations, local
-  executables, authentication and supported routes.
-- **Review Policy**: ordered gates, executor/topology, backend, `max_rounds`, early-stop rules.
-- **ChatGPT Project Binding**: non-secret stable Project identity/validation metadata.
-- **Candidate Configuration**: temporary complete proposed setup state.
-- **Review Round**: one immutable-snapshot review attempt linked to prior findings.
-- **Persistent Hook State**: cross-session JSON facts plus artifact freshness metadata.
-- **ENV Projection**: ephemeral current-process representation derived from Persistent Hook
-  State.
+- **PowerPack Bundle**
+- **PowerPack Extension**
+- **PowerPack Companion Preset**
+- **Capability Descriptor**
+- **Installation Health**
+- **Capability State**
+- **Component Set / Component Coherence Report**
+- **PowerPack Setup State / Candidate Configuration**
+- **Environment Capability Snapshot**
+- **Review Policy / Review Gate / Review Round**
+- **ChatGPT Project Binding**
+- **Persistent Hook State**
+- **ENV Projection**
+- **Doctor Report**
+- **UI Status Snapshot**
 
 ## Success Criteria
 
-- **SC-001**: Clean supported installation can install/discover PowerPack through native Spec
-  Kit component/bundle lifecycle without PowerPack bootstrapping Spec Kit.
-- **SC-002**: Removing PowerPack companion presets leaves upstream Spec Kit commands intact.
-- **SC-003**: No supported customization requires a permanent copied upstream skill unless an
-  explicitly documented/validated `replace` exception exists.
-- **SC-004**: Capability fixtures expose exactly valid review routes for Codex-default,
-  non-Codex-default, and non-Codex+secondary-Codex environments.
-- **SC-005**: Setup cancellation/failure injection preserves pre-run active configuration in
-  100% of tested stages.
-- **SC-006**: GPT Web never reaches `READY` without validated compatible Project + GitHub
-  evidence.
-- **SC-007**: Equivalent agent/shell setup inputs produce equivalent configuration.
-- **SC-008**: Runtime capability removal yields zero silent fallback events.
-- **SC-009**: Review never exceeds `max_rounds`, stops early on common approval, and never
-  reports approval after unresolved budget exhaustion.
-- **SC-010**: A hook-state fixture persisted in one session can be recovered in another
-  session and produce equivalent semantic state after freshness validation.
-- **SC-011**: Homologation detects zero writes to user shell profiles/host-global ENV while
-  exercising persistent hook state on Linux/WSL and Windows.
-- **SC-012**: Stale/malformed hook-state fixtures never authorize a consequential transition
-  without validation/recomputation.
+- **SC-001**: Clean supported installations are discoverable through native Spec Kit lifecycle without PowerPack bootstrapping Spec Kit.
+- **SC-002**: Removing a companion preset leaves the upstream core command intact.
+- **SC-003**: Capability setup remains modular: adding a test capability descriptor requires no duplicate setup engine.
+- **SC-004**: Mixed component-version fixtures are detected before capability execution with zero silent skew acceptance.
+- **SC-005**: Setup cancellation/failure preserves pre-run configuration in 100% of failure-injection stages.
+- **SC-006**: Equivalent agent/shell inputs produce equivalent validated configuration.
+- **SC-007**: Review never exceeds `max_rounds` and never reports approval after unresolved budget exhaustion.
+- **SC-008**: State produced in one session is recoverable in another after validation without any shell-profile mutation.
+- **SC-009**: Concurrent-writer tests produce zero silent lost updates.
+- **SC-010**: Stale/malformed state fixtures never authorize consequential transitions without validation/recomputation.
+- **SC-011**: `doctor --json` (or equivalent) can drive Linux/WSL/Windows homologation assertions without parsing human prose.
+- **SC-012**: Integrations lacking native runtime events still satisfy the same functional capability contracts.
+- **SC-013**: A future UI adapter can enumerate capability readiness/recommended actions from machine-readable PowerPack state without embedding PowerPack business logic.
 
 ## Assumptions
 
-- SPEC-001 has reduced the current functional PowerPack capability set to `implement-review`.
-- The supported Spec Kit range provides native extensions, presets, hooks, machine-readable
-  integration state, and—where selected as the preferred install path—bundles.
-- Bundle installation composes primitive managers; PowerPack does not assume bundle rollback
-  is perfectly atomic and therefore performs post-install diagnostics before setup readiness.
-- Codex and other reviewer CLIs own their own installation/authentication; PowerPack detects
-  readiness but does not persist credentials.
-- The browserless ChatGPT Project/GitHub provider is migrated into the native PowerPack
-  runtime rather than replaced.
-- Python is available in supported environments for the initial portable shell entrypoint.
-- Persistent hook state is project/workflow state and is stored outside extension-managed
-  immutable source assets.
+- SPEC-001 currently limits functional capabilities to `implement-review`.
+- Supported Spec Kit versions provide native extensions, presets, hooks/integration state and, where selected, bundles.
+- Bundle installation/rollback is not assumed perfectly transactional; PowerPack diagnostics verify the resulting component set.
+- Codex and other agents own their installation/authentication.
+- Python remains available for the initial portable shell entrypoint.
+- Mutable PowerPack state is local workflow state, not automatically a repository collaboration protocol.
+- Copilot Canvas and similar visual surfaces are optional agent-specific adapters and may evolve independently from Spec Kit core.
 
 ## Non-Goals
 
-- Adding a new functional PowerPack workflow capability beyond `implement-review` in this
-  specification.
-- Forking Spec Kit to add lifecycle behavior.
-- Making presets the main PowerPack runtime.
-- Maintaining a permanent fork of upstream Spec Kit skills when native composition suffices.
-- Automatically changing the user's default Spec Kit integration.
-- Automatically installing another integration without explicit consent.
-- Browser automation for GPT Web.
-- Persisting reviewer credentials in project files.
-- Persisting hook/workflow state through shell profiles or global environment configuration.
-- Treating ENV as cross-session workflow authority.
+- Adding another functional workflow capability in SPEC-002.
+- Forking Spec Kit.
+- Making presets the main runtime.
+- Maintaining permanent copies of upstream skills when composition suffices.
+- Automatically switching the default AI integration.
+- Persisting credentials or workflow state in shell profiles/global ENV.
+- Treating ENV as communication between independent hooks/sessions.
+- Making Copilot Canvas or any UI mandatory for PowerPack.
+- Automatically synchronizing mutable PowerPack state across machines/repositories.
 
 ## Core Invariants
 
@@ -702,17 +558,8 @@ PowerPack lifecycle owner == Specify
 ```
 
 ```text
-PowerPack distribution
-  == native bundle when supported/preferred
-  == extension + required companion presets
-```
-
-```text
 PowerPack runtime authority == extension
-```
-
-```text
-preset responsibility == upstream command composition only
+preset responsibility == upstream composition only
 ```
 
 ```text
@@ -720,31 +567,36 @@ functional PowerPack capabilities == {implement-review}
 ```
 
 ```text
-PERSISTENT_HOOK_STATE == project_local_json
-ENV == projection(validated(PERSISTENT_HOOK_STATE))
+SETUP_ENGINE == aggregate(CAPABILITY_REGISTRY)
 ```
 
 ```text
-persistent_hook_state
-  != bashrc
-  != shell_profile
-  != host_global_environment
+installation_health != capability_state
 ```
 
 ```text
-STATE_PRODUCING_POST_HOOK
-  => executes without requiring preexisting projected ENV
-  => validates artifacts
-  => atomically persists JSON
-  => may then project ENV
+component_installed != component_compatible
 ```
 
 ```text
-new_session
-  => load JSON
-  => validate freshness
-  => recompute if stale
-  => project runtime ENV
+PERSISTENT_WORKFLOW_STATE == project_local_json
+ENV == optional_child_process_projection(validated(JSON))
+```
+
+```text
+independent_hook_or_session
+  => reload JSON
+  != rely_on_previous_hook_ENV
+```
+
+```text
+atomic_write + revision_check
+  => no_partial_state
+  => no_silent_lost_update
+```
+
+```text
+CONFIG != STATE != EVIDENCE
 ```
 
 ```text
@@ -760,11 +612,6 @@ SETUP_ABORTED or SETUP_FAILED
 ```
 
 ```text
-CONFIGURATION_COMMIT
-  => COMPLETE_CANDIDATE_VALIDATED
-```
-
-```text
 RUNTIME_ROUTE_INVALID
   => BLOCKED_CONFIGURATION
   != SILENT_FALLBACK
@@ -773,4 +620,10 @@ RUNTIME_ROUTE_INVALID
 ```text
 final_approval
   => all_required_gates_approve_same_immutable_snapshot
+```
+
+```text
+UI_OR_CANVAS
+  => adapter_over_authoritative_runtime
+  != second_workflow_engine
 ```
