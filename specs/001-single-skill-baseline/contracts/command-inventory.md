@@ -61,8 +61,10 @@ assert no_removed_command_assets_under(project / ".specify" / "powerpack")
 - Upstream Spec Kit skills / commands (`speckit-plan`, `speckit-implement`,
   `speckit-converge`, …) under the host project's `.claude/skills/`.
 
-## Negative behavior (FR-015)
+## Negative behavior (FR-014 / FR-015)
 
 Invoking a removed command name against a clean install behaves as an unknown command — no
-silent redirect to `implement-review`. This is verified by the smoke scenario, not by this
-enumeration contract.
+silent redirect to `implement-review`. Per FR-014 this MUST be checked **behaviourally**
+(assert the name is unresolved at the registration/dispatch layer), not only by asserting
+textual absence from source. Realized as a case in `tests/test_baseline_contract.py` (or the
+smoke), task T035 — distinct from the textual residual scan (T034 / FR-016).

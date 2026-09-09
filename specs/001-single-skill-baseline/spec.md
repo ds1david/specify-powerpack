@@ -232,12 +232,13 @@ the suite; the baseline contract test must fail.
   {"speckit.implement-review"}` MUST both hold. A test of the form
   `"speckit.implement-review" in commands` is insufficient on its own.
 - **FR-012**: Feature flags, aliases, mappings, constants, paths, environment variables,
-  config keys, registry entries, and templates used exclusively by removed commands MUST be
-  removed. This includes removed-command entries in `config/default-model-routing.json`,
-  `config/default-full-cycle.json`, `config/default-technical-debt.json`,
-  `prerequisites.json` defaults, and runtime prerequisite maps. The `implement-review`
-  prerequisite entry MUST be re-based onto an upstream `speckit-implement` signal (FR-018),
-  not deleted.
+  registry entries, and routing/prerequisite map entries used exclusively by removed
+  commands MUST be removed. This includes removed-command keys in
+  `config/default-model-routing.json`, the `prerequisites.json` defaults, and runtime
+  prerequisite maps. (Whole config *files* dedicated to a removed command — e.g.
+  `config/default-full-cycle.json`, `config/default-technical-debt.json` — are covered by
+  FR-003.) The `implement-review` prerequisite entry MUST be re-based onto an upstream
+  `speckit-implement` signal (FR-018), not deleted.
 - **FR-013**: Generic infrastructure MUST remain when required by `implement-review`, the
   installation lifecycle, cross-agent support, shared tests, or the reusable PowerPack core.
   The `powerpack-tools` extension and `bin/powerpack.py` runtime remain in scope only for
@@ -246,7 +247,10 @@ the suite; the baseline contract test must fail.
   core redesign.
 - **FR-014**: Removed commands MUST NOT survive through deprecated aliases, redirects,
   hidden copies, fallback implementations, or compatibility wrappers. No deprecation
-  compatibility layer is required or permitted.
+  compatibility layer is required or permitted. Compliance MUST be verified behaviourally,
+  not only by textual search: an automated check MUST invoke a removed command name against a
+  clean install and assert unknown-command behaviour at the command registration/dispatch
+  layer (not merely that the string is absent from source).
 - **FR-015**: Where technically applicable, direct invocation of a removed command name MUST
   behave as invocation of an unknown/nonexistent command. The system MUST NOT silently
   redirect the invocation to `implement-review` or any other capability.
@@ -273,21 +277,22 @@ the suite; the baseline contract test must fail.
   one canonical integration (the project's default). A platform-specific installer MAY differ
   internally but MUST NOT produce a different command set. Cross-integration parity
   (`codex` vs `claude`) is assumed by inspection, not required as an end-to-end gate.
-
-### Browserless review path — scope (resolved 2026-09-09)
-
-- **FR-020**: The browserless ChatGPT Project + GitHub review gate (Codex CLI +
-  `~/.codex/auth.json` + GitHub connector, read-only) REMAINS part of the `implement-review`
-  contract. Its runtime, the `smoke_chatgpt_github_browserless.py` homologation smoke, and
+- **FR-020** *(browserless review scope — resolved 2026-09-09)*: The browserless ChatGPT
+  Project + GitHub review gate (Codex CLI + `~/.codex/auth.json` + GitHub connector,
+  read-only) REMAINS part of the `implement-review` contract. Its runtime, the
+  `smoke_chatgpt_github_browserless.py` homologation smoke, and
   `docs/CHATGPT_GITHUB_BROWSERLESS_SMOKE.md` MUST be preserved and kept working.
-- **FR-021**: Exploratory discovery scaffolding for that path MUST be removed — the
-  `scripts/homologation/probe_*` probes, captured `*.har` traffic dumps, and
-  `docs/WEB_GITHUB_HEADLESS_PROBE.md`. These are historical investigation artifacts, are not
-  exercised by the minimum smoke, and MUST NOT be treated as part of the supported contract.
-  Any test whose sole purpose is a removed probe MUST be deleted (FR-009); tests covering the
-  preserved smoke and connector preflight MUST stay.
-- Documentation and homologation material for `full-cycle` and technical-debt follows the
-  normal removed-command rule (FR-003, FR-007): delete or convert to labelled history.
+- **FR-021** *(browserless review scope — resolved 2026-09-09)*: Exploratory discovery
+  scaffolding for that path MUST be removed — the `scripts/homologation/probe_*` probes,
+  captured `*.har` traffic dumps, and `docs/WEB_GITHUB_HEADLESS_PROBE.md`. These are
+  historical investigation artifacts, are not exercised by the minimum smoke, and MUST NOT be
+  treated as part of the supported contract. A test whose **sole** subject is a removed probe
+  MUST be deleted (FR-009); a test covering the preserved smoke or the preserved
+  `github_connector_preflight` MUST stay. A test that covers both MUST be split or narrowed
+  to the preserved surface, not deleted.
+- **FR-022**: Documentation and homologation material for `full-cycle` and the technical-debt
+  lifecycle follows the normal removed-command rule (FR-003, FR-007): delete, or convert to
+  clearly labelled non-advertising history.
 
 ### Key Entities
 
@@ -323,9 +328,10 @@ the suite; the baseline contract test must fail.
 - **SC-006**: No installed file belonging exclusively to a removed command is present in the
   clean install state (residual-artifact count == 0).
 - **SC-007**: Current-state documentation (README + installation + architecture + agent
-  instructions) presents `implement-review` as the only current PowerPack capability; a
-  reviewer can identify the current supported surface in under 2 minutes from the README
-  alone.
+  instructions) presents `implement-review` as the only current `powerpack-core` command:
+  the README's capability/overview section names exactly one such command, and no
+  current-state page lists a removed command as available. Verifiable by inspection of the
+  named sections.
 
 ## Assumptions
 

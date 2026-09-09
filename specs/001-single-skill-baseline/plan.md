@@ -22,8 +22,9 @@ the baseline contract.
 
 ## Technical Context
 
-**Language/Version**: Python ≥ 3.11 (CI/system currently 3.12). Installed runtime
-(`.specify/powerpack/bin/*.py`) is **stdlib-only by design** — no third-party imports.
+**Language/Version**: Python ≥ 3.11 (`pyproject.toml` `requires-python`); tested on
+3.12 / 3.13. Installed runtime (`.specify/powerpack/bin/*.py`) is **stdlib-only by design** —
+no third-party imports.
 
 **Primary Dependencies**: None at runtime. Dev: `pytest>=8,<9`, `build>=1.2,<2`. Spec Kit
 (`specify` CLI) ≥ 1.0.0 is a peer tool, not a Python dependency.
@@ -96,6 +97,10 @@ specs/001-single-skill-baseline/
 ```
 
 ### Source Code (repository root)
+
+> The per-file DELETE/EDIT/KEEP annotations below are a planning view. The **authoritative
+> removal inventory** is `research.md §D7` — if the two ever diverge, §D7 wins and this
+> tree is updated to match.
 
 ```text
 src/speckit_powerpack/
@@ -219,6 +224,23 @@ for this feature. Review of those items against the spec/plan produced two spec 
 
 No plan restructuring required; the remaining unchecked checklist items are reviewer
 judgment calls, not missing plan content.
+
+## Post-Analyze Remediation (`/speckit-analyze`, 2026-09-09)
+
+Cross-artifact analysis found 0 CRITICAL, 10 findings. Applied:
+
+| Finding | Fix |
+|---|---|
+| C1 (HIGH) — FR-014 had no verification task | spec FR-14 now mandates a *behavioural* unknown-command check; tasks T034/T035 scope widened |
+| I1 (MED) — FR-020/021 outside `### Functional Requirements` | folded into the FR list as FR-020/FR-021/FR-022 |
+| U1 (MED) — probe-test deletion criterion vague | spec FR-021 + task T030 now say: split/narrow a mixed test, delete only probe-only tests |
+| D1 (MED) — `state mark`/`state check` possibly dead after cleanup | task T018 gets a sub-check for a surviving consumer |
+| A1 (MED) — SC-007 subjective | reworded to an inspection-verifiable criterion |
+| S1 (LOW) — Python version wording | corrected to "≥3.11, tested 3.12/3.13" |
+| Q1 (LOW) — FR-003/FR-012 overlap | FR-012 narrowed to flags/keys/routing; whole files → FR-003 |
+| Q2 (LOW) — inventory duplicated | this plan's tree now defers to `research.md §D7` as source of truth |
+| I2 (LOW) — T010 removes tests before T018 removes code | Dependencies note: T018 may run right after T007 |
+| M1 (LOW) — process tasks unmapped | accepted as cross-cutting; no change |
 
 ## Complexity Tracking
 
