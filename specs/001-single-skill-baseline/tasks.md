@@ -139,12 +139,12 @@ silent redirect.
 ## Phase 7: Polish & Cross-Cutting
 
 - [X] T039 [P] Run full `python -m pytest -q` — all green; confirm `test_debt_runtime.py` / `test_full_cycle_runtime.py` are gone and `test_baseline_contract.py` present (quickstart §1).
-- [ ] T040 [P] Walk quickstart §2–§8 end to end on a scratch project; fix any drift between quickstart and reality.
+- [X] T040 [P] Quickstart walked: §1 (removed test files gone, `test_baseline_contract.py` present), §2 (registration exact-set), §3 (local `install_support` → only 3 runtimes, schema-2 prereqs, no residue), §4 (`install.sh`/`install.ps1` delegate to `install.py`), §5 (all 4 re-based-gate outcomes verified live in a temp installed project), §7 (0 active references), §8 (docs). Quickstart §3/§5 wording fixed for pre-merge / dev-repo. §4-on-Windows and §6 (full browserless flow) fold into T025.
 - [X] T041 [P] Regenerate / verify `src/speckit_powerpack.egg-info/SOURCES.txt` via `python -m build` (build artifact — confirm it no longer lists deleted assets; do not hand-edit) (research.md §D7).
 - [X] T042 [P] Update `README.md` top-of-file capability summary and any install snippet so a reader identifies the single current command in under 2 minutes (SC-007).
 - [X] T043 [P] Add a dated entry to the changelog / `docs/PROJECT_EVOLUTION.md` recording the single-skill baseline as a scope decision (not a defect), linking spec 001 and PR #11 (FR-008).
 - [X] T044 Update PR #11 description to reflect the completed cleanup (command set, re-based gate, deletions, `reference-classification.md` result).
-- [ ] T045 Final constitution re-check note in `plan.md` (still a stub → PASS) and mark `checklists/cleanup.md` items for reviewer evaluation (reviewer action, not automated).
+- [X] T045 Constitution re-check note added to `plan.md` (§Post-Implementation Constitution Re-check — still a stub → PASS); `checklists/cleanup.md` items already 40/40 `[x]` from the reviewer-directed pass.
 
 ---
 

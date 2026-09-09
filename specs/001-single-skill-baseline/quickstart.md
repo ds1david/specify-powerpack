@@ -29,9 +29,14 @@ fails (regression guard works) → revert.
 
 ## 3. Clean install → install-time exact-set + no residue
 
+> `install.py` with no `--repository` pulls from the published GitHub default branch. To
+> validate **this** branch before it merges, either install editable
+> (`pip install -e .` from the checkout, then `specify-powerpack install /tmp/pp-clean`) or
+> pass `install.py --repository <path-to-this-checkout> --ref <branch>`.
+
 ```bash
 rm -rf /tmp/pp-clean && mkdir /tmp/pp-clean
-python install.py --project /tmp/pp-clean --integration codex
+python install.py --project /tmp/pp-clean --integration codex   # add --repository . --ref <branch> pre-merge
 python - <<'PY'
 from pathlib import Path
 base = Path("/tmp/pp-clean/.specify/powerpack")
@@ -61,7 +66,9 @@ resulting `.specify/powerpack/` trees against the `install.py` result.
 
 ## 5. Re-based `implement-review` prerequisite
 
-In a project that has a completed `tasks.md` and a real code delta:
+Run in a **consuming project** that has PowerPack installed (`.specify/powerpack/bin/`
+present) and a completed `tasks.md` with a real code delta — not in this dev repo, which
+ships the runtime under `src/` and is not self-installed:
 
 ```bash
 python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
