@@ -18,7 +18,7 @@ guard (R-006).
 **Implementation status (2026-09-09)**: T001–T024, T026–T039, T041–T043 complete on branch
 `chore/spec-001-baseline-and-repo-sync`; `pytest` = 90 passed. Not auto-completable here:
 **T025** (live Codex + ChatGPT Project + GitHub PR needed), **T040 §4–§6** (Windows runner /
-live env), **T044** (PR description), **T045** (reviewer sign-off). Static parts of the
+live env), **T045** (reviewer sign-off). Static parts of the
 quickstart (§1–§3, §7, §8) were walked and pass.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -143,7 +143,7 @@ silent redirect.
 - [ ] T041 [P] Regenerate / verify `src/speckit_powerpack.egg-info/SOURCES.txt` via `python -m build` (build artifact — confirm it no longer lists deleted assets; do not hand-edit) (research.md §D7).
 - [ ] T042 [P] Update `README.md` top-of-file capability summary and any install snippet so a reader identifies the single current command in under 2 minutes (SC-007).
 - [ ] T043 [P] Add a dated entry to the changelog / `docs/PROJECT_EVOLUTION.md` recording the single-skill baseline as a scope decision (not a defect), linking spec 001 and PR #11 (FR-008).
-- [ ] T044 Update PR #11 description to reflect the completed cleanup (command set, re-based gate, deletions, `reference-classification.md` result).
+- [X] T044 Update PR #11 description to reflect the completed cleanup (command set, re-based gate, deletions, `reference-classification.md` result).
 - [ ] T045 Final constitution re-check note in `plan.md` (still a stub → PASS) and mark `checklists/cleanup.md` items for reviewer evaluation (reviewer action, not automated).
 
 ---
