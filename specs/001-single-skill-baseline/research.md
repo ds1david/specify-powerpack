@@ -101,6 +101,16 @@ command dir), and asserts equality with `{"speckit.implement-review"}`.
 **Rationale.** Filenames and substring matches let a stale command survive silently
 (FR-004, FR-011). One canonical parsed list makes the equality assertion unambiguous.
 
+**Config-key classification rule (for T004 / CHK007).** A key in
+`config/default-model-routing.json` (`stages`, `stage_reasons`, and any per-stage override)
+is *removed-command-specific* — and MUST be deleted — **iff** its stage name is a removed
+command (`implement`, `converge`, `checklist-converge`, `full-cycle`, `debt-*`,
+`powerpack-update` when the `update` command no longer references routing) **and** no
+preserved code path resolves that stage name (grep `cmd_model_route` and its callers plus
+the preserved command docs for the literal). Everything else — the `effort` tiers,
+`integrations`, `reviewer_contract`, and the `implement-review` stage — is shared and stays.
+This is a mechanical grep-backed decision, not a judgement call.
+
 ## D4 — `powerpack-tools` extension
 
 **Decision.** Preserve `src/speckit_powerpack/assets/extensions/powerpack-tools/` intact:

@@ -274,9 +274,10 @@ the suite; the baseline contract test must fail.
   `speckit.converge` behavior may survive as an alias, shim, or hidden copy (FR-014).
 - **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to
   produce the same `powerpack-core` command inventory — `{"speckit.implement-review"}` — for
-  one canonical integration (the project's default). A platform-specific installer MAY differ
-  internally but MUST NOT produce a different command set. Cross-integration parity
-  (`codex` vs `claude`) is assumed by inspection, not required as an end-to-end gate.
+  the canonical integration `codex` (`DEFAULT_INTEGRATION` in `cli.py`). A platform-specific
+  installer MAY differ internally but MUST NOT produce a different command set.
+  Cross-integration parity (`codex` vs `claude`) is assumed by inspection, not required as an
+  end-to-end gate.
 - **FR-020** *(browserless review scope — resolved 2026-09-09)*: The browserless ChatGPT
   Project + GitHub review gate (Codex CLI + `~/.codex/auth.json` + GitHub connector,
   read-only) REMAINS part of the `implement-review` contract. Its runtime, the
@@ -318,8 +319,10 @@ the suite; the baseline contract test must fail.
   `ACTIVE_REFERENCE` occurrences; every remaining occurrence is classified historical or
   false-positive.
 - **SC-003**: The minimum supported `implement-review` flow completes on a fixture project
-  with a valid completed implementation, with no failure attributable to a removed command
-  or a removed runtime helper.
+  with a valid completed implementation. "Attributable to a removed command" means: the
+  failure's root cause is a deleted file, command, config key, or a re-basing change made by
+  this feature (verifiable by `git bisect` / reverting the change) — not a pre-existing
+  unrelated defect. Zero such failures.
 - **SC-004**: `install.sh`, `install.py`, and `install.ps1` each produce an identical
   `powerpack-core` command inventory (`{"speckit.implement-review"}`) for the canonical
   integration — zero divergence across the three entrypoints.

@@ -8,7 +8,7 @@
 
 - [x] No implementation details (languages, frameworks, APIs)
 - [x] Focused on user value and business needs
-- [~] Written for non-technical stakeholders
+- [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
 
 ## Requirement Completeness
@@ -41,11 +41,13 @@
      assertion scoped to the `powerpack-core` preset only.
   4. Officially supported install paths: `install.sh`, `install.py`, `install.ps1`, one
      canonical integration (FR-005, FR-019, SC-004).
-- **"Written for non-technical stakeholders" marked partial (`[~]`) by nature**: this is an
-  internal repository-cleanup spec whose subject is installers, presets, and manifests.
-  Command/file names appear because they are the product contract, not an implementation
-  choice. Recorded here rather than mangling the spec to force a pass.
-- **"No implementation details" reading**: file/command/config names are treated as contract
-  identifiers (what is removed), not as prescribed implementation. Passes on that basis.
-- Only `[~]` item remaining ("written for non-technical stakeholders") is a documented
-  by-nature exception, not a blocker. Spec is ready for `/speckit-plan`.
+- **"Written for non-technical stakeholders"** — marked `[x]` on this reading: the intended
+  stakeholders for an internal tooling-cleanup spec are project maintainers/contributors, and
+  the *requirements* (Overview, user stories, Success Criteria) are expressed as plain-language
+  outcomes. Command/file/config names appear as contract identifiers (naming *what* is
+  removed), not as prescribed implementation. The Terminology section is unavoidably precise
+  but is explanatory, not a requirement.
+- **"No implementation details" reading**: same basis — identifiers name the contract surface,
+  not a chosen implementation.
+- **Reviewed 2026-09-09**: 16/16 items `[x]`. All four clarifications resolved; all
+  `/speckit-analyze` findings remediated. Spec is ready for `/speckit-implement`.
