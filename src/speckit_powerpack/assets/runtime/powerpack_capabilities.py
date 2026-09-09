@@ -121,24 +121,37 @@ def resolve_feature_dir(root: Path, explicit: str | None = None, *, system: str 
     raise SystemExit("BLOCKED: could not resolve current feature directory; pass --feature-dir.")
 
 
-def feature_key(root: Path, feature: Path) -> str:
-    try:
-        raw = feature.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        raw = feature.name
-    return raw.replace("/", "__").replace("\\", "__")
+def _branch_base(root: Path) -> str | None:
+    for ref in ("origin/HEAD", "origin/main", "main", "origin/master", "master"):
+        proc = run(["git", "merge-base", "HEAD", ref], root)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+    return None
 
 
-def latest_implement_files(root: Path, feature: Path) -> list[str]:
-    path = root / ".specify" / "powerpack" / "state" / f"{feature_key(root, feature)}.json"
-    if not path.is_file():
+def changed_paths(root: Path) -> list[str]:
+    """Non-runtime files changed for the active feature (working tree + branch delta).
+
+    Repository-evidence signal for the quality gate. Mirrors
+    `powerpack_runtime.changed_paths` — the removed `speckit.implement` wrap no
+    longer records an implementation delta, so the gate reads git directly.
+    Returns [] when git is unavailable (gate then treats the change as
+    documentation-only / NOT_APPLICABLE, matching the previous no-receipt behaviour).
+    """
+    if run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
         return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    runs = [item for item in data.get("implement_runs", []) if item.get("status") == "COMPLETED"]
-    return list(runs[-1].get("changed_files", [])) if runs else []
+    paths: set[str] = set()
+    porcelain = run(["git", "status", "--porcelain", "-z"], root)
+    if porcelain.returncode == 0:
+        for entry in porcelain.stdout.split("\0"):
+            if len(entry) > 3:
+                paths.add(entry[3:])
+    base = _branch_base(root)
+    if base:
+        diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
+        if diff.returncode == 0:
+            paths.update(p for p in diff.stdout.split("\0") if p)
+    return sorted(p for p in paths if p and not p.startswith(".specify/powerpack/"))
 
 
 def is_documentation_only(paths: Iterable[str]) -> bool:
@@ -264,8 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"platform": caps.key, "shell_family": caps.shell_family, "local_script_suffixes": caps.local_script_suffixes, "prerequisite_runner_order": caps.prerequisite_runner_order}))
         return 0
     root = find_root()
-    feature = resolve_feature_dir(root, args.feature_dir, system=args.system)
-    result = gate_for_project(root, latest_implement_files(root, feature), system=args.system)
+    resolve_feature_dir(root, args.feature_dir, system=args.system)  # validate feature context
+    result = gate_for_project(root, changed_paths(root), system=args.system)
     print(json.dumps(result, ensure_ascii=False))
     if result["status"] == "BLOCKED_CONFIGURATION":
         return 7

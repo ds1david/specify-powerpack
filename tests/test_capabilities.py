@@ -93,6 +93,53 @@ def test_docs_only_is_os_and_framework_independent(tmp_path: Path):
         assert cap.gate_for_project(root, ["README.md", "docs/guide.md"], system=system)["status"] == "NOT_APPLICABLE"
 
 
+def _git(root: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
+
+
+def _feature_repo(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init")
+    _git(root, "config", "user.email", "t@e.com")
+    _git(root, "config", "user.name", "T")
+    (root / ".specify" / "powerpack").mkdir(parents=True)
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (feature / "spec.md").write_text("# Spec\n")
+    (root / "pom.xml").write_text("<project/>\n")  # deterministic maven architecture
+    (root / "mvnw").write_text("#!/bin/sh\nexit 0\n")
+    (root / "mvnw").chmod(0o755)
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "init")
+    return root, feature
+
+
+def test_gate_main_uses_git_evidence_not_implement_runs(tmp_path: Path, monkeypatch, capsys):
+    """T046/T047: the gate `speckit.implement-review.md` invokes must read a real
+    change delta from git, not the removed `implement_runs` receipt."""
+    import json as _json
+
+    root, feature = _feature_repo(tmp_path)
+    assert not hasattr(cap, "latest_implement_files")
+    monkeypatch.chdir(root)
+
+    # docs-only change -> NOT_APPLICABLE
+    (feature / "spec.md").write_text("# Spec\nedited\n")
+    assert cap.main(["gate", "detect", "--feature-dir", str(feature)]) == 0
+    assert _json.loads(capsys.readouterr().out)["status"] == "NOT_APPLICABLE"
+
+    # real code change -> gate is REQUIRED (maven), never NOT_APPLICABLE
+    (root / "src").mkdir()
+    (root / "src" / "App.java").write_text("class App {}\n")
+    assert cap.main(["gate", "detect", "--feature-dir", str(feature)]) == 0
+    result = _json.loads(capsys.readouterr().out)
+    assert result["status"] == "REQUIRED"
+    assert result["reason"] == "maven"
+
+
 def test_custom_gate_overrides_detection(tmp_path: Path):
     root = project(tmp_path)
     (root / "pom.xml").write_text("<project/>")
