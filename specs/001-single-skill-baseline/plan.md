@@ -206,6 +206,20 @@ See [research.md](./research.md). Decisions resolved:
 **Post-Design Constitution Re-check: PASS** — no new projects/patterns/dependencies; change
 reduces surface area.
 
+## Post-Checklist Refinement
+
+`checklists/cleanup.md` (40 requirements-quality items, CHK001–CHK040) is the reviewer gate
+for this feature. Review of those items against the spec/plan produced two spec updates:
+
+1. Added an explicit Assumption that every target has upstream `speckit-implement` /
+   `speckit-converge` (the re-based gate depends on it — CHK038).
+2. Confirmed the baseline-SHA discrepancy is already handled by the Assumptions section
+   (CHK039) and the `default-model-routing.json` generic-stage classification (CHK007) is
+   correctly deferred to `/speckit-tasks` as a named verification (research.md §D7).
+
+No plan restructuring required; the remaining unchecked checklist items are reviewer
+judgment calls, not missing plan content.
+
 ## Complexity Tracking
 
 No constitution violations. No entries required.

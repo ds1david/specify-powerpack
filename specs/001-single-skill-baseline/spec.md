@@ -337,6 +337,9 @@ the suite; the baseline contract test must fail.
   never deleted or renamed by this work.
 - `.specify/memory/constitution.md` is still the unpopulated template and imposes no
   concrete constraints on this spec; if it is filled before planning, the plan must re-check.
+- Every target project already has upstream Spec Kit `speckit-implement` and
+  `speckit-converge` available (Spec Kit ≥ 1.0.0). The re-based `implement-review` flow and
+  its evidence gate (FR-018) depend on this; PowerPack does not install those commands.
 - The implementation baseline is a recorded commit. The previous draft recorded
   `a825557a0d021e9e9948ad212349bf91d76a619c`; current `main` HEAD is
   `489f5355f7d2b32e50f0c0daa7b6bdb577655338`. The plan MUST record the actual starting SHA
