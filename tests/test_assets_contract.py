@@ -164,3 +164,22 @@ def test_model_routing_preserves_reviewer_profile():
         "reasoning_effort": "xhigh",
         "sandbox": "read-only",
     }
+
+
+def test_devcontainer_homologation_assets_present_and_valid():
+    """The homologation devcontainer (T063): valid config + executable scripts,
+    with the credential mounts declared and nothing baked into an image layer."""
+    dc = ROOT / ".devcontainer"
+    config = json.loads((dc / "devcontainer.json").read_text(encoding="utf-8"))
+    mounts = " ".join(config.get("mounts", []))
+    for host in (".codex", ".claude", ".config/gh"):
+        assert host in mounts, f"expected a bind mount for ~/{host}"
+    assert config["postCreateCommand"] == "bash .devcontainer/postcreate.sh"
+    assert config["remoteEnv"]["SPECIFY_FEATURE"] == "001-single-skill-baseline"
+    for script in ("homologate.sh", "postcreate.sh"):
+        path = dc / script
+        assert path.is_file(), script
+        assert path.stat().st_mode & 0o111, f"{script} is not executable"
+    homologate = (dc / "homologate.sh").read_text(encoding="utf-8")
+    assert "review run --path" in homologate and "--timeout" in homologate
+    assert "git worktree remove --force" in homologate  # cleanup on exit
