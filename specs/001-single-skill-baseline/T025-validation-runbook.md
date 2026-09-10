@@ -214,11 +214,16 @@ T025 is only **failed** when the cause is a removed PowerPack command/helper (se
 If credentials are unavailable, this still closes the *code* half of T025:
 
 1. P1–P3, S2, S4, S5, §4 — all runnable offline in a temp installed project.
-2. Mark T025: *"Core `implement-review` flow (readiness plumbing, re-based prereq, capability
-   gate, Sol route) validated on a clean install with zero removed-command references. S1
-   partial (no live review creds), S3/S6/S7 pending live Codex+GitHub; covered statically by
-   `tests/test_browserless_review.py`, `tests/test_review_context.py`,
-   `tests/test_review_protocol.py`, `tests/test_codex_apps_runtime.py`."*
+2. `tests/test_implement_review_flow_survives_cleanup.py` (CI-enforced) already proves,
+   without live services: (a) every module/asset the flow reaches — `browserless_review`
+   and its transitive imports, `powerpack_runtime.py`, `powerpack_capabilities.py`,
+   `review_protocol.py`, `speckit.implement-review.md`, `deep-review-protocol.md` — carries
+   **zero references to removed commands/helpers**; (b) the local plumbing
+   (`load_project_binding` → `resolve_pull_request` → `resolve_spec_context` →
+   `current_head`) runs end to end and fails only at the mocked Codex-auth boundary with a
+   typed `BrowserlessReviewError` — not an `ImportError`/`AttributeError`/`NameError`.
+3. What is left for a real run: only that the live Codex / ChatGPT-Project / GitHub services
+   respond and the deep review reaches a terminal verdict (S3, S6, S7).
 
 ---
 
