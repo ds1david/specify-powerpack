@@ -7,11 +7,13 @@ import pytest
 from speckit_powerpack.browserless_review import (
     BrowserlessReviewError,
     _review_prompt,
+    _snapshot_prompt,
     _validate_hardened_review_contract,
     _validate_project_evidence,
     _validate_snapshot_contract,
     load_project_binding,
 )
+from speckit_powerpack.review_context import PullRequestTarget
 from speckit_powerpack.review_context import ReviewSnapshot
 
 
@@ -65,6 +67,20 @@ def test_load_binding_uses_schema5_chatgpt_project(tmp_path: Path):
     binding = load_project_binding(tmp_path)
     assert binding.project_id == "g-p-test"
     assert binding.project_name == "Example"
+
+
+def test_every_turn_carries_project_context_and_the_github_connector():
+    """Firm requirement: BOTH the ChatGPT Project context and the GitHub App
+    mention are in every prompt sent to ChatGPT — the snapshot turn too, not
+    only the deep-review turn."""
+    target = PullRequestTarget("owner/repo", 15, "https://github.com/owner/repo/pull/15")
+    snap = _snapshot_prompt(target, "connector_github", project_context="CHATGPT PROJECT: Example\nmission: X")
+    assert "[$github](app://connector_github)" in snap
+    assert "CHATGPT PROJECT CONTEXT" in snap and "mission: X" in snap
+    # and it degrades cleanly when the Project has no readable context
+    bare = _snapshot_prompt(target, "connector_github")
+    assert "[$github](app://connector_github)" in bare
+    assert "NONE — the bound ChatGPT Project has no readable context" in bare
 
 
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():

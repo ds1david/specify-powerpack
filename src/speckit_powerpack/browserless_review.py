@@ -113,11 +113,16 @@ def _requirement_ids(spec_context: str) -> tuple[str, ...]:
     return tuple(sorted({match.group(1).upper() for match in REQUIREMENT_ID.finditer(spec_context or "")}))
 
 
-def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
+def _snapshot_prompt(target: PullRequestTarget, connector_id: str, *, project_context: str = "") -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
 Use exclusively the installed GitHub App selected by this explicit Codex App mention:
 [$github](app://{connector_id})
+
+CHATGPT PROJECT CONTEXT — serialized read-only background memory (present in every phase):
+<project_context>
+{(project_context or "NONE — the bound ChatGPT Project has no readable context")[:12000]}
+</project_context>
 
 Resolve the immutable identity of exactly this pull request:
 repository: {target.repository}
@@ -399,7 +404,7 @@ def run_browserless_code_review(
         project_path=project_path,
         model=model,
         effort=effort,
-        prompt=_snapshot_prompt(target, github.connector_id),
+        prompt=_snapshot_prompt(target, github.connector_id, project_context=project_context),
         timeout=min(timeout, 300),
         progress=_progress_for("snapshot"),
         ephemeral=ephemeral,

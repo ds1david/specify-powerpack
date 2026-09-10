@@ -9,7 +9,7 @@ serializing its context into the request `instructions`. Same auth
 review uses; no separate flow.
 
     python3 scripts/homologation/probe_browserless_prompts.py \
-        --project g-p-6a9ba1a060208191a5b6e03a3950b183 --effort medium --keep-session
+        --project g-p-6a9ba1a060208191a5b6e03a3950b183 --effort medium
 
 The three prompts:
   1. name + mission of this project (<=100 words)   [uses the Project context]
@@ -88,13 +88,15 @@ def _log(kind: str, msg: str) -> None:
 
 
 def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions: str,
-                     model: str, effort: str, store: bool) -> tuple[str, str | None, list[str]]:
+                     model: str, effort: str) -> tuple[str, str | None, list[str]]:
     body: dict[str, object] = {
         "model": model,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
         "instructions": instructions,
         "stream": True,
-        "store": store,
+        # /backend-api/codex/responses rejects store:true ("Store must be set to
+        # false"). The turn still lands in the Codex web history regardless.
+        "store": False,
     }
     if effort:
         body["reasoning"] = {"effort": effort}
@@ -103,7 +105,7 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
     raw_body = json.dumps(body).encode("utf-8")
     log_request("POST", RESPONSES_URL, raw_body)
     req = urllib.request.Request(RESPONSES_URL, data=raw_body, method="POST", headers=headers)
-    _log("browserless", f"POST {RESPONSES_URL} (model={model} effort={effort} store={store})")
+    _log("browserless", f"POST {RESPONSES_URL} (model={model} effort={effort} store=false)")
     text: list[str] = []
     response_id: str | None = None
     tool_events: list[str] = []
@@ -167,8 +169,6 @@ def main() -> int:
     parser.add_argument("--path", default=".", help="repo checkout (origin → owner/repo for prompt 3)")
     parser.add_argument("--model", default="gpt-5.6-sol")
     parser.add_argument("--effort", default="medium", help="minimal|low|medium|high|xhigh (default medium)")
-    parser.add_argument("--keep-session", action="store_true",
-                        help='send "store": true so the turn persists in the Codex web history')
     parser.add_argument("--separate", action="store_true",
                         help="submit the 3 prompts as 3 separate turns (3 web items) instead of one")
     parser.add_argument("--locale", default="pt-BR")
@@ -185,7 +185,7 @@ def main() -> int:
     Path(http_log).write_text("", encoding="utf-8")  # fresh per run
 
     print(f"# probe: project={args.project} repo={repo} pr=#{args.pr} "
-          f"model={args.model} effort={args.effort} store={bool(args.keep_session)}", file=sys.stderr)
+          f"model={args.model} effort={args.effort}", file=sys.stderr)
     print(f"# curl trace: {http_log}", file=sys.stderr)
     print("# this spends Codex/ChatGPT tokens on your plan.", file=sys.stderr)
 
@@ -254,7 +254,7 @@ def main() -> int:
         "transport": "chatgpt-backend-api /codex/responses",
         "project": {"id": project.id, "name": project.name},
         "repo": repo,
-        "store": bool(args.keep_session),
+        "store": False,
         "turns": [],
     }
     exit_code = 0
@@ -262,7 +262,7 @@ def main() -> int:
         try:
             text, rid, tools = _stream_response(
                 client, prompt=prompt, instructions=instructions,
-                model=args.model, effort=args.effort, store=bool(args.keep_session),
+                model=args.model, effort=args.effort,
             )
         except ChatGPTProjectError as exc:
             print(f"\n=== TURN {i}: ERROR ===\n{exc}", file=sys.stderr)
