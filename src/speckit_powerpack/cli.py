@@ -162,10 +162,71 @@ def _migrate_review_config(project: Path, *, reset: bool) -> None:
     write_json(path, default, overwrite=True)
 
 
+# Paths under `.specify/powerpack/` owned exclusively by commands removed in
+# SPEC-001 (technical-debt lifecycle + full-cycle). A fresh install never writes
+# them; `_prune_removed_command_state` removes them from an already-installed
+# project on every refresh so a normal `update` honours FR-003 / FR-012. This is
+# dead-file removal, not a compatibility migration shim.
+OBSOLETE_POWERPACK_PATHS = (
+    "bin/debt.py",
+    "bin/full_cycle.py",
+    "technical-debt-policy.md",
+    "technical-debt-template.md",
+    "technical-debt.json",
+    "full-cycle.json",
+)
+_SUPPORTED_STAGES = {"implement-review"}
+
+
+def _prune_removed_command_state(base: Path) -> None:
+    """Strip retired removed-command files and config keys from an existing
+    install (idempotent; no-ops on a fresh one). Runs unconditionally — a normal
+    `update` must not leave removed capabilities on disk (FR-003 / FR-012)."""
+    if not base.is_dir():
+        return
+    for relative in OBSOLETE_POWERPACK_PATHS:
+        (base / relative).unlink(missing_ok=True)
+
+    routing_path = base / "model-routing.json"
+    if routing_path.is_file():
+        try:
+            routing = json.loads(routing_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            routing = None
+        if isinstance(routing, dict):
+            changed = False
+            for key in ("stages", "stage_reasons"):
+                section = routing.get(key)
+                if isinstance(section, dict):
+                    pruned = {k: v for k, v in section.items() if k in _SUPPORTED_STAGES}
+                    if pruned != section:
+                        routing[key] = pruned
+                        changed = True
+            if changed:
+                write_json(routing_path, routing, overwrite=True)
+
+    prereq_path = base / "prerequisites.json"
+    if prereq_path.is_file():
+        try:
+            prereq = json.loads(prereq_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prereq = None
+        if isinstance(prereq, dict):
+            steps = prereq.get("steps")
+            if isinstance(steps, dict):
+                kept = {k: v for k, v in steps.items() if k in _SUPPORTED_STAGES}
+                kept["implement-review"] = [{"check": "implementation-evidence"}]
+                if kept != steps or int(prereq.get("schema_version", 0) or 0) < 2:
+                    prereq["steps"] = kept
+                    prereq["schema_version"] = max(2, int(prereq.get("schema_version", 0) or 0))
+                    write_json(prereq_path, prereq, overwrite=True)
+
+
 def install_support(project: Path, integration: str, *, reset_config: bool = False) -> None:
     base = project / ".specify" / "powerpack"
     bin_dir = base / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
+    _prune_removed_command_state(base)
     runtime_assets = {
         "runtime/powerpack_runtime.py": "powerpack.py",
         "runtime/powerpack_capabilities.py": "capabilities.py",
