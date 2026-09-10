@@ -84,6 +84,35 @@ You do **not** have to use the container — `homologate.sh` runs this checkout'
 directly (`python3 -m speckit_powerpack`), so running it on the host works too, as long as
 `codex login` / `gh auth login` are done there.
 
+### Lifecycle — what runs when
+
+The container is created the moment you choose *Reopen in Container* (or run
+`devcontainer up`). Order:
+
+| Step | Where | When | This repo |
+|---|---|---|---|
+| `initializeCommand` | **host** | before the container exists | `mkdir -p ~/.codex ~/.claude ~/.config/gh` (so the bind mounts cannot fail) |
+| image acquire | — | first time, then cached | pull `mcr…/python:3.11` + compose the `github-cli` / `node` features |
+| container create | — | on create / rebuild | apply mounts, env, bind the workspace folder |
+| `postCreateCommand` | container | **once**, on create / rebuild | `bash .devcontainer/postcreate.sh` — `pip install -e .[dev]`, Spec Kit `v1.0.4`, symlink `codex` (~1–2 min) |
+| container start + attach | container | every start / every VS Code window | — |
+
+So a plain window reload does **not** re-run `postcreate.sh`; only editing
+`devcontainer.json` (VS Code then offers *Rebuild Container*) or *Dev Containers: Rebuild*
+does. The container you see in Docker Desktop stays up while VS Code is attached (and
+usually after you close the window, until you *Reopen Folder Locally* or stop it there).
+
+`homologate.sh` is **not** a lifecycle hook — run it by hand in the container terminal once
+`postcreate.sh` has finished. First sanity check in that terminal:
+
+```bash
+specify-powerpack --version      # this checkout
+specify --version                # Spec Kit v1.0.4
+codex --version                  # from the mounted ~/.codex; if MISSING, your host codex
+                                 # is not the standalone build — `npm i -g @openai/codex`
+gh auth status                   # from the mounted ~/.config/gh
+```
+
 ## Following the run in real time
 
 `homologate.sh` prints everything to the terminal it runs in (timestamped step banners). The
