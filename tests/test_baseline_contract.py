@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,17 @@ def _installed_powerpack_command_names(project: Path) -> set[str]:
     `install_components()` ran the real `specify preset add`."""
     commands = project / ".specify" / "presets" / "powerpack-core" / "commands"
     return {p.stem for p in commands.glob("*.md")} if commands.is_dir() else set()
+
+
+def _real_install(project: Path) -> None:
+    """A real installation composition: `specify init` (agent-tool check skipped —
+    CI has no Codex/Claude CLI) then `install_powerpack` runs the real
+    `specify preset add` / `extension add`."""
+    subprocess.run(
+        ["specify", "init", "--here", "--integration", "codex", "--force", "--ignore-agent-tools"],
+        cwd=project, check=True, capture_output=True, text=True,
+    )
+    cli.install_powerpack(str(project), "codex", initialize=False, bootstrap=False)
 
 
 def parse_preset_command_names(path: Path) -> set[str]:
@@ -183,7 +195,7 @@ def test_installed_powerpack_command_namespace_is_exactly_implement_review(tmp_p
     """R001-003 (round 3) / FR-011 installed-side equality: enumerate the command
     namespace a *real* installation composition materialises (post `specify preset
     add`), not just the source `preset.yml`."""
-    cli.install_powerpack(str(tmp_path), "codex", initialize=True, bootstrap=False)
+    _real_install(tmp_path)
     assert _installed_powerpack_command_names(tmp_path) == EXPECTED
     base = tmp_path / ".specify" / "powerpack"
     for relative in cli.OBSOLETE_POWERPACK_PATHS:
@@ -196,7 +208,7 @@ def test_removed_command_names_are_undispatchable_after_a_real_install(tmp_path:
     command name resolves to nothing at the command layer — no materialised
     command file anywhere under the project, and no silent redirect to
     `implement-review`."""
-    cli.install_powerpack(str(tmp_path), "codex", initialize=True, bootstrap=False)
+    _real_install(tmp_path)
     command_files = {
         p.name
         for p in tmp_path.rglob("*")

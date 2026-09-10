@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -176,10 +177,15 @@ def test_devcontainer_homologation_assets_present_and_valid():
         assert host in mounts, f"expected a bind mount for ~/{host}"
     assert config["postCreateCommand"] == "bash .devcontainer/postcreate.sh"
     assert config["remoteEnv"]["SPECIFY_FEATURE"] == "001-single-skill-baseline"
+    # exec bit: ask git (the working-tree stat is unreliable on a Windows checkout)
+    staged = subprocess.run(
+        ["git", "ls-files", "-s", "--", ".devcontainer/homologate.sh", ".devcontainer/postcreate.sh"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+    modes = {line.split()[3].split("/")[-1]: line.split()[0] for line in staged.splitlines()}
     for script in ("homologate.sh", "postcreate.sh"):
-        path = dc / script
-        assert path.is_file(), script
-        assert path.stat().st_mode & 0o111, f"{script} is not executable"
+        assert (dc / script).is_file(), script
+        assert modes.get(script) == "100755", f"{script} must be tracked mode 100755, got {modes.get(script)}"
     homologate = (dc / "homologate.sh").read_text(encoding="utf-8")
     assert "review run --path" in homologate and "--timeout" in homologate
     assert "git worktree remove --force" in homologate  # cleanup on exit
