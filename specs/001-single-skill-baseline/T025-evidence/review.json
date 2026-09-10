@@ -1,0 +1,830 @@
+{
+  "schema_version": "2.0",
+  "reviewer": "codex",
+  "round": 1,
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Four blocking gaps remain: upgrades retain removed managed assets and configuration; the active SPEC cannot pass its own committed-task prerequisite and lacks terminal homologation; and the installed-set and unknown-command tests do not exercise the contracts they claim to prove.",
+  "review_context": {
+    "spec_id": "001-single-skill-baseline",
+    "base_ref": "main",
+    "base_sha": "60692ea22b072a46aa4d0dffa14f18cbc1076235",
+    "merge_base": "34a7f9cfb4b8508bbbd174b99acb25a5289853d1",
+    "head_sha": "349a6f687e7e16711b7cf9037e88ba0627b20070",
+    "snapshot_sha256": "594525ce99e5fcc9c7c14cc476d354e63fadaaab738fc65e540ffeaf333f4725"
+  },
+  "coverage": {
+    "changed_files": [
+      "README.md",
+      "docs/CUSTOMIZATION.md",
+      "docs/DECISIONS_AND_TRADEOFFS.md",
+      "docs/FULL_CYCLE.md",
+      "docs/IMPLEMENT_REVIEW.md",
+      "docs/PROCESS_ARCHITECTURE.md",
+      "docs/PROJECT_EVOLUTION.md",
+      "docs/TECHNICAL_DEBT.md",
+      "docs/WEB_GITHUB_HEADLESS_PROBE.md",
+      "scripts/homologation/probe_chatgpt_github_headless.py",
+      "specs/001-single-skill-baseline/T025-validation-runbook.md",
+      "specs/001-single-skill-baseline/checklists/cleanup.md",
+      "specs/001-single-skill-baseline/checklists/requirements.md",
+      "specs/001-single-skill-baseline/collect-t025-offline-evidence.sh",
+      "specs/001-single-skill-baseline/contracts/command-inventory.md",
+      "specs/001-single-skill-baseline/contracts/implement-review-prereq.md",
+      "specs/001-single-skill-baseline/contracts/installer-parity.md",
+      "specs/001-single-skill-baseline/data-model.md",
+      "specs/001-single-skill-baseline/inventory.md",
+      "specs/001-single-skill-baseline/plan.md",
+      "specs/001-single-skill-baseline/quickstart.md",
+      "specs/001-single-skill-baseline/reference-classification.md",
+      "specs/001-single-skill-baseline/research.md",
+      "specs/001-single-skill-baseline/spec.md",
+      "specs/001-single-skill-baseline/tasks.md",
+      "src/speckit_powerpack/assets/config/default-full-cycle.json",
+      "src/speckit_powerpack/assets/config/default-model-routing.json",
+      "src/speckit_powerpack/assets/config/default-technical-debt.json",
+      "src/speckit_powerpack/assets/extensions/powerpack-tools/commands/update.md",
+      "src/speckit_powerpack/assets/policies/technical-debt.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.checklist-converge.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.converge.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-close.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-consult.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-create.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-list.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-start.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.full-cycle.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement-review.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/preset.yml",
+      "src/speckit_powerpack/assets/runtime/powerpack_capabilities.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_debt.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_full_cycle.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_runtime.py",
+      "src/speckit_powerpack/assets/templates/technical-debt-backlog.md",
+      "src/speckit_powerpack/cli.py",
+      "tests/test_assets_contract.py",
+      "tests/test_baseline_contract.py",
+      "tests/test_capabilities.py",
+      "tests/test_chatgpt_github_headless_probe_contract.py",
+      "tests/test_debt_runtime.py",
+      "tests/test_full_cycle_runtime.py",
+      "tests/test_implement_review_flow_survives_cleanup.py",
+      "tests/test_install_support.py",
+      "tests/test_powerpack_runtime.py",
+      "uv.lock"
+    ],
+    "inspected_files": [
+      "README.md",
+      "docs/CUSTOMIZATION.md",
+      "docs/DECISIONS_AND_TRADEOFFS.md",
+      "docs/FULL_CYCLE.md",
+      "docs/IMPLEMENT_REVIEW.md",
+      "docs/PROCESS_ARCHITECTURE.md",
+      "docs/PROJECT_EVOLUTION.md",
+      "docs/TECHNICAL_DEBT.md",
+      "docs/WEB_GITHUB_HEADLESS_PROBE.md",
+      "scripts/homologation/probe_chatgpt_github_headless.py",
+      "specs/001-single-skill-baseline/T025-validation-runbook.md",
+      "specs/001-single-skill-baseline/checklists/cleanup.md",
+      "specs/001-single-skill-baseline/checklists/requirements.md",
+      "specs/001-single-skill-baseline/collect-t025-offline-evidence.sh",
+      "specs/001-single-skill-baseline/contracts/command-inventory.md",
+      "specs/001-single-skill-baseline/contracts/implement-review-prereq.md",
+      "specs/001-single-skill-baseline/contracts/installer-parity.md",
+      "specs/001-single-skill-baseline/data-model.md",
+      "specs/001-single-skill-baseline/inventory.md",
+      "specs/001-single-skill-baseline/plan.md",
+      "specs/001-single-skill-baseline/quickstart.md",
+      "specs/001-single-skill-baseline/reference-classification.md",
+      "specs/001-single-skill-baseline/research.md",
+      "specs/001-single-skill-baseline/spec.md",
+      "specs/001-single-skill-baseline/tasks.md",
+      "src/speckit_powerpack/assets/config/default-full-cycle.json",
+      "src/speckit_powerpack/assets/config/default-model-routing.json",
+      "src/speckit_powerpack/assets/config/default-technical-debt.json",
+      "src/speckit_powerpack/assets/extensions/powerpack-tools/commands/update.md",
+      "src/speckit_powerpack/assets/policies/technical-debt.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.checklist-converge.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.converge.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-close.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-consult.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-create.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-list.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-start.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.full-cycle.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement-review.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement.md",
+      "src/speckit_powerpack/assets/presets/powerpack-core/preset.yml",
+      "src/speckit_powerpack/assets/runtime/powerpack_capabilities.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_debt.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_full_cycle.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_runtime.py",
+      "src/speckit_powerpack/assets/templates/technical-debt-backlog.md",
+      "src/speckit_powerpack/cli.py",
+      "tests/test_assets_contract.py",
+      "tests/test_baseline_contract.py",
+      "tests/test_capabilities.py",
+      "tests/test_chatgpt_github_headless_probe_contract.py",
+      "tests/test_debt_runtime.py",
+      "tests/test_full_cycle_runtime.py",
+      "tests/test_implement_review_flow_survives_cleanup.py",
+      "tests/test_install_support.py",
+      "tests/test_powerpack_runtime.py",
+      "uv.lock",
+      "install.sh",
+      "install.py",
+      "install.ps1",
+      "tests/test_installer.py",
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".claude/CLAUDE.md",
+      "docs/INSTALLATION.md",
+      "docs/PORTABILITY.md",
+      "docs/UPDATES.md",
+      "docs/CHATGPT_GITHUB_BROWSERLESS_SMOKE.md",
+      "docs/CODEX_FIRST_INSTALL.md",
+      "src/speckit_powerpack/assets/config/default-review.json",
+      "src/speckit_powerpack/browserless_review.py",
+      "src/speckit_powerpack/review_context.py",
+      "src/speckit_powerpack/github_browserless_smoke.py",
+      "src/speckit_powerpack/github_connector_preflight.py",
+      "src/speckit_powerpack/codex_apps_runtime.py",
+      "src/speckit_powerpack/chatgpt_project_provider.py",
+      "src/speckit_powerpack/update_manager.py",
+      "src/speckit_powerpack/assets/runtime/powerpack_review_protocol.py",
+      "src/speckit_powerpack/assets/review/deep-review-protocol.md",
+      "tests/test_browserless_review.py",
+      "tests/test_cli_platform.py",
+      "tests/test_cli_update.py",
+      "tests/test_codex_apps_runtime.py",
+      "tests/test_github_connector_discovery.py",
+      "tests/test_review_context.py",
+      "tests/test_review_protocol.py",
+      "tests/test_update_manager.py",
+      ".gitignore",
+      "pyproject.toml"
+    ],
+    "requirements": [
+      {
+        "id": "FR-001",
+        "status": "PARTIAL",
+        "evidence": [
+          "Preserved command, runtime and browserless assets remain, but T025/T051/T057 and the composition test show the required terminal flow is not demonstrated."
+        ]
+      },
+      {
+        "id": "FR-002",
+        "status": "PASS",
+        "evidence": [
+          "inventory.md enumerates all ten baseline preset entries and records assets, runtime, installer/tests, shared dependencies and the PRESERVE/REMOVE decision."
+        ]
+      },
+      {
+        "id": "FR-003",
+        "status": "FAIL",
+        "evidence": [
+          "Source assets are deleted, but install_support does not remove debt.py, full_cycle.py, their configs, policy or template from an existing installation."
+        ]
+      },
+      {
+        "id": "FR-004",
+        "status": "PARTIAL",
+        "evidence": [
+          "Head preset registration is exactly one command, but normal update can retain removed runtime/configuration surfaces in an existing project."
+        ]
+      },
+      {
+        "id": "FR-005",
+        "status": "PASS",
+        "evidence": [
+          "install.sh and install.ps1 delegate to install.py; the shared clean-install path uses the one-entry preset and contains no removed-command copy wiring."
+        ]
+      },
+      {
+        "id": "FR-006",
+        "status": "PARTIAL",
+        "evidence": [
+          "The clean package tree and copy allowlist exclude removed assets, but no test enumerates the actual post-Spec-Kit installed command registry as an exact set."
+        ]
+      },
+      {
+        "id": "FR-007",
+        "status": "PASS",
+        "evidence": [
+          "README and current-state documents present implement-review as the sole PowerPack command; removed pages are deleted and upstream commands are distinguished."
+        ]
+      },
+      {
+        "id": "FR-008",
+        "status": "PASS",
+        "evidence": [
+          "Remaining removed-command mentions are explicitly historical records, SPEC text or negative regression assertions."
+        ]
+      },
+      {
+        "id": "FR-009",
+        "status": "PASS",
+        "evidence": [
+          "Debt, full-cycle and probe-only tests are deleted while browserless, preflight, protocol and shared capability tests remain."
+        ]
+      },
+      {
+        "id": "FR-010",
+        "status": "FAIL",
+        "evidence": [
+          "The offline collector does not exercise an installed registry exact-set, and T025/T051/T057 state that the minimum live operational flow remains unexecuted."
+        ]
+      },
+      {
+        "id": "FR-011",
+        "status": "FAIL",
+        "evidence": [
+          "Registration equality exists, but test_baseline_contract.py never computes or asserts the required installed_powerpack_commands exact set."
+        ]
+      },
+      {
+        "id": "FR-012",
+        "status": "FAIL",
+        "evidence": [
+          "Packaged defaults are clean, but default-preserving update leaves existing model-routing.json, prerequisites.json and removed dedicated configs untouched."
+        ]
+      },
+      {
+        "id": "FR-013",
+        "status": "PASS",
+        "evidence": [
+          "powerpack-tools doctor/update, shared runtimes, model routing, state/review paths and browserless provider modules remain composed."
+        ]
+      },
+      {
+        "id": "FR-014",
+        "status": "FAIL",
+        "evidence": [
+          "The mandated clean-install behavioral invocation is absent; the new test only inspects argparse internals, while upgrades can retain runnable removed runtimes."
+        ]
+      },
+      {
+        "id": "FR-015",
+        "status": "PARTIAL",
+        "evidence": [
+          "No removed preset entry or alias exists at HEAD, but unknown-command behavior is not invoked at the actual Spec Kit registration/dispatch layer."
+        ]
+      },
+      {
+        "id": "FR-016",
+        "status": "PASS",
+        "evidence": [
+          "reference-classification.md reports zero active source references, corroborated by the complete recursive GitHub tree for HEAD."
+        ]
+      },
+      {
+        "id": "FR-017",
+        "status": "PASS",
+        "evidence": [
+          "test_baseline_contract.py includes an explicit registration exact-set assertion tied to FR-017."
+        ]
+      },
+      {
+        "id": "FR-018",
+        "status": "PASS",
+        "evidence": [
+          "Dotted implement/converge templates are deleted; the preserved command names upstream commands and runtime prerequisite no longer reads an implement receipt."
+        ]
+      },
+      {
+        "id": "FR-019",
+        "status": "PARTIAL",
+        "evidence": [
+          "All three entrypoints converge structurally on install.py, but their actual post-install inventories are not executed and compared."
+        ]
+      },
+      {
+        "id": "FR-020",
+        "status": "PASS",
+        "evidence": [
+          "Browserless runtime, smoke/preflight, deep-review protocol, default review configuration and supported documentation remain connected."
+        ]
+      },
+      {
+        "id": "FR-021",
+        "status": "PASS",
+        "evidence": [
+          "Probe script, probe documentation and probe-only test are deleted; supported smoke and preflight surfaces remain."
+        ]
+      },
+      {
+        "id": "FR-022",
+        "status": "PASS",
+        "evidence": [
+          "Full-cycle and technical-debt guides and their command-specific runtime, policy, template and configuration assets are deleted."
+        ]
+      },
+      {
+        "id": "FR-14",
+        "status": "FAIL",
+        "evidence": [
+          "The expected alias ID maps to the FR-014 behavioral-removal contract; no actual removed-command dispatch invocation is tested."
+        ]
+      },
+      {
+        "id": "SC-001",
+        "status": "PARTIAL",
+        "evidence": [
+          "Preset and package source are exact, but the generated integration command inventory is not enumerated after a real clean installation."
+        ]
+      },
+      {
+        "id": "SC-002",
+        "status": "PASS",
+        "evidence": [
+          "The recursive head tree and reference classification show no active current-tree removed-command asset or reference."
+        ]
+      },
+      {
+        "id": "SC-003",
+        "status": "FAIL",
+        "evidence": [
+          "T025/T051/T057 explicitly state that terminal implement-review execution is outstanding; the composed test stops at mocked authentication."
+        ]
+      },
+      {
+        "id": "SC-004",
+        "status": "PARTIAL",
+        "evidence": [
+          "Thin wrappers share install.py, but no evidence executes all three entrypoints and compares their resulting command inventories."
+        ]
+      },
+      {
+        "id": "SC-005",
+        "status": "PARTIAL",
+        "evidence": [
+          "A registration regression guard exists, but tests were not executed in this review and the required installed-side guard is missing."
+        ]
+      },
+      {
+        "id": "SC-006",
+        "status": "PARTIAL",
+        "evidence": [
+          "Clean source and copy allowlists exclude removed files, but a real installed state is not enumerated and upgrades retain legacy residue."
+        ]
+      },
+      {
+        "id": "SC-007",
+        "status": "PASS",
+        "evidence": [
+          "README, PROCESS_ARCHITECTURE and related current documents identify one current PowerPack command and label removed names as history or upstream."
+        ]
+      }
+    ],
+    "baseline_scenarios": [
+      {
+        "scenario": "Clean source registration",
+        "base_behavior": "The baseline preset registered ten PowerPack commands.",
+        "head_behavior": "The head preset provides only speckit.implement-review and deletes the other nine templates.",
+        "result": "CHANGED_AS_SPECIFIED",
+        "evidence": [
+          "GitHub HEAD preset.yml contains one command; all nine removed template paths are absent from the recursive tree."
+        ]
+      },
+      {
+        "scenario": "Fresh support-file materialization",
+        "base_behavior": "install_support copied debt/full-cycle runtimes, configs, policy and template.",
+        "head_behavior": "A fresh target receives only the three preserved runtimes and preserved review/update configuration.",
+        "result": "CHANGED_AS_SPECIFIED",
+        "evidence": [
+          "Head cli.py copy allowlists and fresh-target tests exclude command-exclusive removed assets."
+        ]
+      },
+      {
+        "scenario": "Existing installation update",
+        "base_behavior": "The base installer created removed runtimes, configs, policy/template and legacy routing/prerequisite keys.",
+        "head_behavior": "Normal update overlays current files without deleting those assets or migrating existing configs unless reset-config is selected.",
+        "result": "REGRESSION",
+        "evidence": [
+          "Base cli.py lines 169-207 establish legacy outputs; head lines 54-58 and 165-207 preserve existing state and contain no retirement migration."
+        ]
+      },
+      {
+        "scenario": "Implement-review prerequisite",
+        "base_behavior": "The baseline required a PowerPack implement completion receipt.",
+        "head_behavior": "The gate reads committed tasks and a non-documentation delta strictly after the SPEC-introduction commit.",
+        "result": "CHANGED_AS_SPECIFIED",
+        "evidence": [
+          "powerpack_runtime.py lines 173-332 and its cross-SPEC, bundled-anchor and working-tree regression tests implement FR-018a."
+        ]
+      },
+      {
+        "scenario": "Quality-gate composition",
+        "base_behavior": "capabilities.py read implement_runs produced by the removed wrapper.",
+        "head_behavior": "The composition root derives committed SPEC-scoped changed paths and selects or runs the detected quality gate.",
+        "result": "CHANGED_AS_SPECIFIED",
+        "evidence": [
+          "powerpack_capabilities.py lines 124-177 and 251-294 plus test_capabilities.py exercise code and documentation-only paths."
+        ]
+      },
+      {
+        "scenario": "Browserless Project and GitHub review",
+        "base_behavior": "The supported browserless provider, smoke, preflight and validator were available.",
+        "head_behavior": "Those modules remain; only exploratory probe scaffolding is deleted.",
+        "result": "PRESERVED",
+        "evidence": [
+          "Related HEAD modules and tests were read through the GitHub App; deleted patches are limited to the probe implementation, document and probe-only test."
+        ]
+      },
+      {
+        "scenario": "Current documentation",
+        "base_behavior": "Current documents advertised the wider command set.",
+        "head_behavior": "Current documents name implement-review only and retain removed names solely as history or upstream distinctions.",
+        "result": "CHANGED_AS_SPECIFIED",
+        "evidence": [
+          "Full README, architecture, customization, decisions, implement-review and project-evolution documents were inspected."
+        ]
+      },
+      {
+        "scenario": "Minimum terminal implement-review flow",
+        "base_behavior": "Implement-review was a supported end-to-end workflow.",
+        "head_behavior": "The only composition test stops at mocked authentication and three committed tasks state that terminal live execution remains undone.",
+        "result": "REGRESSION",
+        "evidence": [
+          "test_implement_review_flow_survives_cleanup.py lines 102-145 and tasks.md lines 101, 199 and 211."
+        ]
+      }
+    ],
+    "previous_findings": [],
+    "fronts": [
+      {
+        "name": "SPEC_COMPLIANCE",
+        "status": "FINDINGS",
+        "evidence": [
+          "FR-003, FR-010, FR-011, FR-012, FR-014 and SC-003 are not satisfied; three acceptance tasks remain unchecked."
+        ]
+      },
+      {
+        "name": "BEHAVIORAL_REGRESSION",
+        "status": "FINDINGS",
+        "evidence": [
+          "Updating a base-version project leaves removed runtimes and stale configuration because rematerialization is overlay-only."
+        ]
+      },
+      {
+        "name": "ARCHITECTURE_AND_CONTRACTS",
+        "status": "FINDINGS",
+        "evidence": [
+          "Registration source is exact, but installed-state equality and removed-command dispatch are not exercised at the Spec Kit composition boundary."
+        ]
+      },
+      {
+        "name": "STATE_CONCURRENCY_AND_FAILURES",
+        "status": "PASS",
+        "evidence": [
+          "The changed prerequisite reads committed Git state, sorts paths deterministically, returns typed reasons and introduces no concurrent mutable state."
+        ]
+      },
+      {
+        "name": "PERSISTENCE_DETERMINISM_IDEMPOTENCY",
+        "status": "FINDINGS",
+        "evidence": [
+          "Repeated update is deterministic for copied files but does not converge legacy installations to the new managed state."
+        ]
+      },
+      {
+        "name": "TESTS_AND_COMPOSITION_ROOT",
+        "status": "FINDINGS",
+        "evidence": [
+          "FR-018a unit coverage is strong, but install equality bypasses install_components, dispatch coverage only introspects argparse, and composed review stops before the provider."
+        ]
+      },
+      {
+        "name": "DOCUMENTATION_AND_OPERABILITY",
+        "status": "FINDINGS",
+        "evidence": [
+          "Update documentation promises managed-asset rematerialization that cannot retire obsolete files; the runbook records live proof as outstanding."
+        ]
+      },
+      {
+        "name": "SECURITY_AND_SCOPE",
+        "status": "PASS",
+        "evidence": [
+          "No credential or fallback expansion was added; review remains read-only through Codex Apps and changes stay within SPEC-001 scope."
+        ]
+      }
+    ],
+    "inspection_evidence": [
+      {
+        "file": "README.md",
+        "evidence": "Full HEAD and patch inspected: overview names only implement-review; removed commands appear solely in a dated history notice."
+      },
+      {
+        "file": "docs/CUSTOMIZATION.md",
+        "evidence": "Full HEAD/base and patch inspected: removed full-cycle/debt customization was replaced by preserved review/shared configuration guidance."
+      },
+      {
+        "file": "docs/DECISIONS_AND_TRADEOFFS.md",
+        "evidence": "Full HEAD/base and patch inspected: current scope is narrowed without advertising removed commands."
+      },
+      {
+        "file": "docs/FULL_CYCLE.md",
+        "evidence": "Complete 59-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "docs/IMPLEMENT_REVIEW.md",
+        "evidence": "Full HEAD/base and patch inspected: same-SPEC upstream predecessor and browserless review contract remain."
+      },
+      {
+        "file": "docs/PROCESS_ARCHITECTURE.md",
+        "evidence": "Full HEAD/base and patch inspected: implement-review is the sole PowerPack command and upstream stages are distinguished."
+      },
+      {
+        "file": "docs/PROJECT_EVOLUTION.md",
+        "evidence": "Full HEAD and added hunk inspected: removed commands are dated history, not current capabilities."
+      },
+      {
+        "file": "docs/TECHNICAL_DEBT.md",
+        "evidence": "Complete 31-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "docs/WEB_GITHUB_HEADLESS_PROBE.md",
+        "evidence": "Complete 73-line deletion patch inspected; supported browserless documentation remains separately."
+      },
+      {
+        "file": "scripts/homologation/probe_chatgpt_github_headless.py",
+        "evidence": "Complete 381-line deletion patch inspected; supported smoke and preflight modules remain."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/T025-validation-runbook.md",
+        "evidence": "Full 297-line runbook inspected: it defines all gates and explicitly records terminal live execution as outstanding."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/checklists/cleanup.md",
+        "evidence": "Full checklist inspected: questions cover removal, parity, upstream prerequisites and hidden-path behavior."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/checklists/requirements.md",
+        "evidence": "Full HEAD/base and patch inspected: terminology and specification-quality assertions were reviewed."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/collect-t025-offline-evidence.sh",
+        "evidence": "Full script inspected: copied assets and selected tests are checked, but P2 is not installed-registry equality."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/contracts/command-inventory.md",
+        "evidence": "Full contract inspected: registration and installation are both specified as exact equality."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/contracts/implement-review-prereq.md",
+        "evidence": "Full contract inspected: committed tasks and post-introduction delta are required with deterministic reasons."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/contracts/installer-parity.md",
+        "evidence": "Full contract inspected: all three entrypoints must produce the same canonical command set and no residue."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/data-model.md",
+        "evidence": "Full model inspected: inventory, reference classes, exact-set state and committed evidence align with the SPEC."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/inventory.md",
+        "evidence": "Full inventory inspected: all ten original commands are classified and only implement-review is preserved."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/plan.md",
+        "evidence": "Full plan inspected against source, composition boundaries, tests and post-implementation notes."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/quickstart.md",
+        "evidence": "Full quickstart inspected: exact sets and prerequisite negatives are documented; live flow is separate."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/reference-classification.md",
+        "evidence": "Full classification inspected and corroborated against the recursive GitHub HEAD tree."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/research.md",
+        "evidence": "Full research record inspected: rebase, anchor correction, enumeration and deletion decisions match source."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/spec.md",
+        "evidence": "Full authoritative SPEC inspected and every expected FR/SC ID mapped to implementation or evidence gaps."
+      },
+      {
+        "file": "specs/001-single-skill-baseline/tasks.md",
+        "evidence": "Full task file inspected: T025, T051 and T057 remain unchecked and explicitly say live completion is unexecuted."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/config/default-full-cycle.json",
+        "evidence": "Complete 26-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/config/default-model-routing.json",
+        "evidence": "Full HEAD/base JSON inspected: packaged stages contain only implement-review."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/config/default-technical-debt.json",
+        "evidence": "Complete 29-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/extensions/powerpack-tools/commands/update.md",
+        "evidence": "Full HEAD/base inspected: update promises rematerialization while preserving configuration, exposing the missing retirement migration."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/policies/technical-debt.md",
+        "evidence": "Complete 41-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.checklist-converge.md",
+        "evidence": "Complete deletion patch inspected; removed command has no HEAD blob."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.converge.md",
+        "evidence": "Complete deletion patch inspected; dotted convergence wrapper and receipt instruction are gone."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-close.md",
+        "evidence": "Complete deletion patch inspected; debt-close behavior is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-consult.md",
+        "evidence": "Complete deletion patch inspected; debt-consult behavior is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-create.md",
+        "evidence": "Complete deletion patch inspected; debt-create behavior is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-list.md",
+        "evidence": "Complete deletion patch inspected; debt-list behavior is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-start.md",
+        "evidence": "Complete deletion patch inspected; debt-start behavior is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.full-cycle.md",
+        "evidence": "Complete 166-line deletion patch inspected; full-cycle orchestration is removed."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement-review.md",
+        "evidence": "Full HEAD/base inspected: upstream convergence, committed evidence, quality, Sol and browserless gates remain."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement.md",
+        "evidence": "Complete deletion patch inspected; implement wrapper and begin/end receipt calls are gone."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/presets/powerpack-core/preset.yml",
+        "evidence": "Full HEAD/base inspected: provides.templates contains only speckit.implement-review."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/runtime/powerpack_capabilities.py",
+        "evidence": "Full HEAD/base inspected: committed SPEC-scoped changed paths feed the actual gate detect/run composition root."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/runtime/powerpack_debt.py",
+        "evidence": "Complete 347-line deletion patch inspected; debt runtime paths are removed from source."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/runtime/powerpack_full_cycle.py",
+        "evidence": "Complete 252-line deletion patch inspected; full-cycle runtime paths are removed from source."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/runtime/powerpack_runtime.py",
+        "evidence": "Full HEAD/base inspected: committed-task parsing, anchor/delta logic and all prereq/review/gate call sites were traced."
+      },
+      {
+        "file": "src/speckit_powerpack/assets/templates/technical-debt-backlog.md",
+        "evidence": "Complete 37-line deletion patch inspected; no HEAD blob remains."
+      },
+      {
+        "file": "src/speckit_powerpack/cli.py",
+        "evidence": "Full HEAD/base inspected: clean copy lists are correct, but no legacy-file deletion or default-preserving config migration exists."
+      },
+      {
+        "file": "tests/test_assets_contract.py",
+        "evidence": "Full HEAD/base inspected: source-package absence and preserved browserless/reviewer assets are asserted."
+      },
+      {
+        "file": "tests/test_baseline_contract.py",
+        "evidence": "Full test inspected: registration equality is real, but installed equality and real dispatch behavior are not exercised."
+      },
+      {
+        "file": "tests/test_capabilities.py",
+        "evidence": "Full HEAD/base inspected: committed code and documentation-only cases exercise the changed-path composition."
+      },
+      {
+        "file": "tests/test_chatgpt_github_headless_probe_contract.py",
+        "evidence": "Complete deletion patch inspected; it covered only the exploratory probe."
+      },
+      {
+        "file": "tests/test_debt_runtime.py",
+        "evidence": "Complete 95-line deletion patch inspected; tests were dedicated to removed debt behavior."
+      },
+      {
+        "file": "tests/test_full_cycle_runtime.py",
+        "evidence": "Complete 131-line deletion patch inspected; tests were dedicated to removed full-cycle behavior."
+      },
+      {
+        "file": "tests/test_implement_review_flow_survives_cleanup.py",
+        "evidence": "Full test inspected: dependency scanning is useful, but the composed execution deliberately stops at mocked authentication."
+      },
+      {
+        "file": "tests/test_install_support.py",
+        "evidence": "Full HEAD/base inspected: fresh materialization is covered, but no seeded legacy-install cleanup case exists."
+      },
+      {
+        "file": "tests/test_powerpack_runtime.py",
+        "evidence": "Full HEAD/base inspected: FR-018a negatives cover working-tree, cross-SPEC, bundled-anchor and no-baseline cases."
+      },
+      {
+        "file": "uv.lock",
+        "evidence": "Full lockfile and patch inspected: only the local package version changes; dependencies are unchanged."
+      }
+    ],
+    "verdict_challenge": {
+      "strongest_counterexample": "A user upgrades an existing supported PowerPack installation and assumes removed commands are gone, but overlay-only rematerialization leaves their runtimes and configuration on disk.",
+      "result": "FINDING",
+      "evidence": [
+        "Base cli.py copied debt.py, full_cycle.py, debt/full-cycle configs, policy and template.",
+        "Head install_support omits those assets but contains no unlink or migration step.",
+        "write_json preserves existing model-routing.json and prerequisites.json when reset_config is false, the documented update default."
+      ]
+    },
+    "context_gaps": [],
+    "verification_limitations": [
+      "Per instruction, no shell commands or web search were used and tests were not executed; repository evidence came exclusively through the selected GitHub App.",
+      "GitHub App evidence covered exact PR metadata, merge-base comparison, all 57 paginated filenames, all 57 patches, every surviving changed file at HEAD, modified-file baselines, the recursive HEAD tree and related callers/tests/contracts."
+    ]
+  },
+  "project_context_evidence": {
+    "project_name": "speckit-powerpack",
+    "literal_evidence": "conversation could not be loaded"
+  },
+  "findings": [
+    {
+      "id": "R001-001",
+      "severity": "HIGH",
+      "category": "PERSISTENCE_DETERMINISM_IDEMPOTENCY",
+      "title": "Normal updates retain removed command runtimes and configuration",
+      "file": "src/speckit_powerpack/cli.py",
+      "line": 165,
+      "evidence": "The base install_support wrote debt.py, full_cycle.py, debt/full-cycle configs, policy/template and legacy routing/prerequisites. HEAD merely stops copying them. It never removes retired paths, while write_json at lines 54-58 preserves existing routing and prerequisites unless reset_config is explicitly true.",
+      "failure_scenario": "Upgrade a base-version project using normal or project-only update. Removed executables and files remain under .specify/powerpack, and old routing/prerequisite entries survive the overlay refresh.",
+      "behavioral_impact": "Removed capabilities remain on disk and stale configuration still describes them, violating FR-003, FR-012, FR-014 and the documented rematerialization contract.",
+      "required_change": "Add a versioned migration that removes known obsolete PowerPack-owned paths and prunes obsolete routing/prerequisite entries during normal refresh while preserving supported mutable settings and Project binding.",
+      "acceptance_criteria": [
+        "Seed every artifact written by base install_support, refresh without --reset-config, and assert all retired managed paths are absent.",
+        "Assert routing has exactly implement-review and prerequisites use schema 2 implementation-evidence while supported mutable values remain.",
+        "Repeat refresh and prove migration idempotency."
+      ]
+    },
+    {
+      "id": "R001-002",
+      "severity": "HIGH",
+      "category": "SPEC_COMPLIANCE",
+      "title": "The immutable head cannot pass its own prerequisite or SC-003 gate",
+      "file": "specs/001-single-skill-baseline/tasks.md",
+      "line": 101,
+      "evidence": "T025, T051 and T057 remain unchecked and state that terminal live implement-review execution is outstanding. implement_evidence reads committed HEAD tasks and returns TASKS_INCOMPLETE for any open checkbox; the only composed test stops at mocked authentication.",
+      "failure_scenario": "Run prereq check for this exact PR head and active SPEC. It observes three unchecked tasks and exits 9 before convergence or review, preventing the required flow from reaching COMPLETE.",
+      "behavioral_impact": "User Story 2, FR-001, FR-010 and SC-003 remain incomplete, and the candidate is inadmissible under the predecessor contract it introduces.",
+      "required_change": "Execute and durably record the T025/T051/T057 flow, fix failures and commit truthful completion state; if those tasks are intentionally post-prerequisite, revise the durable lifecycle contract to remove the circular gate.",
+      "acceptance_criteria": [
+        "Committed tasks.md contains zero unchecked task boxes without pre-marking unexecuted work complete.",
+        "Prerequisite check returns OK for the exact candidate head.",
+        "Durable evidence shows readiness, upstream convergence, quality gate, Sol review and browserless Project/GitHub review reach the terminal state."
+      ]
+    },
+    {
+      "id": "R001-003",
+      "severity": "MEDIUM",
+      "category": "TESTS_AND_COMPOSITION_ROOT",
+      "title": "The installed exact-set contract is not tested",
+      "file": "tests/test_baseline_contract.py",
+      "line": 50,
+      "evidence": "test_installed_support_has_no_removed_command_assets calls install_support only, enumerates bin/*.py and checks selected support files. It never calls install_powerpack/install_components or enumerates installed PowerPack commands.",
+      "failure_scenario": "An installer or preset-materialization regression emits an extra command while source preset/support assertions remain satisfied, so the installed-side guard stays green.",
+      "behavioral_impact": "FR-010, FR-011, SC-001 and the install-side baseline contract lack mandatory composition-root proof.",
+      "required_change": "Exercise a clean canonical installation through the preset boundary and enumerate the resulting installed PowerPack command namespace.",
+      "acceptance_criteria": [
+        "A test invokes the real installation composition or a faithful controlled Spec Kit fixture.",
+        "It asserts the installed command set equals exactly speckit.implement-review.",
+        "It fails when a second command is emitted or remains in the integration command directory."
+      ]
+    },
+    {
+      "id": "R001-004",
+      "severity": "MEDIUM",
+      "category": "TESTS_AND_COMPOSITION_ROOT",
+      "title": "The behavioral removal check never invokes the real dispatcher",
+      "file": "tests/test_baseline_contract.py",
+      "line": 67,
+      "evidence": "test_removed_command_names_are_unknown_to_the_runtime_parser only inspects argparse choices and Python attributes. Removed preset commands such as full-cycle and debt-* were never powerpack.py top-level verbs.",
+      "failure_scenario": "A removed preset name survives as a generated command, alias or redirect while powerpack.py lacks an implement argparse verb; the test passes although direct invocation is not unknown.",
+      "behavioral_impact": "FR-014 and FR-015 are not validated at the command registration and dispatch layer where PowerPack commands are resolved.",
+      "required_change": "After a clean install, invoke representative removed command names through the actual Spec Kit resolver and assert unknown behavior with no implement-review side effect.",
+      "acceptance_criteria": [
+        "Coverage invokes speckit.implement, speckit.full-cycle and at least one speckit.debt-* command.",
+        "Every invocation is rejected as unknown or nonexistent by the real resolver.",
+        "Rejected invocations create no review state, receipt or implement-review execution."
+      ]
+    }
+  ]
+}

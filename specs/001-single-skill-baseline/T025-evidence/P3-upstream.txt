@@ -1,0 +1,17 @@
+/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp/.claude/skills/speckit-converge
+/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp/.claude/skills/speckit-implement
+/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp/.claude/skills/speckit-implement-review
+graphify
+speckit-analyze
+speckit-checklist
+speckit-clarify
+speckit-constitution
+speckit-converge
+speckit-implement
+speckit-implement-review
+speckit-plan
+speckit-powerpack-tools-doctor
+speckit-powerpack-tools-update
+speckit-specify
+speckit-tasks
+speckit-taskstoissues

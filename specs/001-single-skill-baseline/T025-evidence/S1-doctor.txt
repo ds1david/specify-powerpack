@@ -1,0 +1,11 @@
+# S1 — doctor . --strict-review
+$ specify-powerpack doctor . --strict-review
+OK    specify
+OK    spec-kit-project
+OK    powerpack-runtime
+OK    selected-executor
+OK    codex-cli
+OK    codex-auth
+OK    chatgpt-project-binding
+OK    github-app
+exit=0

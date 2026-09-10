@@ -1,0 +1,59 @@
+# S1 — review status --path . --live
+{
+  "review_config": "/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp/.specify/powerpack/review.json",
+  "provider": "chatgpt-project",
+  "backend": "codex-apps-github",
+  "project": {
+    "id": "g-p-6a9ba1a060208191a5b6e03a3950b183",
+    "name": "speckit-powerpack",
+    "url": "https://chatgpt.com/g/g-p-6a9ba1a060208191a5b6e03a3950b183-speckit-powerpack/project",
+    "context_mode": "serialized"
+  },
+  "browserless": true,
+  "readiness": {
+    "codex-cli": true,
+    "codex-auth": true,
+    "chatgpt-project-binding": true,
+    "github-app": true
+  },
+  "github": {
+    "ok": true,
+    "github_plugin": {
+      "resolved": true,
+      "status": "ENABLED",
+      "enabled": true,
+      "authentication_policy": "ON_INSTALL",
+      "plugin_id": "plugin_connector_1p_<redacted>"
+    },
+    "github_connector": {
+      "resolved": true,
+      "connector_id": "connector_<redacted>",
+      "metadata_status": "ENABLED",
+      "connector_type": "SERVICE"
+    },
+    "authorization": {
+      "accessible_link_found": true,
+      "auth_type": "OAUTH",
+      "auth_status": "ACTIVE",
+      "visibility": "VISIBLE",
+      "connector_status": "ENABLED",
+      "apps_privacy_control": "full_access"
+    },
+    "availability": {
+      "found": true,
+      "installed": true,
+      "available": true,
+      "can_install": false,
+      "status": "ENABLED"
+    },
+    "api_sequence": [
+      "GET /backend-api/ps/plugins/installed?limit=1000",
+      "GET /backend-api/ps/plugins/plugin_connector_1p_<redacted>",
+      "POST /backend-api/apps/content?detail=full&platform=chat&locale=<locale>",
+      "POST /backend-api/aip/connectors/links/list_accessible",
+      "POST /backend-api/apps/availability?platform=chat&locale=<locale>"
+    ],
+    "raw_secrets_included": false
+  }
+}
+exit=0
