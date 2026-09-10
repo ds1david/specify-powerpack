@@ -172,16 +172,23 @@ Invoke the **upstream** Spec Kit converge for the feature (agent `/speckit-conve
 converge again). It must resolve to `.claude/skills/speckit-converge/SKILL.md`, not a
 missing PowerPack `speckit.converge`.
 
-### S6 — Browserless ChatGPT Project + GitHub deep review
+### S6 — Browserless deep review (local Codex + GitHub App + Project context)
 ```bash
 specify-powerpack review run --path . --pr <PR> \
-  --prompt "Perform the complete Deep Review Evidence Protocol." --output review.json
+  --prompt "Perform the complete Deep Review Evidence Protocol." --output review.json \
+  [--effort medium]   # xhigh is the SPEC reviewer contract; a homologation run may go lower
 ```
+The reviewer is a **local `codex exec`** turn — nothing runs on chatgpt.com and no
+conversation is created there. The bound ChatGPT Project is only *read* (recent
+conversations pulled in as background context). PR code is read through the GitHub App.
+Token cost is `codex exec` at `--effort` over every inspected file.
+
 **Validate:** Phase A resolves the immutable PR manifest and checks `local HEAD == PR head
 SHA` (mismatch → fix HEAD, re-run). Phase B: Codex uses `codex_apps` MCP with a GitHub tool
 call/result, no shell/web-search fallback. Terminal state ∈ {`APPROVED`, `CHANGES_REQUIRED`,
 `BLOCKED`, `BLOCKED_CONFIGURATION`}. Any failure must be attributable to Codex/Project/GitHub
-readiness or review content — not a missing PowerPack module/command.
+readiness or review content — not a missing PowerPack module/command. **T025 passes on a
+valid terminal state with no removed-command failure — `APPROVED` is not required.**
 **Evidence:** full output, `review.json`, exit code, and (for `BLOCKED_CONFIGURATION`) which
 S1 readiness item failed.
 

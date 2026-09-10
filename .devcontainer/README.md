@@ -1,8 +1,13 @@
 # Homologation devcontainer
 
 A reproducible environment for running the **T025 `implement-review` homologation**
-(`specs/001-single-skill-baseline/T025-validation-runbook.md`) — the live browserless
-Codex → ChatGPT Project → GitHub round-trip that a mocked test suite cannot cover.
+(`specs/001-single-skill-baseline/T025-validation-runbook.md`) — the live round-trip that a
+mocked test suite cannot cover.
+
+> **The review does not run on chatgpt.com and creates no conversation there.** The reviewer
+> is a local `codex exec` process. The ChatGPT Project is *read* (2 recent conversations
+> pulled in as background context) and never written. All PR code is read through the GitHub
+> App. "Browserless" = no Chrome/Playwright, all API + MCP. Details below.
 
 ## Architecture — what actually runs the review
 
