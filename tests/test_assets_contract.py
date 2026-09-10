@@ -187,5 +187,6 @@ def test_devcontainer_homologation_assets_present_and_valid():
         assert (dc / script).is_file(), script
         assert modes.get(script) == "100755", f"{script} must be tracked mode 100755, got {modes.get(script)}"
     homologate = (dc / "homologate.sh").read_text(encoding="utf-8")
-    assert "review run --path" in homologate and "--timeout" in homologate
+    assert "review run" in homologate and "--timeout" in homologate
+    assert "--effort" in homologate  # token-cost lever is exposed
     assert "git worktree remove --force" in homologate  # cleanup on exit

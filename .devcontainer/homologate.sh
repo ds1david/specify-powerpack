@@ -19,14 +19,18 @@
 #
 set -euo pipefail
 
-PR="${1:?usage: homologate.sh <PR-number> [--project <id|url>] [--timeout <seconds>]}"
+PR="${1:?usage: homologate.sh <PR-number> [--project <id|url>] [--timeout <s>] [--effort <level>] [--model <name>]}"
 shift || true
 PROJECT=""
 TIMEOUT=3300
+EFFORT=""   # empty = the CLI default (xhigh, the SPEC reviewer contract)
+MODEL=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project) PROJECT="${2:?}"; shift 2 ;;
     --timeout) TIMEOUT="${2:?}"; shift 2 ;;
+    --effort)  EFFORT="${2:?}"; shift 2 ;;   # minimal|low|medium|high|xhigh — lower = fewer tokens
+    --model)   MODEL="${2:?}"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -97,13 +101,18 @@ PYTHON=python3 PYTEST="$PYTEST_CMD" \
   bash "$REPO_ROOT/$FEATURE/collect-t025-offline-evidence.sh" "$WT" "$FEATURE" \
   2>&1 | tee "$EVID/_collector-run.txt" || true
 
-say "S6 browserless deep review — PR #$PR, timeout ${TIMEOUT}s"
-echo "  Two Codex turns (snapshot + deep review). The deep review is xhigh and"
-echo "  can run 10–40 min. Live progress streams below (also captured to S6-review-run.txt):"
+RUN_ARGS=(--path "$WT" --pr "$PR"
+          --prompt "Perform the complete Deep Review Evidence Protocol."
+          --output "$WT/review.json" --timeout "$TIMEOUT")
+[ -n "$EFFORT" ] && RUN_ARGS+=(--effort "$EFFORT")
+[ -n "$MODEL" ]  && RUN_ARGS+=(--model "$MODEL")
+
+say "S6 browserless deep review — PR #$PR, timeout ${TIMEOUT}s, effort ${EFFORT:-xhigh}"
+echo "  Two Codex turns (snapshot + deep review). Each fetched file goes through the model"
+echo "  at the chosen effort — that is what spends Codex tokens. --effort high roughly halves"
+echo "  it vs xhigh. Live progress streams below (also captured to S6-review-run.txt):"
 SPECIFY_FEATURE="001-single-skill-baseline" \
-  "${PP[@]}" review run --path "$WT" --pr "$PR" \
-    --prompt "Perform the complete Deep Review Evidence Protocol." \
-    --output "$WT/review.json" --timeout "$TIMEOUT" \
+  "${PP[@]}" review run "${RUN_ARGS[@]}" \
   2>&1 | tee "$EVID/S6-review-run.txt"
 
 cp "$WT/review.json" "$EVID/review.json"

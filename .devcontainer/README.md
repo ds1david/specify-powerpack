@@ -149,6 +149,26 @@ The only hard limit is `--timeout` (wall clock). The finished
 `"github_calls": <n>` and `homologate.sh` echoes it after the verdict, so after one clean
 run you have your own baseline.
 
+### Token cost — the `--effort` lever
+
+Each fetched file is read into the reviewer model's context and reasoned over at the chosen
+effort, then the protocol makes it emit per-file `inspection_evidence`, a requirement matrix
+and a `verdict_challenge`. That is where your Codex/ChatGPT tokens go — a 57-file PR at
+`xhigh` is a large review (tens of thousands of tokens, sometimes more).
+
+`xhigh` is the SPEC's reviewer contract (`model-routing.json` → `reviewer_contract`), but a
+homologation run is a *validation* of the flow, not the canonical gate — a lower effort
+still produces a schema-valid verdict for far fewer tokens:
+
+```bash
+bash .devcontainer/homologate.sh 15 --project g-p-… --effort high     # ~half the tokens of xhigh
+bash .devcontainer/homologate.sh 15 --project g-p-… --effort medium   # cheaper still
+```
+
+Other levers: `--model <cheaper>` (changes review quality); the PR size itself (57 files
+here because SPEC-001 is a whole cleanup — nothing to do now). `--timeout` only caps wall
+time, not tokens.
+
 ## What it provides
 
 - Python 3.11, the package installed editable with `[dev]` extras, `pytest`
