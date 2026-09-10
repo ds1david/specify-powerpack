@@ -1,1 +1,1 @@
-PP=/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp  FEATURE=specs/001-single-skill-baseline  2026-09-10T14:19:21Z
+PP=/tmp/tmp.DUWGmmrJW5/pp  FEATURE=specs/001-single-skill-baseline  2026-09-10T16:42:02Z

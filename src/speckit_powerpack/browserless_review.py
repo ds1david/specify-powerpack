@@ -58,6 +58,7 @@ class BrowserlessReviewResult:
     project: ProjectBinding
     github_tools: tuple[str, ...]
     snapshot_tools: tuple[str, ...]
+    github_call_count: int = 0
 
 
 def load_project_binding(project: Path) -> ProjectBinding:
@@ -454,4 +455,6 @@ def run_browserless_code_review(
         project=binding,
         github_tools=tuple(review_events.get("codex_apps_tools") or ()),
         snapshot_tools=tuple(snapshot_events.get("codex_apps_tools") or ()),
+        github_call_count=int(snapshot_events.get("codex_apps_completed_call_count") or 0)
+        + int(review_events.get("codex_apps_completed_call_count") or 0),
     )

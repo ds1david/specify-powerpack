@@ -580,6 +580,7 @@ def cmd_review_run(args: argparse.Namespace) -> None:
         "project": {"id": result.project.project_id, "name": result.project.project_name},
         "snapshot_tools": list(result.snapshot_tools),
         "review_tools": list(result.github_tools),
+        "github_calls": result.github_call_count,
         "browser_used": False,
         "cdp_used": False,
         "playwright_used": False,

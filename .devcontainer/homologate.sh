@@ -112,5 +112,6 @@ python3 "$WT/.specify/powerpack/bin/review_protocol.py" validate --input "$EVID/
   2>&1 | tee "$EVID/S7-protocol-validate.txt"
 
 say "verdict"
-python3 -c "import json; d=json.load(open('$EVID/review.json')); print(d['verdict']); print(d.get('summary',''))"
+python3 -c "import json; d=json.load(open('$EVID/review.json')); print('verdict:', d['verdict']); print(d.get('summary',''))"
+grep -oE '"github_calls": *[0-9]+' "$EVID/S6-review-run.txt" | tail -1 | sed 's/"github_calls": */GitHub calls made: /'
 echo "Update RESULT.md and hand review.json back to close the [ACCEPTANCE] tasks."

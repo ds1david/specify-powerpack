@@ -119,9 +119,7 @@ gh auth status                   # from the mounted ~/.config/gh
 deep review prints a rolled-up status line about every 30 s —
 `working… 214 GitHub calls (fetch_file×198, fetch_file_lines×9, …) · 7.3 min` — plus
 one-off milestones (`codex turn started`, `drafting the review verdict…`, `✓ turn
-completed`). A large PR means hundreds of `fetch_file` calls; that is the review reading
-every changed file and its callers, not a loop. It also `tee`s the S6 review to a file, so
-from a second terminal / pane:
+completed`). It also `tee`s the S6 review to a file, so from a second terminal / pane:
 
 ```bash
 tail -f specs/001-single-skill-baseline/T025-evidence/S6-review-run.txt
@@ -130,6 +128,22 @@ tail -f specs/001-single-skill-baseline/T025-evidence/S6-review-run.txt
 For the whole script in a file too: `bash .devcontainer/homologate.sh 15 --project g-p-… 2>&1 | tee /tmp/homologate.log`.
 The deep review can run 10–40 min — launch it under `tmux` / `screen` (or
 `nohup … &`) so a disconnect does not kill it.
+
+### How many GitHub calls to expect
+
+There is **no fixed number** — the reviewer is an autonomous agent and decides how to
+inspect each file (whole file vs. line ranges, which related callers/tests to pull, whether
+to re-read). It scales with the PR:
+
+- snapshot turn: ~3 calls (`list_pr_changed_filenames`, `get_pr_info`, `compare_commits`)
+- review turn: one or more per **inspected** file. PR #15 changed 57 files and the round-1
+  review inspected **89** (57 changed + 32 related), so a few hundred calls total is
+  normal — the run you interrupted was at ~214 and climbing, which is expected, not a loop.
+
+The only hard limit is `--timeout` (wall clock). The finished
+`review.json` records `coverage.inspected_files`; the CLI result JSON prints
+`"github_calls": <n>` and `homologate.sh` echoes it after the verdict, so after one clean
+run you have your own baseline.
 
 ## What it provides
 

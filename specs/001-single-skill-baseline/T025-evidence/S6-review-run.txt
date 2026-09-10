@@ -1,97 +1,26 @@
-{
-  "ok": true,
-  "classification": "BROWSERLESS_CODE_REVIEW_COMPLETED",
-  "verdict": "CHANGES_REQUIRED",
-  "output": "/tmp/claude-1000/-home-david-workspace-specify-powerpack/50fdec9c-0b58-47d5-a010-6d9acc10471f/scratchpad/t025-pp/review.json",
-  "snapshot": {
-    "repository": "ds1david/specify-powerpack",
-    "pull_request_number": 15,
-    "pull_request_url": "https://github.com/ds1david/specify-powerpack/pull/15",
-    "spec_id": "001-single-skill-baseline",
-    "base_ref": "main",
-    "base_sha": "60692ea22b072a46aa4d0dffa14f18cbc1076235",
-    "merge_base": "34a7f9cfb4b8508bbbd174b99acb25a5289853d1",
-    "head_sha": "349a6f687e7e16711b7cf9037e88ba0627b20070",
-    "snapshot_sha256": "594525ce99e5fcc9c7c14cc476d354e63fadaaab738fc65e540ffeaf333f4725",
-    "changed_files": [
-      "README.md",
-      "docs/CUSTOMIZATION.md",
-      "docs/DECISIONS_AND_TRADEOFFS.md",
-      "docs/FULL_CYCLE.md",
-      "docs/IMPLEMENT_REVIEW.md",
-      "docs/PROCESS_ARCHITECTURE.md",
-      "docs/PROJECT_EVOLUTION.md",
-      "docs/TECHNICAL_DEBT.md",
-      "docs/WEB_GITHUB_HEADLESS_PROBE.md",
-      "scripts/homologation/probe_chatgpt_github_headless.py",
-      "specs/001-single-skill-baseline/T025-validation-runbook.md",
-      "specs/001-single-skill-baseline/checklists/cleanup.md",
-      "specs/001-single-skill-baseline/checklists/requirements.md",
-      "specs/001-single-skill-baseline/collect-t025-offline-evidence.sh",
-      "specs/001-single-skill-baseline/contracts/command-inventory.md",
-      "specs/001-single-skill-baseline/contracts/implement-review-prereq.md",
-      "specs/001-single-skill-baseline/contracts/installer-parity.md",
-      "specs/001-single-skill-baseline/data-model.md",
-      "specs/001-single-skill-baseline/inventory.md",
-      "specs/001-single-skill-baseline/plan.md",
-      "specs/001-single-skill-baseline/quickstart.md",
-      "specs/001-single-skill-baseline/reference-classification.md",
-      "specs/001-single-skill-baseline/research.md",
-      "specs/001-single-skill-baseline/spec.md",
-      "specs/001-single-skill-baseline/tasks.md",
-      "src/speckit_powerpack/assets/config/default-full-cycle.json",
-      "src/speckit_powerpack/assets/config/default-model-routing.json",
-      "src/speckit_powerpack/assets/config/default-technical-debt.json",
-      "src/speckit_powerpack/assets/extensions/powerpack-tools/commands/update.md",
-      "src/speckit_powerpack/assets/policies/technical-debt.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.checklist-converge.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.converge.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-close.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-consult.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-create.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-list.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.debt-start.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.full-cycle.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement-review.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/commands/speckit.implement.md",
-      "src/speckit_powerpack/assets/presets/powerpack-core/preset.yml",
-      "src/speckit_powerpack/assets/runtime/powerpack_capabilities.py",
-      "src/speckit_powerpack/assets/runtime/powerpack_debt.py",
-      "src/speckit_powerpack/assets/runtime/powerpack_full_cycle.py",
-      "src/speckit_powerpack/assets/runtime/powerpack_runtime.py",
-      "src/speckit_powerpack/assets/templates/technical-debt-backlog.md",
-      "src/speckit_powerpack/cli.py",
-      "tests/test_assets_contract.py",
-      "tests/test_baseline_contract.py",
-      "tests/test_capabilities.py",
-      "tests/test_chatgpt_github_headless_probe_contract.py",
-      "tests/test_debt_runtime.py",
-      "tests/test_full_cycle_runtime.py",
-      "tests/test_implement_review_flow_survives_cleanup.py",
-      "tests/test_install_support.py",
-      "tests/test_powerpack_runtime.py",
-      "uv.lock"
-    ]
-  },
-  "project": {
-    "id": "g-p-6a9ba1a060208191a5b6e03a3950b183",
-    "name": "speckit-powerpack"
-  },
-  "snapshot_tools": [
-    "github.get_pr_info",
-    "github.list_pr_changed_filenames",
-    "github.compare_commits"
-  ],
-  "review_tools": [
-    "github.list_pr_changed_filenames",
-    "github.compare_commits",
-    "github.fetch_pr_patch",
-    "github.get_pr_info",
-    "github.fetch_file",
-    "github.fetch"
-  ],
-  "browser_used": false,
-  "cdp_used": false,
-  "playwright_used": false,
-  "web2api_used": false
-}
+Reviewing PR 15 — this makes two Codex turns (snapshot + deep review) and can run for many minutes. Progress follows on stderr:
+  [snapshot] resolving the immutable PR manifest via the GitHub App…
+  [snapshot] codex turn started — reading the PR through the GitHub App
+  [snapshot] · drafting the review verdict…
+  [snapshot] working… 0.4 min elapsed
+  [snapshot] working… 3 GitHub calls (get_pr_info×1, list_pr_changed_filenames×1, compare_commits×1) · 1.0 min
+  [snapshot] working… 3 GitHub calls (get_pr_info×1, list_pr_changed_filenames×1, compare_commits×1) · 1.5 min
+  [snapshot] ✓ turn completed
+  [review] deep review starting — model=gpt-5.6-sol effort=xhigh timeout=3300s (an xhigh review of a large delta can take 10–40 min)
+  [review] codex turn started — reading the PR through the GitHub App
+  [review] working… 0.5 min elapsed
+  [review] working… 8 GitHub calls (ctx_index×4, list_pr_changed_filenames×1, get_pr_info×1) · 1.0 min
+  [review] working… 11 GitHub calls (ctx_index×4, list_pr_changed_filenames×2, get_pr_info×1) · 1.8 min
+  [review] working… 56 GitHub calls (fetch_file×45, ctx_index×4, list_pr_changed_filenames×3) · 2.4 min
+  [review] working… 118 GitHub calls (fetch_file×107, ctx_index×4, list_pr_changed_filenames×3) · 2.9 min
+  [review] working… 185 GitHub calls (fetch_file×111, ctx_index×67, list_pr_changed_filenames×3) · 3.4 min
+  [review] working… 210 GitHub calls (fetch_file×111, ctx_index×92, list_pr_changed_filenames×3) · 4.0 min
+  [review] working… 211 GitHub calls (fetch_file×111, ctx_index×92, list_pr_changed_filenames×3) · 4.5 min
+  [review] working… 215 GitHub calls (fetch_file×115, ctx_index×92, list_pr_changed_filenames×3) · 5.2 min
+  [review] working… 251 GitHub calls (fetch_file×134, ctx_index×107, list_pr_changed_filenames×3) · 6.0 min
+  [review] working… 255 GitHub calls (fetch_file×138, ctx_index×107, list_pr_changed_filenames×3) · 6.7 min
+  [review] working… 257 GitHub calls (fetch_file×138, ctx_index×107, list_pr_changed_filenames×3) · 7.4 min
+  [review] working… 261 GitHub calls (fetch_file×138, ctx_index×109, fetch×4) · 8.1 min
+  [review] working… 262 GitHub calls (fetch_file×139, ctx_index×109, fetch×4) · 8.7 min
+  [review] working… 267 GitHub calls (fetch_file×144, ctx_index×109, fetch×4) · 9.2 min
+  [review] working… 275 GitHub calls (fetch_file×152, ctx_index×109, fetch×4) · 9.7 min
