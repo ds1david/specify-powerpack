@@ -137,8 +137,12 @@ to re-read). It scales with the PR:
 
 - snapshot turn: ~3 calls (`list_pr_changed_filenames`, `get_pr_info`, `compare_commits`)
 - review turn: one or more per **inspected** file. PR #15 changed 57 files and the round-1
-  review inspected **89** (57 changed + 32 related), so a few hundred calls total is
-  normal — the run you interrupted was at ~214 and climbing, which is expected, not a loop.
+  review inspected **89** (57 changed + 32 related), so a few hundred calls total is normal.
+
+The review turn runs `codex exec --ignore-user-config`, so your `~/.codex` MCP servers,
+hooks and plugins are **not** loaded — a context-mode / indexer hook firing on every tool
+call would otherwise dominate the runtime (and pollute the count). If the status line shows
+`+N other` calls, something is still leaking in.
 
 The only hard limit is `--timeout` (wall clock). The finished
 `review.json` records `coverage.inspected_files`; the CLI result JSON prints

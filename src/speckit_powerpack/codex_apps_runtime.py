@@ -51,6 +51,21 @@ def run_codex_exec(
         "read-only",
         "-C",
         str(project_path),
+        # Keep the turn hermetic. `--ignore-user-config` drops the operator's
+        # `~/.codex/config.toml` — MCP servers, hooks, plugins, features — while
+        # still using CODEX_HOME for auth. Without this, e.g. a context-mode
+        # indexer hook fires on every tool call and turns a 5-minute review into
+        # a 40-minute one. The GitHub App is resolved from the `app://` mention
+        # in the prompt, not from MCP config, so it still works.
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "--disable",
+        "hooks",
+        "--disable",
+        "plugin_hooks",
+        "--disable",
+        "memories",
     ]
     if model.strip():
         command.extend(["-m", model.strip()])
@@ -98,31 +113,35 @@ def run_codex_exec(
     reader = threading.Thread(target=_pump, daemon=True)
     reader.start()
 
-    started = time.monotonic()
-    while True:
-        try:
-            proc.wait(timeout=10)
-            break
-        except subprocess.TimeoutExpired:
-            now = time.monotonic()
-            if now - started > deadline:
-                proc.kill()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
-                raise CodexAppsError(f"codex exec timed out after {timeout}s")
-            if now - last_activity[0] > 25:
-                last_activity[0] = now
-                _safe(progress, {"kind": "heartbeat", "elapsed": now - started})
-
-    reader.join(timeout=5)
-    stderr = ""
     try:
-        stderr = proc.stderr.read() if proc.stderr else ""
-    except (OSError, ValueError):
-        pass
-    return subprocess.CompletedProcess(command, proc.returncode or 0, "".join(out_lines), stderr)
+        started = time.monotonic()
+        while True:
+            try:
+                proc.wait(timeout=10)
+                break
+            except subprocess.TimeoutExpired:
+                now = time.monotonic()
+                if now - started > deadline:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    raise CodexAppsError(f"codex exec timed out after {timeout}s")
+                if now - last_activity[0] > 25:
+                    last_activity[0] = now
+                    _safe(progress, {"kind": "heartbeat", "elapsed": now - started})
+
+        reader.join(timeout=5)
+        stderr = ""
+        try:
+            stderr = proc.stderr.read() if proc.stderr else ""
+        except (OSError, ValueError):
+            pass
+        return subprocess.CompletedProcess(command, proc.returncode or 0, "".join(out_lines), stderr)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
 
 
 def _safe(fn: ProgressFn, payload: dict[str, Any]) -> None:
@@ -152,6 +171,7 @@ class ProgressReporter:
         self.drafting = False
         self.tool_counts: dict[str, int] = {}
         self.tool_total = 0
+        self.other_total = 0
         self._seen_done: set[str] = set()
 
     def _emit(self, message: str) -> None:
@@ -165,8 +185,9 @@ class ProgressReporter:
             return
         top = sorted(self.tool_counts.items(), key=lambda kv: -kv[1])[:3]
         detail = ", ".join(f"{name.split('.')[-1]}×{count}" for name, count in top)
+        extra = f" +{self.other_total} other" if self.other_total else ""
         self._emit(
-            f"working… {self.tool_total} GitHub calls ({detail}) · {elapsed / 60:.1f} min"
+            f"working… {self.tool_total} GitHub calls ({detail}){extra} · {elapsed / 60:.1f} min"
         )
 
     def __call__(self, payload: dict[str, Any]) -> None:
@@ -197,12 +218,15 @@ class ProgressReporter:
         if itype == "mcp_tool_call":
             status = str(item.get("status") or "")
             if status in {"completed", "failed"}:
-                marker = str(item.get("id") or f"{item.get('tool')}:{self.tool_total}")
+                marker = str(item.get("id") or f"{item.get('tool')}:{self.tool_total + self.other_total}")
                 if marker not in self._seen_done:
                     self._seen_done.add(marker)
-                    tool = str(item.get("tool") or "tool")
-                    self.tool_counts[tool] = self.tool_counts.get(tool, 0) + 1
-                    self.tool_total += 1
+                    if str(item.get("server") or "") == CODEX_APPS_SERVER:
+                        tool = str(item.get("tool") or "tool")
+                        self.tool_counts[tool] = self.tool_counts.get(tool, 0) + 1
+                        self.tool_total += 1
+                    else:
+                        self.other_total += 1
             if time.monotonic() - self.last_summary > self._SUMMARY_EVERY:
                 self._summary()
             return

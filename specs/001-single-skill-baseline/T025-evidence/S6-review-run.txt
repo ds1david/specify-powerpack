@@ -24,3 +24,13 @@ Reviewing PR 15 — this makes two Codex turns (snapshot + deep review) and can 
   [review] working… 262 GitHub calls (fetch_file×139, ctx_index×109, fetch×4) · 8.7 min
   [review] working… 267 GitHub calls (fetch_file×144, ctx_index×109, fetch×4) · 9.2 min
   [review] working… 275 GitHub calls (fetch_file×152, ctx_index×109, fetch×4) · 9.7 min
+  [review] working… 276 GitHub calls (fetch_file×153, ctx_index×109, fetch×4) · 10.2 min
+  [review] working… 278 GitHub calls (fetch_file×153, ctx_index×109, list_pr_changed_filenames×4) · 11.0 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 12.0 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 12.5 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 13.0 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 13.5 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 14.0 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 14.5 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 15.0 min
+  [review] working… 283 GitHub calls (fetch_file×158, ctx_index×109, list_pr_changed_filenames×4) · 15.5 min
