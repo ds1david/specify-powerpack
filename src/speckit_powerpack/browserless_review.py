@@ -370,8 +370,16 @@ def run_browserless_code_review(
 
     client = ChatGPTBackendClient()
     try:
-        _log("browserless", "authenticating with the ChatGPT backend (/backend-api/me)…")
-        client.validate_auth()
+        _log("browserless", "checking auth + rate limit (/backend-api/wham/usage)…")
+        usage = client.validate_auth()
+        rl = usage.get("rate_limit") if isinstance(usage, dict) else None
+        if isinstance(rl, dict) and rl.get("limit_reached"):
+            reset = int((rl.get("primary_window") or {}).get("reset_after_seconds") or 0)
+            raise BrowserlessReviewError(
+                f"Codex rate limit reached (plan={usage.get('plan_type')}); the primary window "
+                f"resets in ~{reset // 60} min. Re-run after that — a review turn would fail mid-way "
+                "and still bill the tokens it used."
+            )
         _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
         github = discover_github_connector(client, locale=locale)
         _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{binding.project_id} …)…")

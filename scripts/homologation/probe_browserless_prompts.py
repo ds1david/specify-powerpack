@@ -31,10 +31,23 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from speckit_powerpack.backend_compat import install_backend_compat  # noqa: E402
 from speckit_powerpack.chatgpt_project_provider import (  # noqa: E402
     ChatGPTBackendClient,
     ChatGPTProjectError,
 )
+
+# Reuse the same backend-compat the CLI installs: Codex-CLI request shape
+# (User-Agent `codex-cli`, OpenAI-Beta, Origin/Referer) and the `/wham/usage`
+# auth probe instead of `/backend-api/me`, which the ChatGPT Web / Cloudflare
+# perimeter rejects (403 HTML interstitial) even for a valid Codex token.
+install_backend_compat()
+
+
+def _is_cloudflare_challenge(body: str) -> bool:
+    low = body.lower()
+    return "<html" in low and ("just a moment" in low or 'http-equiv="refresh"' in low
+                               or "enable javascript and cookies" in low or "cf-" in low)
 
 try:  # connector discovery is best-effort — the probe still runs without it
     from speckit_powerpack.github_connector_discovery import (  # noqa: E402
@@ -123,6 +136,11 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
                         _log("codex", f"tool event: {etype}")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if _is_cloudflare_challenge(detail):
+            raise ChatGPTProjectError(
+                f"HTTP {exc.code} from {RESPONSES_URL}: Cloudflare bot-mitigation interstitial "
+                "(not a real auth error). Retry later."
+            ) from exc
         raise ChatGPTProjectError(f"HTTP {exc.code} from {RESPONSES_URL}: {detail[:1200]}") from exc
     except urllib.error.URLError as exc:
         raise ChatGPTProjectError(f"cannot reach {RESPONSES_URL}: {exc}") from exc
@@ -141,6 +159,8 @@ def main() -> int:
     parser.add_argument("--separate", action="store_true",
                         help="submit the 3 prompts as 3 separate turns (3 web items) instead of one")
     parser.add_argument("--locale", default="pt-BR")
+    parser.add_argument("--force", action="store_true",
+                        help="submit even if /wham/usage reports the rate limit is reached")
     args = parser.parse_args()
 
     repo = _origin_repo(Path(args.path).resolve())
@@ -149,10 +169,26 @@ def main() -> int:
     print("# this spends Codex/ChatGPT tokens on your plan.", file=sys.stderr)
 
     client = ChatGPTBackendClient()
-    _log("browserless", "authenticating with the ChatGPT backend (/backend-api/me)…")
-    client.validate_auth()
-    _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{args.project} …)…")
-    project, context = client.build_project_context(args.project, max_conversations=2)
+    try:
+        _log("browserless", "checking auth + rate limit (/backend-api/wham/usage)…")
+        usage = client.validate_auth()
+        rl = usage.get("rate_limit") if isinstance(usage, dict) else None
+        if isinstance(rl, dict) and rl.get("limit_reached") and not args.force:
+            reset = int((rl.get("primary_window") or {}).get("reset_after_seconds") or 0)
+            _log("browserless", f"rate limit REACHED (plan={usage.get('plan_type')}); "
+                                f"primary window resets in ~{reset // 60} min {reset % 60}s.")
+            print("\nAborting before spending anything. Retry after the window resets, "
+                  "or pass --force to try anyway.", file=sys.stderr)
+            return 3
+        _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{args.project} …)…")
+        project, context = client.build_project_context(args.project, max_conversations=2)
+    except ChatGPTProjectError as exc:
+        if _is_cloudflare_challenge(str(exc)):
+            _log("browserless", "BLOCKED by Cloudflare bot mitigation (403 interstitial).")
+            print("\nchatgpt.com/backend-api is challenging this script — retry in ~6 min. "
+                  "(the review flow's `codex exec` path is unaffected.)\n", file=sys.stderr)
+            return 2
+        raise
     _log("browserless", f"bound to Project '{project.name}' ({project.id})")
 
     github_hint = "Use the installed GitHub connector (mention @GitHub) for anything about GitHub."
