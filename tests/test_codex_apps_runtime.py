@@ -34,18 +34,34 @@ def test_runtime_rejects_shell_fallback_even_with_github_result():
         require_github_tool_evidence(parsed)
 
 
-def test_format_progress_renders_the_turn_lifecycle():
-    from speckit_powerpack.codex_apps_runtime import format_progress as fp
+def test_progress_reporter_rolls_up_tool_calls_and_stays_quiet():
+    import io
 
-    assert fp({"kind": "event", "event": {"type": "turn.started"}}, phase="review") == "  [review] codex turn started"
-    assert fp({"kind": "heartbeat", "elapsed": 63.4}, phase="review") == "  [review] still working… 63s elapsed"
-    tool = fp({"kind": "event", "event": {"item": {"type": "mcp_tool_call", "server": "codex_apps", "tool": "github.fetch_pr_patch", "status": "completed"}}}, phase="snapshot")
-    assert tool == "  [snapshot] · codex_apps.github.fetch_pr_patch [completed]"
-    warn = fp({"kind": "event", "event": {"item": {"type": "web_search"}}}, phase="review")
-    assert warn is not None and "web search" in warn
-    assert fp({"kind": "event", "event": {"type": "turn.completed"}}, phase="review") == "  [review] ✓ turn completed"
-    # non-interesting events stay silent
-    assert fp({"kind": "event", "event": {"type": "item.updated", "item": {"type": "reasoning_delta"}}}, phase="review") is None
+    from speckit_powerpack.codex_apps_runtime import make_progress_reporter
+
+    out = io.StringIO()
+    report = make_progress_reporter("review", out)
+
+    report({"kind": "event", "event": {"type": "turn.started"}})
+    report({"kind": "event", "event": {"type": "thread.started"}})  # dedup — no second line
+    # 50 completed fetch_file calls must NOT produce 50 lines
+    for i in range(50):
+        report({"kind": "event", "event": {"item": {
+            "id": f"call-{i}", "type": "mcp_tool_call", "server": "codex_apps",
+            "tool": "github.fetch_file", "status": "completed",
+        }}})
+    report({"kind": "heartbeat", "elapsed": 120.0})   # forces one summary
+    report({"kind": "event", "event": {"item": {"type": "web_search"}}})
+    report({"kind": "event", "event": {"item": {"type": "agent_message", "text": "x"}}})
+    report({"kind": "event", "event": {"type": "turn.completed"}})
+
+    lines = [ln for ln in out.getvalue().splitlines() if ln.strip()]
+    assert sum("codex turn started" in ln for ln in lines) == 1
+    assert any("50 GitHub calls" in ln and "fetch_file×50" in ln for ln in lines)
+    assert any("web search attempted (rejected" in ln for ln in lines)
+    assert any("drafting the review verdict" in ln for ln in lines)
+    assert lines[-1] == "  [review] ✓ turn completed"
+    assert len(lines) <= 8  # rolled up, not one line per call
 
 
 def test_select_project_accepts_id_slug_and_url_forms():

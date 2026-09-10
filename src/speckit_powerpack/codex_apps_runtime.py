@@ -132,46 +132,93 @@ def _safe(fn: ProgressFn, payload: dict[str, Any]) -> None:
         pass
 
 
-def format_progress(payload: dict[str, Any], *, phase: str) -> str | None:
-    """Turn a `run_codex_exec` progress payload into one compact human line
-    (or None to stay silent). `phase` labels which turn ('snapshot' / 'review')."""
-    kind = payload.get("kind")
-    if kind == "heartbeat":
-        return f"  [{phase}] still working… {payload.get('elapsed', 0):.0f}s elapsed"
-    if kind == "line":
-        raw = str(payload.get("raw") or "")
-        return f"  [{phase}] {raw[:160]}" if raw else None
-    if kind != "event":
-        return None
-    event = payload.get("event") or {}
-    etype = str(event.get("type") or "")
-    if etype in {"thread.started", "turn.started"}:
-        return f"  [{phase}] codex turn started"
-    if etype == "turn.completed":
-        return f"  [{phase}] ✓ turn completed"
-    if etype in {"turn.failed", "error"}:
-        return f"  [{phase}] ✗ turn failed"
-    item = event.get("item") if isinstance(event.get("item"), dict) else None
-    if not item:
-        return None
-    itype = str(item.get("type") or "")
-    if itype == "mcp_tool_call":
-        server = str(item.get("server") or "")
-        tool = str(item.get("tool") or "")
-        status = str(item.get("status") or "")
-        call = ".".join(part for part in (server, tool) if part) or "tool call"
-        return f"  [{phase}] · {call}" + (f" [{status}]" if status else "")
-    if itype == "command_execution":
-        cmd = str(item.get("command") or "").replace("\n", " ")
-        return f"  [{phase}] · ⚠ shell: {cmd[:80]} (will be rejected)"
-    if itype == "web_search":
-        return f"  [{phase}] · ⚠ web search (will be rejected)"
-    if itype == "agent_message":
-        text = str(item.get("text") or "")
-        return f"  [{phase}] · drafted response ({len(text)} chars)" if text else None
-    if itype == "reasoning":
-        return f"  [{phase}] · reasoning…"
-    return None
+class ProgressReporter:
+    """Stateful, low-noise progress for one `run_codex_exec` turn.
+
+    Codex emits an event per tool call *and* per update, so a deep review of a
+    large PR produces hundreds of `github.fetch_file` events. Rather than echo
+    each one, this keeps running counters and prints a rolled-up status line at
+    most every ~15 s (plus one-off milestones: turn start/end, a rejected
+    shell/web attempt, the verdict draft)."""
+
+    _SUMMARY_EVERY = 30.0
+
+    def __init__(self, phase: str, stream: Any) -> None:
+        self.phase = phase
+        self.stream = stream
+        self.started_at = time.monotonic()
+        self.last_summary = 0.0
+        self.turn_started = False
+        self.drafting = False
+        self.tool_counts: dict[str, int] = {}
+        self.tool_total = 0
+        self._seen_done: set[str] = set()
+
+    def _emit(self, message: str) -> None:
+        print(f"  [{self.phase}] {message}", file=self.stream, flush=True)
+
+    def _summary(self) -> None:
+        self.last_summary = time.monotonic()
+        elapsed = time.monotonic() - self.started_at
+        if not self.tool_total:
+            self._emit(f"working… {elapsed / 60:.1f} min elapsed")
+            return
+        top = sorted(self.tool_counts.items(), key=lambda kv: -kv[1])[:3]
+        detail = ", ".join(f"{name.split('.')[-1]}×{count}" for name, count in top)
+        self._emit(
+            f"working… {self.tool_total} GitHub calls ({detail}) · {elapsed / 60:.1f} min"
+        )
+
+    def __call__(self, payload: dict[str, Any]) -> None:
+        kind = payload.get("kind")
+        if kind == "heartbeat":
+            self._summary()
+            return
+        if kind != "event":
+            return
+        event = payload.get("event") or {}
+        etype = str(event.get("type") or "")
+        if etype in {"thread.started", "turn.started"}:
+            if not self.turn_started:
+                self.turn_started = True
+                self._emit("codex turn started — reading the PR through the GitHub App")
+            return
+        if etype == "turn.completed":
+            self._summary()
+            self._emit("✓ turn completed")
+            return
+        if etype in {"turn.failed", "error"}:
+            self._emit("✗ turn failed")
+            return
+        item = event.get("item") if isinstance(event.get("item"), dict) else None
+        if not item:
+            return
+        itype = str(item.get("type") or "")
+        if itype == "mcp_tool_call":
+            status = str(item.get("status") or "")
+            if status in {"completed", "failed"}:
+                marker = str(item.get("id") or f"{item.get('tool')}:{self.tool_total}")
+                if marker not in self._seen_done:
+                    self._seen_done.add(marker)
+                    tool = str(item.get("tool") or "tool")
+                    self.tool_counts[tool] = self.tool_counts.get(tool, 0) + 1
+                    self.tool_total += 1
+            if time.monotonic() - self.last_summary > self._SUMMARY_EVERY:
+                self._summary()
+            return
+        if itype == "command_execution":
+            self._emit("⚠ shell command attempted (rejected — GitHub evidence only)")
+            return
+        if itype == "web_search":
+            self._emit("⚠ web search attempted (rejected — GitHub evidence only)")
+            return
+        if itype == "agent_message" and not self.drafting:
+            self.drafting = True
+            self._emit("· drafting the review verdict…")
+
+
+def make_progress_reporter(phase: str, stream: Any) -> ProgressReporter:
+    return ProgressReporter(phase, stream)
 
 
 def _walk(value: Any):

@@ -86,7 +86,14 @@ say "S1 readiness"
 "${PP[@]}" review status --path "$WT" --live 2>&1 | tee "$EVID/S1-review-status.txt" || true
 
 say "offline evidence (runbook §3)"
-PYTHON=python3 PYTEST="python3 -m pytest" \
+if python3 -m pytest --version >/dev/null 2>&1; then
+  PYTEST_CMD="python3 -m pytest"
+elif command -v uv >/dev/null 2>&1 && uv run --project "$REPO_ROOT" python -m pytest --version >/dev/null 2>&1; then
+  PYTEST_CMD="uv run --project $REPO_ROOT python -m pytest"
+else
+  PYTEST_CMD="skip"   # CI covers the pytest-equivalent check
+fi
+PYTHON=python3 PYTEST="$PYTEST_CMD" \
   bash "$REPO_ROOT/$FEATURE/collect-t025-offline-evidence.sh" "$WT" "$FEATURE" \
   2>&1 | tee "$EVID/_collector-run.txt" || true
 

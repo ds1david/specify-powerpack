@@ -12,7 +12,7 @@ from .backend_compat import install_backend_compat
 from .chatgpt_project_provider import ChatGPTBackendClient, ChatGPTProjectError
 from .codex_apps_runtime import (
     CodexAppsError,
-    format_progress,
+    make_progress_reporter,
     parse_codex_jsonl,
     require_github_tool_evidence,
     run_codex_exec,
@@ -352,15 +352,7 @@ def run_browserless_code_review(
         raise BrowserlessReviewError(f"Repository path does not exist: {project_path}")
 
     def _progress_for(phase: str):
-        if not verbose:
-            return None
-
-        def _emit(payload: dict[str, Any]) -> None:
-            line = format_progress(payload, phase=phase)
-            if line:
-                print(line, file=sys.stderr, flush=True)
-
-        return _emit
+        return make_progress_reporter(phase, sys.stderr) if verbose else None
     binding = load_project_binding(project_path)
     target = resolve_pull_request(project_path, pull_request)
     spec = resolve_spec_context(project_path)

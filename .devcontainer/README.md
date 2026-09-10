@@ -33,9 +33,13 @@ directly (`python3 -m speckit_powerpack`), so running it on the host works too, 
 
 ## Following the run in real time
 
-`homologate.sh` prints everything to the terminal it runs in (timestamped step banners; the
-deep review streams each GitHub tool call and a heartbeat every ~25 s). It also `tee`s the
-S6 review to a file, so from a second terminal / pane:
+`homologate.sh` prints everything to the terminal it runs in (timestamped step banners). The
+deep review prints a rolled-up status line about every 30 s —
+`working… 214 GitHub calls (fetch_file×198, fetch_file_lines×9, …) · 7.3 min` — plus
+one-off milestones (`codex turn started`, `drafting the review verdict…`, `✓ turn
+completed`). A large PR means hundreds of `fetch_file` calls; that is the review reading
+every changed file and its callers, not a loop. It also `tee`s the S6 review to a file, so
+from a second terminal / pane:
 
 ```bash
 tail -f specs/001-single-skill-baseline/T025-evidence/S6-review-run.txt
