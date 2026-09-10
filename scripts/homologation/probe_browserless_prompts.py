@@ -31,11 +31,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+import os  # noqa: E402
+
 from speckit_powerpack.backend_compat import install_backend_compat  # noqa: E402
 from speckit_powerpack.chatgpt_project_provider import (  # noqa: E402
     ChatGPTBackendClient,
     ChatGPTProjectError,
 )
+from speckit_powerpack.request_log import log_request  # noqa: E402
 
 # Reuse the same backend-compat the CLI installs: Codex-CLI request shape
 # (User-Agent `codex-cli`, OpenAI-Beta, Origin/Referer) and the `/wham/usage`
@@ -97,9 +100,9 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
         body["reasoning"] = {"effort": effort}
     headers = client._headers(accept="text/event-stream")
     headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(
-        RESPONSES_URL, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers
-    )
+    raw_body = json.dumps(body).encode("utf-8")
+    log_request("POST", RESPONSES_URL, raw_body)
+    req = urllib.request.Request(RESPONSES_URL, data=raw_body, method="POST", headers=headers)
     _log("browserless", f"POST {RESPONSES_URL} (model={model} effort={effort} store={store})")
     text: list[str] = []
     response_id: str | None = None
@@ -164,8 +167,16 @@ def main() -> int:
     args = parser.parse_args()
 
     repo = _origin_repo(Path(args.path).resolve())
+    http_log = os.environ.get("SPECKIT_POWERPACK_HTTP_LOG")
+    if not http_log:
+        http_log = str(ROOT / "specs" / "001-single-skill-baseline" / "T025-evidence" / "probe-http-requests.log")
+        os.environ["SPECKIT_POWERPACK_HTTP_LOG"] = http_log
+    Path(http_log).parent.mkdir(parents=True, exist_ok=True)
+    Path(http_log).write_text("", encoding="utf-8")  # fresh per run
+
     print(f"# probe: project={args.project} repo={repo} pr=#{args.pr} "
           f"model={args.model} effort={args.effort} store={bool(args.keep_session)}", file=sys.stderr)
+    print(f"# curl trace: {http_log}", file=sys.stderr)
     print("# this spends Codex/ChatGPT tokens on your plan.", file=sys.stderr)
 
     client = ChatGPTBackendClient()

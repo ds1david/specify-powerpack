@@ -161,6 +161,9 @@ class ChatGPTBackendClient:
         headers = self._headers()
         if raw_body is not None:
             headers["Content-Type"] = "application/json"
+        from .request_log import log_request
+
+        log_request(method, url, raw_body)
         req = urllib.request.Request(url, data=raw_body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:

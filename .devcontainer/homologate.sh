@@ -45,6 +45,10 @@ WORKROOT="$(mktemp -d)"
 WT="$WORKROOT/pp"
 mkdir -p "$EVID"
 
+# curl-style trace of every backend-api request (method + URL + body, no headers/token)
+export SPECKIT_POWERPACK_HTTP_LOG="$EVID/http-requests.log"
+: > "$SPECKIT_POWERPACK_HTTP_LOG"
+
 # Always run THIS checkout's code, never a stale globally-installed
 # `specify-powerpack` (the package is stdlib-only, so PYTHONPATH is enough).
 PP=(env "PYTHONPATH=$REPO_ROOT/src" python3 -m speckit_powerpack)
@@ -127,4 +131,5 @@ python3 "$WT/.specify/powerpack/bin/review_protocol.py" validate --input "$EVID/
 say "verdict"
 python3 -c "import json; d=json.load(open('$EVID/review.json')); print('verdict:', d['verdict']); print(d.get('summary',''))"
 grep -oE '"github_calls": *[0-9]+' "$EVID/S6-review-run.txt" | tail -1 | sed 's/"github_calls": */GitHub calls made: /'
+echo "curl trace of every backend-api request: $FEATURE/T025-evidence/http-requests.log"
 echo "Update RESULT.md and hand review.json back to close the [ACCEPTANCE] tasks."

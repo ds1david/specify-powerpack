@@ -29,3 +29,7 @@ reviews/
 # OS / editor
 .DS_Store
 *.swp
+
+# per-run request traces (SPECKIT_POWERPACK_HTTP_LOG)
+*http-requests.log
+specs/001-single-skill-baseline/T025-evidence/probe-*

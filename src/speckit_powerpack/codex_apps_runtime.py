@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import threading
@@ -79,6 +80,14 @@ def run_codex_exec(
     if effort.strip():
         command.extend(["-c", f'model_reasoning_effort="{effort.strip()}"'])
     command.append(prompt)
+
+    from .request_log import log_note
+
+    log_note(
+        "codex exec: "
+        + " ".join(shlex.quote(part) for part in command[:-1])
+        + f" '<prompt: {len(prompt)} chars>'"
+    )
 
     deadline = max(30, timeout)
     if progress is None:
