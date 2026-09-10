@@ -65,6 +65,12 @@ def _origin_repo(path: Path) -> str:
     return parts[1] if len(parts) == 2 else "ds1david/specify-powerpack"
 
 
+def _log(kind: str, msg: str) -> None:
+    # kind: "browserless" = a chatgpt.com/backend-api call;
+    #       "codex"       = a tool/command executed inside the Codex turn.
+    print(f"  [{kind}] {msg}", file=sys.stderr, flush=True)
+
+
 def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions: str,
                      model: str, effort: str, store: bool) -> tuple[str, str | None, list[str]]:
     body: dict[str, object] = {
@@ -81,9 +87,11 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
     req = urllib.request.Request(
         RESPONSES_URL, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers
     )
+    _log("browserless", f"POST {RESPONSES_URL} (model={model} effort={effort} store={store})")
     text: list[str] = []
     response_id: str | None = None
     tool_events: list[str] = []
+    seen_tools: set[str] = set()
     try:
         with urllib.request.urlopen(req, timeout=900) as resp:
             for raw in resp:
@@ -102,13 +110,17 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
                     text.append(event["delta"])
                 elif etype == "response.completed" and isinstance(event.get("response"), dict):
                     response_id = str(event["response"].get("id") or "") or None
+                    _log("browserless", f"response.completed id={response_id or 'n/a'}")
                 elif etype == "response.failed":
                     err = (event.get("response") or {}).get("error") or {}
                     raise ChatGPTProjectError(
                         f"response.failed: {err.get('code') or 'unknown'}: {err.get('message') or event}"
                     )
-                elif "tool" in etype or "mcp" in etype:
+                elif "tool" in etype or "mcp" in etype or "function_call" in etype:
                     tool_events.append(etype)
+                    if etype not in seen_tools:
+                        seen_tools.add(etype)
+                        _log("codex", f"tool event: {etype}")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise ChatGPTProjectError(f"HTTP {exc.code} from {RESPONSES_URL}: {detail[:1200]}") from exc
@@ -137,22 +149,25 @@ def main() -> int:
     print("# this spends Codex/ChatGPT tokens on your plan.", file=sys.stderr)
 
     client = ChatGPTBackendClient()
+    _log("browserless", "authenticating with the ChatGPT backend (/backend-api/me)…")
     client.validate_auth()
+    _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{args.project} …)…")
     project, context = client.build_project_context(args.project, max_conversations=2)
-    print(f"# bound to Project '{project.name}' ({project.id})", file=sys.stderr)
+    _log("browserless", f"bound to Project '{project.name}' ({project.id})")
 
     github_hint = "Use the installed GitHub connector (mention @GitHub) for anything about GitHub."
     if discover_github_connector is not None:
         try:
+            _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
             disc = discover_github_connector(client, locale=args.locale)
             if getattr(disc, "ok", False) and getattr(disc, "connector_id", ""):
                 github_hint = (
                     "Use exclusively the installed GitHub App for anything about GitHub:\n"
                     f"[$github](app://{disc.connector_id})"
                 )
-                print(f"# github connector: {disc.connector_id}", file=sys.stderr)
+                _log("browserless", f"GitHub connector: {disc.connector_id}")
         except (ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:  # type: ignore[misc]
-            print(f"# github connector discovery failed (continuing): {exc}", file=sys.stderr)
+            _log("browserless", f"GitHub connector discovery failed (continuing): {exc}")
 
     instructions = (
         "You are answering a short connectivity probe for Specify PowerPack. "

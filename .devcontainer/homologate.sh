@@ -111,7 +111,8 @@ RUN_ARGS=(--path "$WT" --pr "$PR"
 [ "$KEEP_SESSION" = 1 ] && RUN_ARGS+=(--keep-session)
 
 say "S6 browserless deep review — PR #$PR, timeout ${TIMEOUT}s, effort ${EFFORT:-xhigh}"
-echo "  Two Codex turns (snapshot + deep review). Each fetched file goes through the model"
+echo "  [browserless] = ChatGPT backend-api call · [codex/*] = work inside a codex exec turn."
+echo "  Two codex exec turns (snapshot + deep review). Each fetched file goes through the model"
 echo "  at the chosen effort — that is what spends Codex tokens. --effort high roughly halves"
 echo "  it vs xhigh. Live progress streams below (also captured to S6-review-run.txt):"
 SPECIFY_FEATURE="001-single-skill-baseline" \

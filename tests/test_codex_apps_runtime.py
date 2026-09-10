@@ -40,7 +40,7 @@ def test_progress_reporter_rolls_up_tool_calls_and_stays_quiet():
     from speckit_powerpack.codex_apps_runtime import make_progress_reporter
 
     out = io.StringIO()
-    report = make_progress_reporter("review", out)
+    report = make_progress_reporter("codex/review", out)
 
     report({"kind": "event", "event": {"type": "turn.started"}})
     report({"kind": "event", "event": {"type": "thread.started"}})  # dedup — no second line
@@ -56,11 +56,12 @@ def test_progress_reporter_rolls_up_tool_calls_and_stays_quiet():
     report({"kind": "event", "event": {"type": "turn.completed"}})
 
     lines = [ln for ln in out.getvalue().splitlines() if ln.strip()]
-    assert sum("codex turn started" in ln for ln in lines) == 1
+    assert all(ln.startswith("  [codex/review] ") for ln in lines)  # transport-labelled
+    assert sum("turn started" in ln for ln in lines) == 1
     assert any("50 GitHub calls" in ln and "fetch_file×50" in ln for ln in lines)
     assert any("web search attempted (rejected" in ln for ln in lines)
     assert any("drafting the review verdict" in ln for ln in lines)
-    assert lines[-1] == "  [review] ✓ turn completed"
+    assert lines[-1] == "  [codex/review] ✓ turn completed"
     assert len(lines) <= 8  # rolled up, not one line per call
 
 

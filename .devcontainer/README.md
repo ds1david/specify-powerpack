@@ -139,11 +139,17 @@ gh auth status                   # from the mounted ~/.config/gh
 
 ## Following the run in real time
 
-`homologate.sh` prints everything to the terminal it runs in (timestamped step banners). The
-deep review prints a rolled-up status line about every 30 s —
-`working… 214 GitHub calls (fetch_file×198, fetch_file_lines×9, …) · 7.3 min` — plus
-one-off milestones (`codex turn started`, `drafting the review verdict…`, `✓ turn
-completed`). It also `tee`s the S6 review to a file, so from a second terminal / pane:
+`homologate.sh` prints everything to the terminal it runs in (timestamped step banners).
+Progress lines are transport-labelled:
+
+- `[browserless] …` — a call to the ChatGPT backend API (`chatgpt.com/backend-api/*`):
+  auth, GitHub-connector discovery, reading the Project context.
+- `[codex/snapshot] …` / `[codex/review] …` — events inside a `codex exec` turn: a
+  rolled-up status line about every 30 s
+  (`working… 214 GitHub calls (fetch_file×198, …) · 7.3 min`) plus milestones
+  (`turn started`, `drafting the review verdict…`, `✓ turn completed`).
+
+It also `tee`s the S6 review to a file, so from a second terminal / pane:
 
 ```bash
 tail -f specs/001-single-skill-baseline/T025-evidence/S6-review-run.txt

@@ -209,7 +209,7 @@ class ProgressReporter:
         if etype in {"thread.started", "turn.started"}:
             if not self.turn_started:
                 self.turn_started = True
-                self._emit("codex turn started — reading the PR through the GitHub App")
+                self._emit("turn started — reading the PR through the GitHub App")
             return
         if etype == "turn.completed":
             self._summary()

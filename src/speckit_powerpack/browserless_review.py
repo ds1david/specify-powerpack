@@ -353,8 +353,16 @@ def run_browserless_code_review(
     if not project_path.is_dir():
         raise BrowserlessReviewError(f"Repository path does not exist: {project_path}")
 
+    def _log(kind: str, msg: str) -> None:
+        # kind: "browserless" = a chatgpt.com/backend-api call;
+        #       "codex"       = work inside a `codex exec` turn.
+        if verbose:
+            print(f"  [{kind}] {msg}", file=sys.stderr, flush=True)
+
     def _progress_for(phase: str):
-        return make_progress_reporter(phase, sys.stderr) if verbose else None
+        # every ProgressReporter line is a codex-exec event -> prefix "codex/"
+        return make_progress_reporter(f"codex/{phase}", sys.stderr) if verbose else None
+
     binding = load_project_binding(project_path)
     target = resolve_pull_request(project_path, pull_request)
     spec = resolve_spec_context(project_path)
@@ -362,20 +370,23 @@ def run_browserless_code_review(
 
     client = ChatGPTBackendClient()
     try:
+        _log("browserless", "authenticating with the ChatGPT backend (/backend-api/me)…")
         client.validate_auth()
+        _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
         github = discover_github_connector(client, locale=locale)
+        _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{binding.project_id} …)…")
         project, project_context = client.build_project_context(
             binding.project_id,
             max_conversations=max(0, min(max_project_conversations, 4)),
             max_chars=32_000,
         )
+        _log("browserless", f"Project '{project.name}' bound; GitHub connector {github.connector_id}")
     except (ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise BrowserlessReviewError(str(exc)) from exc
     if project.id != binding.project_id or project.name.casefold() != binding.project_name.casefold():
         raise BrowserlessReviewError("Serialized ChatGPT Project does not match the repository binding.")
 
-    if verbose:
-        print("  [snapshot] resolving the immutable PR manifest via the GitHub App…", file=sys.stderr, flush=True)
+    _log("codex", "exec turn 1 (snapshot) — resolving the immutable PR manifest via the GitHub App…")
     snapshot_turn = run_codex_exec(
         project_path=project_path,
         model=model,
@@ -410,12 +421,11 @@ def run_browserless_code_review(
             raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
         previous_text = previous.read_text(encoding="utf-8", errors="replace")
 
-    if verbose:
-        print(
-            f"  [review] deep review starting — model={model} effort={effort} "
-            f"timeout={timeout}s (an xhigh review of a large delta can take 10–40 min)",
-            file=sys.stderr, flush=True,
-        )
+    _log(
+        "codex",
+        f"exec turn 2 (deep review) — model={model} effort={effort} timeout={timeout}s "
+        "(an xhigh review of a large delta can take 10–40 min)",
+    )
     review_turn = run_codex_exec(
         project_path=project_path,
         model=model,
