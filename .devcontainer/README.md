@@ -33,12 +33,23 @@ If you would rather not mount real credentials, delete the `mounts` block and ru
 ## Running a homologation
 
 ```bash
-# once, to find your Project id
+# once, to find your Project id (copy the g-p-… value, not the name)
 specify-powerpack review project discover
 
 # the T025 round-trip for this repo's PR #15
-bash .devcontainer/homologate.sh 15 --project speckit-powerpack
+bash .devcontainer/homologate.sh 15 --project g-p-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
+
+`--project` takes the **Project id** (`g-p-…`) or its full
+`https://chatgpt.com/g/g-p-…/project` URL. A bare display name works only if it is an
+*exact, unique* match — a renamed Project or a partial name will be rejected with the list
+of what is available. `homologate.sh` streams the deep-review progress (each GitHub tool
+call, a heartbeat every ~25 s) so you can see it is alive; add `--quiet` to
+`specify-powerpack review run` to silence it.
+
+`homologate.sh` always runs **this checkout's** code (via `PYTHONPATH`), never a
+globally-installed `specify-powerpack`, so a stale global install cannot make it
+materialise removed-command assets.
 
 `homologate.sh`:
 

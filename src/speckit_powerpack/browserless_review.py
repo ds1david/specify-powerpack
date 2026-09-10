@@ -12,6 +12,7 @@ from .backend_compat import install_backend_compat
 from .chatgpt_project_provider import ChatGPTBackendClient, ChatGPTProjectError
 from .codex_apps_runtime import (
     CodexAppsError,
+    format_progress,
     parse_codex_jsonl,
     require_github_tool_evidence,
     run_codex_exec,
@@ -344,10 +345,22 @@ def run_browserless_code_review(
     timeout: int = 600,
     max_project_conversations: int = 2,
     locale: str = "pt-BR",
+    verbose: bool = False,
 ) -> BrowserlessReviewResult:
     project_path = project_path.resolve()
     if not project_path.is_dir():
         raise BrowserlessReviewError(f"Repository path does not exist: {project_path}")
+
+    def _progress_for(phase: str):
+        if not verbose:
+            return None
+
+        def _emit(payload: dict[str, Any]) -> None:
+            line = format_progress(payload, phase=phase)
+            if line:
+                print(line, file=sys.stderr, flush=True)
+
+        return _emit
     binding = load_project_binding(project_path)
     target = resolve_pull_request(project_path, pull_request)
     spec = resolve_spec_context(project_path)
@@ -367,12 +380,15 @@ def run_browserless_code_review(
     if project.id != binding.project_id or project.name.casefold() != binding.project_name.casefold():
         raise BrowserlessReviewError("Serialized ChatGPT Project does not match the repository binding.")
 
+    if verbose:
+        print("  [snapshot] resolving the immutable PR manifest via the GitHub App…", file=sys.stderr, flush=True)
     snapshot_turn = run_codex_exec(
         project_path=project_path,
         model=model,
         effort=effort,
         prompt=_snapshot_prompt(target, github.connector_id),
         timeout=min(timeout, 300),
+        progress=_progress_for("snapshot"),
     )
     if snapshot_turn.returncode != 0:
         raise BrowserlessReviewError((snapshot_turn.stderr or snapshot_turn.stdout or "snapshot turn failed").strip())
@@ -399,6 +415,12 @@ def run_browserless_code_review(
             raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
         previous_text = previous.read_text(encoding="utf-8", errors="replace")
 
+    if verbose:
+        print(
+            f"  [review] deep review starting — model={model} effort={effort} "
+            f"timeout={timeout}s (an xhigh review of a large delta can take 10–40 min)",
+            file=sys.stderr, flush=True,
+        )
     review_turn = run_codex_exec(
         project_path=project_path,
         model=model,
@@ -414,6 +436,7 @@ def run_browserless_code_review(
             previous_review=previous_text,
         ),
         timeout=timeout,
+        progress=_progress_for("review"),
     )
     if review_turn.returncode != 0:
         raise BrowserlessReviewError((review_turn.stderr or review_turn.stdout or "review turn failed").strip())

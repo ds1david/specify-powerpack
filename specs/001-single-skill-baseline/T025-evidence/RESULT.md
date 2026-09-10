@@ -80,9 +80,11 @@ The 4 findings above were addressed:
 
 CI matrix + `installed-contract` job green on `a6035d9`. Full suite: 106 passed.
 
-**Re-homologation (T062) is pending** — to be run by the maintainer from the devcontainer
-(`bash .devcontainer/homologate.sh 15 --project speckit-powerpack`). This section and the
-`[ACCEPTANCE]` task checkboxes close when that run returns `APPROVED` + a valid `S7`.
+**Re-homologation (T062) is pending** — to be run by the maintainer:
+`bash .devcontainer/homologate.sh 15 --project <g-p-id-or-url>` (the ChatGPT Project is
+named `specify-powerpack`, id `g-p-6a9ba1a060208191a5b6e03a3950b183`; pass the id or its
+URL, not the bare name). This section and the `[ACCEPTANCE]` task checkboxes close when that
+run returns `APPROVED` + a valid `S7`.
 
 ## Environmental notes
 

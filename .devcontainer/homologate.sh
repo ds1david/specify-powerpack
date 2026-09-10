@@ -6,17 +6,20 @@
 # evidence under specs/001-single-skill-baseline/T025-evidence/.
 #
 # Usage:
-#   bash .devcontainer/homologate.sh <PR-number> [--project <id|name>] [--timeout <seconds>]
+#   bash .devcontainer/homologate.sh <PR-number> [--project <id|url>] [--timeout <seconds>]
+#
+#   --project  the ChatGPT Project id (the `g-p-…` value from
+#              `specify-powerpack review project discover`) or its full URL.
+#              A bare slug / the old repo name will NOT match.
 #
 # Prerequisites (see .devcontainer/README.md):
-#   - `codex login` done on the host (~/.codex/auth.json present, bind-mounted)
-#   - `gh auth login` done (~/.config/gh bind-mounted)
+#   - `codex login` done (~/.codex/auth.json present)
+#   - `gh auth login` done
 #   - the GitHub Codex App connected in ChatGPT/Codex
-#   - a ChatGPT Project to bind (list them with: specify-powerpack review project discover)
 #
 set -euo pipefail
 
-PR="${1:?usage: homologate.sh <PR-number> [--project <id|name>] [--timeout <seconds>]}"
+PR="${1:?usage: homologate.sh <PR-number> [--project <id|url>] [--timeout <seconds>]}"
 shift || true
 PROJECT=""
 TIMEOUT=3300
@@ -36,48 +39,71 @@ WORKROOT="$(mktemp -d)"
 WT="$WORKROOT/pp"
 mkdir -p "$EVID"
 
-cleanup() { git worktree remove --force "$WT" >/dev/null 2>&1 || true; rm -rf "$WORKROOT"; }
+# Always run THIS checkout's code, never a stale globally-installed
+# `specify-powerpack` (the package is stdlib-only, so PYTHONPATH is enough).
+PP=(env "PYTHONPATH=$REPO_ROOT/src" python3 -m speckit_powerpack)
+
+say() { printf '\n\033[1m== %s\033[0m  (%s)\n' "$*" "$(date -u +%H:%M:%SZ)"; }
+cleanup() {
+  git worktree remove --force "$WT" >/dev/null 2>&1 || true
+  git branch -D "homologate-pr-$PR" >/dev/null 2>&1 || true
+  rm -rf "$WORKROOT"
+  echo
+  echo "evidence dir: $FEATURE/T025-evidence/"
+}
 trap cleanup EXIT
 
-echo "== resolve PR #$PR =="
+say "runtime"
+echo "  code:    $REPO_ROOT/src (PYTHONPATH)"
+"${PP[@]}" --version | sed 's/^/  version: /'
+command -v codex >/dev/null && codex --version | sed 's/^/  codex:   /' || echo "  codex:   MISSING"
+command -v gh    >/dev/null && gh --version | head -1 | sed 's/^/  gh:      /' || echo "  gh:      MISSING"
+
+say "resolve PR #$PR"
 CANON="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 HEAD_SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid)"
 git fetch --quiet origin "pull/$PR/head" || git fetch --quiet origin
 git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null || { echo "PR head $HEAD_SHA not reachable after fetch" >&2; exit 1; }
 echo "  $CANON  head=$HEAD_SHA"
 
-echo "== worktree at PR head =="
+say "worktree at PR head"
 git worktree add --detach "$WT" "$HEAD_SHA"
 git -C "$WT" checkout -B "homologate-pr-$PR" >/dev/null
-# the GitHub connector matches the canonical repo name, not a stale rename
-git -C "$WT" remote set-url origin "https://github.com/$CANON.git"
+git -C "$WT" remote set-url origin "https://github.com/$CANON.git"  # connector wants the canonical name
 
-echo "== install PowerPack + bind Project =="
-specify-powerpack install "$WT" --integration codex
+say "install PowerPack"
+"${PP[@]}" install "$WT" --integration codex
+
 if [ -n "$PROJECT" ]; then
-  specify-powerpack review setup --path "$WT" --project "$PROJECT"
+  say "bind ChatGPT Project"
+  "${PP[@]}" review setup --path "$WT" --project "$PROJECT"
+else
+  echo "  (no --project given; assuming the worktree already carries a binding)"
 fi
-specify-powerpack doctor "$WT" --strict-review 2>&1 | tee "$EVID/S1-doctor.txt" || true
-specify-powerpack review status --path "$WT" --live 2>&1 | tee "$EVID/S1-review-status.txt" || true
 
-echo "== offline evidence (runbook §3) =="
-PYTHON=python3 PYTEST="python -m pytest" \
+say "S1 readiness"
+"${PP[@]}" doctor "$WT" --strict-review 2>&1 | tee "$EVID/S1-doctor.txt" || true
+"${PP[@]}" review status --path "$WT" --live 2>&1 | tee "$EVID/S1-review-status.txt" || true
+
+say "offline evidence (runbook §3)"
+PYTHON=python3 PYTEST="python3 -m pytest" \
   bash "$REPO_ROOT/$FEATURE/collect-t025-offline-evidence.sh" "$WT" "$FEATURE" \
   2>&1 | tee "$EVID/_collector-run.txt" || true
 
-echo "== S6 browserless deep review (PR #$PR, timeout ${TIMEOUT}s) =="
+say "S6 browserless deep review — PR #$PR, timeout ${TIMEOUT}s"
+echo "  Two Codex turns (snapshot + deep review). The deep review is xhigh and"
+echo "  can run 10–40 min. Live progress streams below (also captured to S6-review-run.txt):"
 SPECIFY_FEATURE="001-single-skill-baseline" \
-  specify-powerpack review run --path "$WT" --pr "$PR" \
+  "${PP[@]}" review run --path "$WT" --pr "$PR" \
     --prompt "Perform the complete Deep Review Evidence Protocol." \
     --output "$WT/review.json" --timeout "$TIMEOUT" \
   2>&1 | tee "$EVID/S6-review-run.txt"
 
 cp "$WT/review.json" "$EVID/review.json"
-echo "== S7 protocol validation =="
-python "$WT/.specify/powerpack/bin/review_protocol.py" validate --input "$EVID/review.json" \
+say "S7 protocol validation"
+python3 "$WT/.specify/powerpack/bin/review_protocol.py" validate --input "$EVID/review.json" \
   2>&1 | tee "$EVID/S7-protocol-validate.txt"
 
-echo
-echo "== verdict =="
+say "verdict"
 python3 -c "import json; d=json.load(open('$EVID/review.json')); print(d['verdict']); print(d.get('summary',''))"
-echo "Evidence: $FEATURE/T025-evidence/  — update RESULT.md and hand review.json back to close the tasks."
+echo "Update RESULT.md and hand review.json back to close the [ACCEPTANCE] tasks."

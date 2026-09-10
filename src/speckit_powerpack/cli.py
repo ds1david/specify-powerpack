@@ -309,17 +309,35 @@ def _project_candidates() -> list[ChatGPTProject]:
     return projects
 
 
+def _project_id_from_selector(selector: str) -> str | None:
+    """Pull a `g-p-<id>` out of a bare id, an `id-with-slug`, or a full
+    `https://chatgpt.com/g/g-p-<id>-<slug>/project` URL."""
+    match = re.search(r"g-p-[0-9a-f]{16,}", selector.strip())
+    return match.group(0) if match else None
+
+
 def _select_project(projects: list[ChatGPTProject], selector: str | None, index: int | None) -> ChatGPTProject:
     if not projects:
         raise PowerPackError("No ChatGPT Projects were discovered for the Codex-authenticated account.")
     if selector:
-        exact = [item for item in projects if item.id == selector or item.name.casefold() == selector.casefold() or item.url == selector]
+        wanted_id = _project_id_from_selector(selector)
+        exact = [
+            item for item in projects
+            if item.id == selector
+            or (wanted_id and item.id == wanted_id)
+            or item.name.casefold() == selector.casefold()
+            or item.url == selector
+        ]
         if len(exact) == 1:
             return exact[0]
         partial = [item for item in projects if selector.casefold() in item.name.casefold()]
         if len(partial) == 1:
             return partial[0]
-        raise PowerPackError(f"Could not uniquely match ChatGPT Project: {selector}")
+        available = "; ".join(f"{item.name} ({item.id})" for item in projects) or "none"
+        raise PowerPackError(
+            f"Could not uniquely match ChatGPT Project: {selector!r}. Available: {available}. "
+            "Pass the exact id (the `g-p-…` value from `review project discover`)."
+        )
     if index is not None:
         if not (1 <= index <= len(projects)):
             raise PowerPackError("Project index is out of range.")
@@ -530,6 +548,13 @@ def cmd_review_run(args: argparse.Namespace) -> None:
     project = Path(args.path).expanduser().resolve()
     previous = Path(args.previous).expanduser().resolve() if args.previous else None
     output = Path(args.output).expanduser().resolve() if args.output else None
+    verbose = not args.quiet
+    if verbose:
+        print(
+            f"Reviewing PR {args.pr} — this makes two Codex turns (snapshot + deep review) "
+            "and can run for many minutes. Progress follows on stderr:",
+            file=sys.stderr, flush=True,
+        )
     try:
         result = run_browserless_code_review(
             project_path=project,
@@ -542,6 +567,7 @@ def cmd_review_run(args: argparse.Namespace) -> None:
             timeout=args.timeout,
             max_project_conversations=args.max_conversations,
             locale=args.locale,
+            verbose=verbose,
         )
     except (BrowserlessReviewError, ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise PowerPackError(str(exc)) from exc
@@ -627,6 +653,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_run.add_argument("--timeout", type=int, default=600)
     review_run.add_argument("--max-conversations", type=int, default=2)
     review_run.add_argument("--locale", default="pt-BR")
+    review_run.add_argument("--quiet", action="store_true", help="suppress the per-turn progress stream on stderr")
     review_run.set_defaults(func=cmd_review_run)
     return parser
 

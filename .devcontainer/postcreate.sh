@@ -27,7 +27,8 @@ gh auth status 2>&1 | sed 's/^/gh: /' || echo "gh: not logged in — run 'gh aut
 cat <<'EOF'
 
 Ready. To homologate PR #15 of this repo:
-  bash .devcontainer/homologate.sh 15 --project speckit-powerpack
+  specify-powerpack review project discover           # copy the g-p-… id
+  bash .devcontainer/homologate.sh 15 --project g-p-…
 
 Evidence lands in specs/001-single-skill-baseline/T025-evidence/.
 EOF

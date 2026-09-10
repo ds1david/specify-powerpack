@@ -4,10 +4,17 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any
+import threading
+import time
+from typing import Any, Callable
 
 
 CODEX_APPS_SERVER = "codex_apps"
+
+# Progress callback: receives {"kind": "event", "event": <parsed dict>} for each
+# JSONL line, {"kind": "line", "raw": <str>} for a non-JSON line, and
+# {"kind": "heartbeat", "elapsed": <float>} when the turn is quiet for a while.
+ProgressFn = Callable[[dict[str, Any]], None]
 
 
 class CodexAppsError(RuntimeError):
@@ -21,11 +28,16 @@ def run_codex_exec(
     prompt: str,
     timeout: int,
     effort: str = "xhigh",
+    progress: ProgressFn | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run one browserless Codex turn and expose its JSONL lifecycle.
 
     Codex owns App/MCP resolution, approvals, tool execution and continuation.
     PowerPack deliberately does not reproduce the private Responses tool loop.
+
+    With ``progress`` set, the turn is streamed: stdout is read line by line and
+    the callback is invoked per event plus a periodic heartbeat, so a long
+    ``xhigh`` review is observable instead of a silent multi-minute hang.
     """
     codex = shutil.which("codex")
     if not codex:
@@ -45,18 +57,121 @@ def run_codex_exec(
     if effort.strip():
         command.extend(["-c", f'model_reasoning_effort="{effort.strip()}"'])
     command.append(prompt)
+
+    deadline = max(30, timeout)
+    if progress is None:
+        try:
+            return subprocess.run(
+                command, text=True, capture_output=True, check=False, timeout=deadline
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise CodexAppsError(f"codex exec timed out after {timeout}s") from exc
+        except OSError as exc:
+            raise CodexAppsError(f"Could not execute Codex CLI: {exc}") from exc
+
     try:
-        return subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=max(30, timeout),
+        proc = subprocess.Popen(
+            command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1
         )
-    except subprocess.TimeoutExpired as exc:
-        raise CodexAppsError(f"codex exec timed out after {timeout}s") from exc
     except OSError as exc:
         raise CodexAppsError(f"Could not execute Codex CLI: {exc}") from exc
+
+    out_lines: list[str] = []
+    last_activity = [time.monotonic()]
+
+    def _pump() -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            out_lines.append(line)
+            last_activity[0] = time.monotonic()
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                event = json.loads(stripped)
+            except json.JSONDecodeError:
+                _safe(progress, {"kind": "line", "raw": stripped})
+                continue
+            if isinstance(event, dict):
+                _safe(progress, {"kind": "event", "event": event})
+
+    reader = threading.Thread(target=_pump, daemon=True)
+    reader.start()
+
+    started = time.monotonic()
+    while True:
+        try:
+            proc.wait(timeout=10)
+            break
+        except subprocess.TimeoutExpired:
+            now = time.monotonic()
+            if now - started > deadline:
+                proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                raise CodexAppsError(f"codex exec timed out after {timeout}s")
+            if now - last_activity[0] > 25:
+                last_activity[0] = now
+                _safe(progress, {"kind": "heartbeat", "elapsed": now - started})
+
+    reader.join(timeout=5)
+    stderr = ""
+    try:
+        stderr = proc.stderr.read() if proc.stderr else ""
+    except (OSError, ValueError):
+        pass
+    return subprocess.CompletedProcess(command, proc.returncode or 0, "".join(out_lines), stderr)
+
+
+def _safe(fn: ProgressFn, payload: dict[str, Any]) -> None:
+    try:
+        fn(payload)
+    except Exception:  # progress reporting must never break the review
+        pass
+
+
+def format_progress(payload: dict[str, Any], *, phase: str) -> str | None:
+    """Turn a `run_codex_exec` progress payload into one compact human line
+    (or None to stay silent). `phase` labels which turn ('snapshot' / 'review')."""
+    kind = payload.get("kind")
+    if kind == "heartbeat":
+        return f"  [{phase}] still working… {payload.get('elapsed', 0):.0f}s elapsed"
+    if kind == "line":
+        raw = str(payload.get("raw") or "")
+        return f"  [{phase}] {raw[:160]}" if raw else None
+    if kind != "event":
+        return None
+    event = payload.get("event") or {}
+    etype = str(event.get("type") or "")
+    if etype in {"thread.started", "turn.started"}:
+        return f"  [{phase}] codex turn started"
+    if etype == "turn.completed":
+        return f"  [{phase}] ✓ turn completed"
+    if etype in {"turn.failed", "error"}:
+        return f"  [{phase}] ✗ turn failed"
+    item = event.get("item") if isinstance(event.get("item"), dict) else None
+    if not item:
+        return None
+    itype = str(item.get("type") or "")
+    if itype == "mcp_tool_call":
+        server = str(item.get("server") or "")
+        tool = str(item.get("tool") or "")
+        status = str(item.get("status") or "")
+        call = ".".join(part for part in (server, tool) if part) or "tool call"
+        return f"  [{phase}] · {call}" + (f" [{status}]" if status else "")
+    if itype == "command_execution":
+        cmd = str(item.get("command") or "").replace("\n", " ")
+        return f"  [{phase}] · ⚠ shell: {cmd[:80]} (will be rejected)"
+    if itype == "web_search":
+        return f"  [{phase}] · ⚠ web search (will be rejected)"
+    if itype == "agent_message":
+        text = str(item.get("text") or "")
+        return f"  [{phase}] · drafted response ({len(text)} chars)" if text else None
+    if itype == "reasoning":
+        return f"  [{phase}] · reasoning…"
+    return None
 
 
 def _walk(value: Any):
