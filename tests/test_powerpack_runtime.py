@@ -151,10 +151,14 @@ def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path
 
 
 def test_implement_evidence_degrades_without_git(tmp_path: Path):
-    root, feature = repo(tmp_path)
+    # a project directory that is not inside any git repository
+    root = tmp_path / "nogit"
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (root / ".specify").mkdir()
+    (feature / "spec.md").write_text("# Spec\n")
+    (feature / "plan.md").write_text("# Plan\n")
     _complete_tasks(feature)
-    import shutil as _sh
-    _sh.rmtree(root / ".git")
     result = rt.implement_evidence(root, feature)
     assert result["ok"] is True
     assert result["git_unavailable"] is True
