@@ -66,6 +66,24 @@ Requirement statuses the review assigned: FR-003 / FR-010 / FR-011 / FR-012 / FR
    that reaches `APPROVED` (or a documented, contract-level resolution of the circular gate
    in R001-002).
 
+## Round 3 remediation (2026-09-10, commits `ee3da40`…`a6035d9`)
+
+The 4 findings above were addressed:
+
+| Finding | Fix | Status |
+|---|---|---|
+| R001-002 | `[ACCEPTANCE]` tag — `count_implementation_checkboxes()` excludes post-review homologation tasks from the FR-018a gate. Verified: `prereq check` on the new HEAD returns `{"ok": true, "reason": "OK"}`. | done (T058) |
+| R001-001 | `cli._prune_removed_command_state()` — a normal `update` now unlinks retired removed-command runtimes/configs and strips removed-command routing/prereq keys. | done (T059) |
+| R001-003 | `test_installed_powerpack_command_namespace_is_exactly_implement_review` — real `specify preset add` composition, equality assertion; new `installed-contract` CI job. | done (T060) |
+| R001-004 | `test_removed_command_names_are_undispatchable_after_a_real_install` — real resolver, no materialised command file for any removed name. | done (T061) |
+| infra | `.devcontainer/` + `homologate.sh` reproduce this homologation. | done (T063) |
+
+CI matrix + `installed-contract` job green on `a6035d9`. Full suite: 106 passed.
+
+**Re-homologation (T062) is pending** — to be run by the maintainer from the devcontainer
+(`bash .devcontainer/homologate.sh 15 --project speckit-powerpack`). This section and the
+`[ACCEPTANCE]` task checkboxes close when that run returns `APPROVED` + a valid `S7`.
+
 ## Environmental notes
 
 - `origin` in the main checkout still points at the pre-rename URL
