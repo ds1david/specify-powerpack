@@ -4,6 +4,59 @@ A reproducible environment for running the **T025 `implement-review` homologatio
 (`specs/001-single-skill-baseline/T025-validation-runbook.md`) — the live browserless
 Codex → ChatGPT Project → GitHub round-trip that a mocked test suite cannot cover.
 
+## Architecture — what actually runs the review
+
+The review is **not** run by chatgpt.com. It is run by the **Codex CLI**, locally:
+
+```
+  your machine (host, or this devcontainer)
+    homologate.sh
+      └─ specify-powerpack review run
+           └─ codex exec  ── the REVIEWER: model gpt-5.6-sol, effort xhigh,
+              │               --sandbox read-only, no shell, no web search
+              │
+              ├─ MCP: codex_apps  ──►  OpenAI backend  ──►  GitHub Codex App (your OAuth grant)  ──►  api.github.com
+              │        github.fetch_pr_patch / fetch_file / compare_commits …
+              │        (the HTTP to GitHub runs on OpenAI's servers, not from your box)
+              │
+              └─ ChatGPT Project "specify-powerpack"  ──  ~2 serialised conversations,
+                 pasted into the prompt as read-only *background memory* only.
+                 The Project does not review anything; it is a folder of chats.
+```
+
+What each piece contributes:
+
+| Piece | Runs where | Role |
+|---|---|---|
+| `codex exec` | your host / this container | **the reviewer** — reads the PR, applies the deep-review protocol, emits `review.json` |
+| GitHub Codex App (`codex_apps` MCP) | OpenAI infra + GitHub | fetches the PR code at the pinned head SHA; holds the GitHub OAuth token |
+| ChatGPT Project | — (serialised into the prompt) | background memory (prior design conversations); SPEC + PR evidence always win |
+| your `~/.codex/auth.json` | your box | authenticates `codex exec` to OpenAI — that is the *only* token your box holds |
+
+"**Browserless**" means no Chrome / Playwright / CDP driving a web UI — it is all API + MCP.
+
+### Why `fetch_file` and not a `git clone`
+
+The reviewer never clones. Every code read goes through the GitHub App, one file at a time
+(hence the hundreds of `fetch_file` calls on a large PR). That is deliberate:
+
+- **Integrity.** The review must bind to the PR *as GitHub sees it* at the exact head SHA
+  (the immutable snapshot; the gate also checks `local HEAD == PR head SHA`). A local clone
+  could be stale, on the wrong ref, dirty, or tampered with. Fetching each file at the
+  pinned SHA guarantees the reviewer saw exactly what is on the PR.
+- **Sandbox.** `codex exec` runs `--sandbox read-only` and is told not to run shell commands
+  or web search. It has no working tree of its own to clone into, and cannot be tricked into
+  running a malicious repo's build scripts or reading secrets off your disk.
+- **Attestation.** Every `coverage.inspection_evidence` entry in `review.json` is traceable
+  to a specific GitHub App tool call. `require_github_tool_evidence` rejects the review if it
+  fell back to a shell or web search. A clone would make "what did it actually look at?"
+  unprovable.
+- **Auth reuse.** You authorised the GitHub Codex App in ChatGPT once (OAuth). The reviewer
+  reuses that grant; no deploy keys, and the GitHub token never touches your machine.
+
+The cost is round-trips (each fetch is a hop through the connector). The design trades that
+for verifiability.
+
 ## Opening the container
 
 **VS Code** (needs the *Dev Containers* extension `ms-vscode-remote.remote-containers` and a
@@ -88,9 +141,9 @@ bash .devcontainer/homologate.sh 15 --project g-p-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 `--project` takes the **Project id** (`g-p-…`) or its full
 `https://chatgpt.com/g/g-p-…/project` URL. A bare display name works only if it is an
 *exact, unique* match — a renamed Project or a partial name will be rejected with the list
-of what is available. `homologate.sh` streams the deep-review progress (each GitHub tool
-call, a heartbeat every ~25 s) so you can see it is alive; add `--quiet` to
-`specify-powerpack review run` to silence it.
+of what is available. `homologate.sh` streams a rolled-up deep-review status line every
+~30 s (see *Following the run*); add `--quiet` to `specify-powerpack review run` to silence
+it.
 
 `homologate.sh` always runs **this checkout's** code (via `PYTHONPATH`), never a
 globally-installed `specify-powerpack`, so a stale global install cannot make it
