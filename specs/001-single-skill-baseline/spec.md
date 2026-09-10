@@ -30,6 +30,15 @@ defective. Removed capabilities may be redesigned and reintroduced later through
 - Q: Should the `powerpack-tools` extension (`doctor`, `update`) be preserved as infrastructure, or do those commands count toward the single-command contract? → A: Preserve `powerpack-tools` intact as runtime infrastructure; the exact-set assertion is scoped to the `powerpack-core` preset only → `{"speckit.implement-review"}`.
 - Q: Which installation paths are officially supported and must be validated for the parity contract? → A: `install.sh`, `install.py`, and `install.ps1`, each validated to produce `{"speckit.implement-review"}` for one canonical integration. Full installer×integration matrix is not required as an end-to-end gate.
 
+### PR #15 review (2026-09-09)
+
+- Finding (HIGH, behavioral regression): the first re-based gate accepted *any* non-doc
+  change on the branch/worktree, so SPEC-B could be satisfied by SPEC-A's code — contradicting
+  `implement-review`'s stated "explicit same-SPEC predecessor is proven". → Resolution:
+  **FR-018a** — the delta is scoped to the SPEC via `feature_base_commit` (diff from the
+  commit that introduced the SPEC's plan/tasks to HEAD), the working tree is not consulted,
+  and a cross-SPEC rejection test is mandatory.
+
 ## Terminology *(reconciliation — mandatory reading)*
 
 The previous draft of this spec used the word "skill" throughout. The repository does not
@@ -264,14 +273,24 @@ the suite; the baseline contract test must fail.
 - **FR-018** *(dependency re-basing — resolved 2026-09-09)*: The implementation MUST keep the
   `implement-review` flow operational end to end while removing the `speckit.implement` and
   `speckit.converge` wraps. Specifically: (a) the `implement-review` prerequisite gate MUST
-  be satisfiable from an upstream Spec Kit `speckit-implement` run (not from a PowerPack
-  `speckit.implement` completion receipt); any PowerPack receipt/state mechanism the gate
-  needs MUST be preserved as core infrastructure (FR-013) or re-based onto an upstream
-  signal, but the `speckit.implement` command template MUST be removed. (b) The
-  `implement-review` Phase 1 convergence loop (including re-implementation of appended tasks)
-  MUST call upstream `speckit-converge` / `speckit-implement`, and the PowerPack
-  `speckit.converge` command template MUST be removed. No `speckit.implement` /
-  `speckit.converge` behavior may survive as an alias, shim, or hidden copy (FR-014).
+  be satisfiable without a PowerPack `speckit.implement` completion receipt, and the
+  `speckit.implement` command template MUST be removed. (b) The `implement-review` Phase 1
+  convergence loop (including re-implementation of appended tasks) MUST call upstream
+  `speckit-converge` / `speckit-implement`, and the PowerPack `speckit.converge` command
+  template MUST be removed. No `speckit.implement` / `speckit.converge` behavior may survive
+  as an alias, shim, or hidden copy (FR-014).
+- **FR-018a** *(SPEC-scoped predecessor evidence — resolved after PR review, 2026-09-09)*:
+  The re-based prerequisite MUST prove an explicit prior implementation **of the active
+  SPEC**, not merely "some non-documentation change exists on the branch". It MUST be
+  satisfied only when (i) the SPEC's `tasks.md` task checkboxes are all `[X]`, and (ii) a
+  non-documentation change has been **committed for that SPEC's era** — the diff from the
+  commit that introduced the SPEC's `plan.md`/`tasks.md` to `HEAD`. A different SPEC's
+  earlier code change on the same (or a re-used) branch MUST NOT satisfy it. The working
+  tree MUST NOT be consulted (the browserless gate already pins `HEAD == PR head SHA`).
+  Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE` (the SPEC's own
+  artifacts are not committed yet), `NO_IMPLEMENTATION_DELTA`. Git unavailable ⇒ degrade to
+  tasks-only, flagged `git_unavailable`. At least one automated test MUST encode the
+  cross-SPEC rejection (SPEC-A code must not satisfy SPEC-B's gate).
 - **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to
   produce the same `powerpack-core` command inventory — `{"speckit.implement-review"}` — for
   the canonical integration `codex` (`DEFAULT_INTEGRATION` in `cli.py`). A platform-specific

@@ -65,13 +65,18 @@ derived live.
 |---|---|---|
 | `tasks_present` | `FEATURE_DIR/tasks.md` exists | true |
 | `tasks_complete` | all `- [ ]`/`- [x]` lines in `tasks.md` | zero unchecked |
-| `implementation_delta` | `git` tracked+untracked files vs `is_documentation_only()` | ≥1 non-doc changed file attributable to the SPEC |
-| `git_available` | `git rev-parse` succeeds | if false → evaluate `tasks_*` only, annotate `git_unavailable: true` |
+| `spec_base` | `feature_base_commit(root, feature)` — parent of the commit that added the SPEC's `plan.md`/`tasks.md`/dir | resolvable (SPEC artifacts are committed) |
+| `spec_implementation_delta` | `git diff <spec_base>..HEAD`, minus `.specify/powerpack/`, vs `is_documentation_only()` | ≥1 non-doc file **committed for this SPEC's era**; working tree not consulted |
+| `git_available` | `git rev-parse --git-dir` succeeds | if false → evaluate `tasks_*` only, annotate `git_unavailable: true` |
 
 **Output (JSON, stdout):** `{"ok": bool, "step": "implement-review", "feature": "<id>",
-"reason": "<OK|MISSING_TASKS|TASKS_INCOMPLETE|NO_IMPLEMENTATION_DELTA>", "unchecked": <int?>,
-"git_unavailable": <bool?>}`. Exit `0` when `ok`, non-zero otherwise (preserve current
-`cmd_prereq_check` exit-code convention).
+"reason": "<OK|MISSING_TASKS|TASKS_INCOMPLETE|NO_SPEC_BASELINE|NO_IMPLEMENTATION_DELTA>",
+"unchecked": <int?>, "total": <int?>, "detail": <str?>, "git_unavailable": <bool?>}`. Exit
+`0` when `ok`, else `9` with `next_action: "speckit-implement"`.
+
+**Cross-SPEC rejection (FR-018a).** Because the delta is `<spec_base>..HEAD`, a SPEC whose
+`plan.md` was committed *after* another SPEC's code change does not see that change in its
+delta. Encoded by `test_implement_evidence_rejects_other_specs_code_delta`.
 
 ## State transitions
 

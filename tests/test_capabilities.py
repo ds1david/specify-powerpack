@@ -99,6 +99,11 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
 
 
+def _commit(root: Path, msg: str) -> None:
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", msg)
+
+
 def _feature_repo(tmp_path: Path) -> tuple[Path, Path]:
     root = tmp_path / "repo"
     root.mkdir()
@@ -106,34 +111,38 @@ def _feature_repo(tmp_path: Path) -> tuple[Path, Path]:
     _git(root, "config", "user.email", "t@e.com")
     _git(root, "config", "user.name", "T")
     (root / ".specify" / "powerpack").mkdir(parents=True)
-    feature = root / "specs" / "001-demo"
-    feature.mkdir(parents=True)
-    (feature / "spec.md").write_text("# Spec\n")
     (root / "pom.xml").write_text("<project/>\n")  # deterministic maven architecture
     (root / "mvnw").write_text("#!/bin/sh\nexit 0\n")
     (root / "mvnw").chmod(0o755)
-    _git(root, "add", ".")
-    _git(root, "commit", "-m", "init")
+    _commit(root, "base")
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (feature / "spec.md").write_text("# Spec\n")
+    (feature / "plan.md").write_text("# Plan\n")
+    _commit(root, "spec 001-demo: plan")
     return root, feature
 
 
 def test_gate_main_uses_git_evidence_not_implement_runs(tmp_path: Path, monkeypatch, capsys):
-    """T046/T047: the gate `speckit.implement-review.md` invokes must read a real
-    change delta from git, not the removed `implement_runs` receipt."""
+    """T046/T047 + reviewer finding: the gate `speckit.implement-review.md` invokes
+    reads a SPEC-scoped committed delta from git, not the removed `implement_runs`
+    receipt and not the whole branch."""
     import json as _json
 
     root, feature = _feature_repo(tmp_path)
     assert not hasattr(cap, "latest_implement_files")
     monkeypatch.chdir(root)
 
-    # docs-only change -> NOT_APPLICABLE
+    # docs-only committed change for this SPEC -> NOT_APPLICABLE
     (feature / "spec.md").write_text("# Spec\nedited\n")
+    _commit(root, "docs")
     assert cap.main(["gate", "detect", "--feature-dir", str(feature)]) == 0
     assert _json.loads(capsys.readouterr().out)["status"] == "NOT_APPLICABLE"
 
-    # real code change -> gate is REQUIRED (maven), never NOT_APPLICABLE
+    # real code committed for this SPEC -> REQUIRED (maven), never NOT_APPLICABLE
     (root / "src").mkdir()
     (root / "src" / "App.java").write_text("class App {}\n")
+    _commit(root, "implement")
     assert cap.main(["gate", "detect", "--feature-dir", str(feature)]) == 0
     result = _json.loads(capsys.readouterr().out)
     assert result["status"] == "REQUIRED"

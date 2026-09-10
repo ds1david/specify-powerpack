@@ -20,20 +20,31 @@ STOP and run upstream `speckit-implement` (hyphen — the upstream skill), not t
 |---|---|
 | `FEATURE_DIR` | `--feature-dir` or `resolve_feature_dir()` (unchanged) |
 | `tasks.md` | `FEATURE_DIR/tasks.md` |
-| repo file set | `git ls-files -co --exclude-standard` (existing `git_candidate_files`) |
+| SPEC base commit | `feature_base_commit(root, feature)` — the parent of the first commit that added `FEATURE_DIR/plan.md` (fallback `tasks.md`, then `FEATURE_DIR/`); the anchor commit itself when it is the repo root |
+| SPEC delta | `git diff --name-only <SPEC base>..HEAD`, minus `.specify/powerpack/` |
 | doc classification | existing `is_documentation_only()` |
 
 ## Evaluation
 
 1. If `tasks.md` missing → `{"ok": false, "reason": "MISSING_TASKS"}`.
-2. Parse task checkboxes (`^\s*- \[( |x|X)\]` outside code fences). If any unchecked →
-   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>}`.
-3. Determine `git_available` (`git rev-parse --git-dir`). If unavailable →
-   skip step 4, set `git_unavailable: true`.
-4. Compute the changed non-`.specify/powerpack/` file set (tracked-modified + untracked).
-   If every changed path satisfies `is_documentation_only()` (or the set is empty) →
+2. Parse task checkboxes (`- \[( |x|X)\] ` outside code fences). If any unchecked →
+   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`.
+3. `git rev-parse --git-dir` fails → `{"ok": true, "reason": "OK", "git_unavailable": true}`
+   (degraded: tasks-only).
+4. `feature_base_commit` is `None` (the SPEC's own `plan.md`/`tasks.md` are not committed
+   yet) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
+5. Compute the **SPEC delta** — `git diff <SPEC base>..HEAD`, non-`.specify/powerpack/`.
+   The working tree is **not** consulted: `implement-review` reviews a committed snapshot
+   (its browserless gate requires `HEAD == PR head SHA`). If every path in the SPEC delta
+   satisfies `is_documentation_only()` (or the delta is empty) →
    `{"ok": false, "reason": "NO_IMPLEMENTATION_DELTA"}`.
-5. Otherwise → `{"ok": true, "reason": "OK"}`.
+6. Otherwise → `{"ok": true, "reason": "OK"}`.
+
+**Why SPEC-scoped.** Anchoring on the SPEC's own base commit means a *different* SPEC's
+earlier code change on the same branch (or a re-used branch that already carries code)
+does not count as this SPEC's implementation evidence — the property
+`speckit.implement-review.md` states ("Evidence from another SPEC's directory never
+satisfies this prerequisite") holds at runtime.
 
 ## Output (stdout JSON)
 
@@ -41,10 +52,10 @@ STOP and run upstream `speckit-implement` (hyphen — the upstream skill), not t
 { "ok": true, "step": "implement-review", "feature": "<feature-id>", "reason": "OK" }
 ```
 
-Failure adds `reason` from the enum above and, where relevant, `unchecked` (int) or
-`git_unavailable` (bool). Exit code: `0` when `ok`, else the existing failure code path of
-`cmd_prereq_check` (non-zero; keep `9`-style semantics with `next_action:
-"speckit-implement"`).
+Failure adds `reason` from the enum (`MISSING_TASKS` / `TASKS_INCOMPLETE` /
+`NO_SPEC_BASELINE` / `NO_IMPLEMENTATION_DELTA`), an optional `detail` string, and where
+relevant `unchecked` / `total` / `git_unavailable`. Exit `0` when `ok`, else `9` with
+`next_action: "speckit-implement"`.
 
 ## Config
 
@@ -68,6 +79,10 @@ Failure adds `reason` from the enum above and, where relevant, `unchecked` (int)
 
 ## Non-goals
 
-- Cross-SPEC protection beyond what `resolve_feature_dir()` already gives.
-- Detecting *who* implemented (agent vs human) — only that a real non-doc delta exists and
-  tasks are complete.
+- Perfect file↔SPEC attribution. Timeline scoping catches the common case (another SPEC's
+  code committed *before* this SPEC's baseline). Two SPECs whose implementation commits
+  interleave on one branch can still cross-satisfy — that is an unusual workflow and is left
+  to the reviewer / the browserless PR gate, which pins an exact PR + changed-file set.
+- Detecting *who* implemented (agent vs human) — only that a real non-doc change was
+  **committed for this SPEC's era** and its tasks are complete.
+- Consulting the working tree. Uncommitted work is invisible to this gate by design.

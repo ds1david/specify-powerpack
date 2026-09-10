@@ -16,21 +16,28 @@ def git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
 
 
-def repo(tmp_path: Path) -> tuple[Path, Path]:
+def commit(root: Path, message: str) -> None:
+    git(root, "add", "-A")
+    git(root, "commit", "-m", message)
+
+
+def repo(tmp_path: Path, feature_name: str = "001-demo") -> tuple[Path, Path]:
+    """A repo whose SPEC artifacts are committed AFTER a base commit, so
+    `feature_base_commit` has a real pre-SPEC parent to anchor on."""
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init")
     git(root, "config", "user.email", "test@example.com")
     git(root, "config", "user.name", "Test")
     (root / ".specify").mkdir()
-    feature = root / "specs" / "001-demo"
+    (root / "README.md").write_text("hello\n")
+    commit(root, "base")  # pre-SPEC baseline
+    feature = root / "specs" / feature_name
     feature.mkdir(parents=True)
     (feature / "spec.md").write_text("# Spec\n")
     (feature / "plan.md").write_text("# Plan\n")
     (feature / "tasks.md").write_text("# Tasks\n")
-    (root / "README.md").write_text("hello\n")
-    git(root, "add", ".")
-    git(root, "commit", "-m", "init")
+    commit(root, f"spec {feature_name}: plan + tasks")
     return root, feature
 
 
@@ -80,18 +87,67 @@ def test_implement_evidence_no_implementation_delta(tmp_path: Path):
     root, feature = repo(tmp_path)
     _complete_tasks(feature)
     feature.joinpath("plan.md").write_text("# Plan\ndocs-only change\n")
+    commit(root, "docs only")
     result = rt.implement_evidence(root, feature)
     assert result["ok"] is False
     assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
 
 
-def test_implement_evidence_ok_with_code_delta(tmp_path: Path):
+def test_implement_evidence_ok_with_committed_code_delta(tmp_path: Path):
     root, feature = repo(tmp_path)
     _complete_tasks(feature)
     (root / "src").mkdir()
     (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement SPEC-001")
     result = rt.implement_evidence(root, feature)
     assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
+def test_implement_evidence_ignores_uncommitted_code(tmp_path: Path):
+    """A committed snapshot is required — `implement-review` reviews HEAD."""
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    commit(root, "check the tasks")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")  # not committed
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_rejects_other_specs_code_delta(tmp_path: Path):
+    """Reviewer finding: SPEC-B must not be satisfied by SPEC-A's earlier code."""
+    root, feat_a = repo(tmp_path, "001-a")
+    (root / "src").mkdir()
+    (root / "src" / "foo.py").write_text("A = 1\n")  # implemented for SPEC-A
+    commit(root, "implement SPEC-001-a")
+    # SPEC-B enters the picture only now
+    feat_b = root / "specs" / "002-b"
+    feat_b.mkdir(parents=True)
+    (feat_b / "spec.md").write_text("# B\n")
+    (feat_b / "plan.md").write_text("# B plan\n")
+    (feat_b / "tasks.md").write_text("- [X] T001 do B in src/bar.py\n")
+    commit(root, "spec 002-b: plan + tasks")
+
+    # SPEC-A: its own committed code delta -> OK
+    _complete_tasks(feat_a)
+    commit(root, "check A tasks")
+    assert rt.implement_evidence(root, feat_a)["ok"] is True
+
+    # SPEC-B: no code committed since its baseline -> rejected
+    res_b = rt.implement_evidence(root, feat_b)
+    assert res_b["ok"] is False
+    assert res_b["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path: Path):
+    root, _ = repo(tmp_path)
+    feat = root / "specs" / "099-loose"
+    feat.mkdir(parents=True)
+    (feat / "tasks.md").write_text("- [X] T001 done\n")  # never committed
+    result = rt.implement_evidence(root, feat)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_SPEC_BASELINE"
 
 
 def test_implement_evidence_degrades_without_git(tmp_path: Path):
@@ -109,6 +165,7 @@ def test_prereq_check_implement_review_uses_evidence(tmp_path: Path, monkeypatch
     _complete_tasks(feature)
     (root / "src").mkdir()
     (root / "src" / "app.py").write_text("x = 1\n")
+    commit(root, "implement + complete tasks")
     monkeypatch.chdir(root)
     args = type("Args", (), {"step": "implement-review", "feature_dir": str(feature)})()
     assert rt.cmd_prereq_check(args) == 0

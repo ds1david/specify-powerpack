@@ -85,12 +85,15 @@ python .specify/powerpack/bin/powerpack.py prereq check --step implement-review 
 ```
 
 **Validate:**
-- Exit `0` and JSON `{"ok": true, "step": "implement-review", "reason": "OK", ...}`.
+- Exit `0` and JSON `{"ok": true, "step": "implement-review", "reason": "OK", ...}` —
+  which requires a non-doc change **committed** for this SPEC since its `plan.md`/`tasks.md`.
 - The `prerequisites.json` in use has `"schema_version": 2` and
   `"implement-review": [{"check": "implementation-evidence"}]` — **no** `implement` receipt
   requirement, **no** `checklist-converge` entry.
-- Negative sanity (optional, revert after): uncheck one task in `tasks.md` → expect
-  `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": N}`; re-check it.
+- Negative sanity (optional, revert after):
+  - uncheck one task in `tasks.md` → `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": N}`;
+  - on a throwaway feature dir whose `plan.md`/`tasks.md` are not committed → `NO_SPEC_BASELINE`;
+  - stash the implementation commits → `NO_IMPLEMENTATION_DELTA`.
 
 **Evidence:** the JSON, exit code, and `jq . .specify/powerpack/prerequisites.json`.
 
@@ -253,7 +256,7 @@ ChatGPT Project id ▢ · PR URL ▢ · date ▢ · operator ▢
 
 - [ ] P1–P7 satisfied (or §6 minimal path taken and documented)
 - [ ] S1 readiness: no missing-PowerPack-file failure
-- [ ] S2 prereq: `implementation-evidence` check, `ok:true`, schema 2, no `checklist-converge`
+- [ ] S2 prereq: `implementation-evidence` check, `ok:true` (SPEC-scoped committed delta), schema 2, no `checklist-converge`
 - [ ] S3 convergence resolved to **upstream** `speckit-converge`
 - [ ] S4 quality gate reflects the real delta (not a false `NOT_APPLICABLE`); no `implement_runs` ref
 - [ ] S5 Sol route returns a valid contract; `model-routing.json` stages == `{implement-review}`

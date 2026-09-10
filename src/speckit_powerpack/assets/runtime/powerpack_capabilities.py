@@ -121,36 +121,44 @@ def resolve_feature_dir(root: Path, explicit: str | None = None, *, system: str 
     raise SystemExit("BLOCKED: could not resolve current feature directory; pass --feature-dir.")
 
 
-def _branch_base(root: Path) -> str | None:
-    for ref in ("origin/HEAD", "origin/main", "main", "origin/master", "master"):
-        proc = run(["git", "merge-base", "HEAD", ref], root)
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip()
+def _feature_base_commit(root: Path, feature: Path) -> str | None:
+    """Commit just before this SPEC's implementation era began (mirrors
+    `powerpack_runtime.feature_base_commit`). Anchored on the first commit that
+    introduced the SPEC's plan.md / tasks.md / directory; returns its parent."""
+    try:
+        rel = feature.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+    for anchor in (f"{rel}/plan.md", f"{rel}/tasks.md", rel):
+        proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            continue
+        first = proc.stdout.strip().splitlines()[0]
+        parent = run(["git", "rev-parse", "--verify", "--quiet", f"{first}^"], root)
+        if parent.returncode == 0 and parent.stdout.strip():
+            return parent.stdout.strip()
+        return first
     return None
 
 
-def changed_paths(root: Path) -> list[str]:
-    """Non-runtime files changed for the active feature (working tree + branch delta).
+def changed_paths(root: Path, feature: Path) -> list[str]:
+    """Non-documentation files committed for the active SPEC's era.
 
-    Repository-evidence signal for the quality gate. Mirrors
-    `powerpack_runtime.changed_paths` — the removed `speckit.implement` wrap no
-    longer records an implementation delta, so the gate reads git directly.
-    Returns [] when git is unavailable (gate then treats the change as
-    documentation-only / NOT_APPLICABLE, matching the previous no-receipt behaviour).
+    SPEC-scoped evidence for the quality gate — `git diff <feature-base>..HEAD`,
+    excluding `.specify/powerpack/`. Mirrors
+    `powerpack_runtime.spec_implementation_delta`. Returns [] when git is
+    unavailable or the SPEC has no committed baseline yet (gate then treats the
+    change as documentation-only / NOT_APPLICABLE).
     """
     if run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
         return []
+    base = _feature_base_commit(root, feature)
+    if base is None:
+        return []
     paths: set[str] = set()
-    porcelain = run(["git", "status", "--porcelain", "-z"], root)
-    if porcelain.returncode == 0:
-        for entry in porcelain.stdout.split("\0"):
-            if len(entry) > 3:
-                paths.add(entry[3:])
-    base = _branch_base(root)
-    if base:
-        diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
-        if diff.returncode == 0:
-            paths.update(p for p in diff.stdout.split("\0") if p)
+    diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
+    if diff.returncode == 0:
+        paths.update(p for p in diff.stdout.split("\0") if p)
     return sorted(p for p in paths if p and not p.startswith(".specify/powerpack/"))
 
 
@@ -277,8 +285,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"platform": caps.key, "shell_family": caps.shell_family, "local_script_suffixes": caps.local_script_suffixes, "prerequisite_runner_order": caps.prerequisite_runner_order}))
         return 0
     root = find_root()
-    resolve_feature_dir(root, args.feature_dir, system=args.system)  # validate feature context
-    result = gate_for_project(root, changed_paths(root), system=args.system)
+    feature = resolve_feature_dir(root, args.feature_dir, system=args.system)
+    result = gate_for_project(root, changed_paths(root, feature), system=args.system)
     print(json.dumps(result, ensure_ascii=False))
     if result["status"] == "BLOCKED_CONFIGURATION":
         return 7

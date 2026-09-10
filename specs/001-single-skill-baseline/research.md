@@ -17,23 +17,29 @@ only writer of that receipt.
 state, no marker file, no `.specify/` receipt. So there is no upstream signal to key a
 receipt-style gate on.
 
-**Decision.** Re-base the gate onto **repository evidence**, evaluated live:
+**Decision.** Re-base the gate onto **SPEC-scoped repository evidence**, evaluated live:
 
 1. `FEATURE_DIR/tasks.md` exists, and every task checkbox line (`- [ ]` / `- [x]`) is
-   checked `[X]` — i.e. an implementation pass has been carried through to completion.
-2. A **non-documentation implementation delta** exists for the active SPEC: at least one
-   changed non-doc file since `plan.md` was authored, using the primitives already in
-   `powerpack_runtime.py` (`git_candidate_files`, `workspace_snapshot`, `sha_file`,
-   `is_documentation_only`, `git_head`). This preserves the original intent
-   ("`implement-review` never performs the initial implementation merely to satisfy its own
-   prerequisite" — a real prior implementation must exist) without a PowerPack predecessor
-   command.
+   checked `[X]`.
+2. A **non-documentation change has been committed for this SPEC's era** — the diff from
+   `feature_base_commit` (the parent of the first commit that added the SPEC's
+   `plan.md`/`tasks.md`) to `HEAD`, minus `.specify/powerpack/`, run through
+   `is_documentation_only`. The working tree is **not** consulted.
 
-Implementation shape: `cmd_prereq_check` keeps its interface; for `--step implement-review`
-it calls a new `implement_evidence(root, feature) -> {"ok", "reason", ...}` evaluator
-instead of `evaluate_receipt(..., "implement", ...)`. `default_prerequisites()` and the
-`prerequisites.json` written by `cli.py` no longer contain an `implement` receipt
-requirement for `implement-review` (and drop `checklist-converge` entirely).
+**Revised after PR #15 review (see spec §Clarifications / FR-018a).** The first cut used
+`git merge-base(main, HEAD)` as the base — i.e. the whole branch — plus the working tree.
+That accepted a *different* SPEC's earlier code as evidence for the SPEC under review,
+contradicting the "explicit same-SPEC predecessor" guarantee. Anchoring on the SPEC's own
+base commit fixes that: another SPEC's code committed **before** this SPEC's plan/tasks is
+outside `feature_base_commit..HEAD`. Perfect attribution for interleaved commits is out of
+scope (left to the browserless PR gate, which pins an exact PR + file set).
+
+Implementation shape: `cmd_prereq_check` special-cases `--step implement-review` →
+`implement_evidence(root, feature)`, backed by `feature_base_commit` +
+`spec_implementation_delta`. The same SPEC-scoped delta feeds the capability quality gate
+(`powerpack_runtime` and `powerpack_capabilities`). `default_prerequisites()` and the
+`prerequisites.json` written by `cli.py` drop the `implement` receipt requirement and the
+`checklist-converge` entry.
 
 **Rationale.** Faithful to FR-018 ("satisfiable from an upstream `speckit-implement` run");
 uses only code already present; no shim; the appended-tasks loop in `implement-review`
@@ -49,10 +55,12 @@ grows).
 - *Delete the gate entirely.* Rejected: `implement-review` explicitly must prove an
   explicit prior implementation (its "Mandatory predecessor" and "Completion" sections).
 
-**Edge cases for `contracts/implement-review-prereq.md`:** no `tasks.md` → fail
-`MISSING_TASKS`; some boxes unchecked → fail `TASKS_INCOMPLETE` (report count); boxes all
-checked but only docs changed → fail `NO_IMPLEMENTATION_DELTA`; not a git repo → degrade to
-tasks-only with a `git_unavailable: true` note (do not hard-block CI/offline).
+**Edge cases for `contracts/implement-review-prereq.md`:** no `tasks.md` → `MISSING_TASKS`;
+some boxes unchecked → `TASKS_INCOMPLETE` (report count); the SPEC's own `plan.md`/`tasks.md`
+not committed → `NO_SPEC_BASELINE`; boxes all checked but only docs (or nothing) committed
+since the SPEC base → `NO_IMPLEMENTATION_DELTA`; uncommitted code → invisible (commit first);
+not a git repo → degrade to tasks-only with `git_unavailable: true` (do not hard-block
+CI/offline).
 
 ## D2 — Re-basing `implement-review` convergence (Phase 1 loop)
 

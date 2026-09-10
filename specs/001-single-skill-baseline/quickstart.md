@@ -75,11 +75,16 @@ python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 ```
 
 **Expect:** `{"ok": true, ... "reason": "OK"}`, exit 0 — **without** any
-`powerpack.py implement end` / `state mark implement` ever being run.
+`powerpack.py implement end` / `state mark implement` ever being run, and only because a
+non-doc change was **committed** for this SPEC since its plan/tasks.
 
 Negative checks:
 - Uncheck a task in `tasks.md` → `TASKS_INCOMPLETE`.
-- Fresh SPEC, only docs changed → `NO_IMPLEMENTATION_DELTA`.
+- SPEC whose `plan.md`/`tasks.md` are not committed yet → `NO_SPEC_BASELINE`.
+- Only docs (or nothing) committed since the SPEC base → `NO_IMPLEMENTATION_DELTA`.
+- Code changed but not committed → `NO_IMPLEMENTATION_DELTA` (commit it).
+- Another SPEC's code, this SPEC's `plan.md` committed afterwards → `NO_IMPLEMENTATION_DELTA`
+  for this SPEC.
 - No `tasks.md` → `MISSING_TASKS`.
 
 ## 6. `implement-review` still operational

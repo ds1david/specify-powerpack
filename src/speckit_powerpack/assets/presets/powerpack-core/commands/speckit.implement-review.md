@@ -75,11 +75,17 @@ Run:
 python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 ```
 
-This checks **repository evidence** of a prior implementation for the active SPEC: a
-`tasks.md` whose task checkboxes are all `[X]`, plus a non-documentation change delta on the
-branch/worktree. Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`,
-`NO_IMPLEMENTATION_DELTA`. If it fails, STOP and run upstream `speckit-implement` for this
-SPEC. Evidence from another SPEC's directory never satisfies this prerequisite.
+This checks **repository evidence** of a prior implementation **of the active SPEC**:
+
+- the SPEC's `tasks.md` task checkboxes are all `[X]`; and
+- a non-documentation change has been **committed for this SPEC's era** — the diff from the
+  commit that introduced this SPEC's `plan.md`/`tasks.md` up to `HEAD`.
+
+The working tree is not consulted (the browserless gate already requires
+`HEAD == PR head SHA`). A different SPEC's earlier code change on the same branch does not
+satisfy this. Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE`
+(commit this SPEC's `spec.md`/`plan.md`/`tasks.md` first), `NO_IMPLEMENTATION_DELTA`. If it
+fails, STOP and run upstream `speckit-implement` for this SPEC, then commit.
 
 ## Phase 1 — convergence
 

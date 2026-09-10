@@ -163,38 +163,63 @@ def git_head(root: Path) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
-def _branch_base(root: Path) -> str | None:
-    for ref in ("origin/HEAD", "origin/main", "main", "origin/master", "master"):
-        proc = run(["git", "merge-base", "HEAD", ref], root)
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip()
+def feature_rel(root: Path, feature: Path) -> str | None:
+    try:
+        return feature.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def feature_base_commit(root: Path, feature: Path) -> str | None:
+    """The commit just before this SPEC's implementation era began.
+
+    Anchored on the first commit that introduced the SPEC's `plan.md` (written by
+    `/speckit-plan`, before any implementation), falling back to `tasks.md` then
+    the `specs/<feature>/` directory. Returns that commit's PARENT — or the
+    anchor commit itself when it is the repository root. `None` when no anchor is
+    committed yet (the SPEC's artifacts must be committed before `implement-review`).
+    """
+    rel = feature_rel(root, feature)
+    if rel is None:
+        return None
+    for anchor in (f"{rel}/plan.md", f"{rel}/tasks.md", rel):
+        proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            continue
+        first = proc.stdout.strip().splitlines()[0]
+        parent = run(["git", "rev-parse", "--verify", "--quiet", f"{first}^"], root)
+        if parent.returncode == 0 and parent.stdout.strip():
+            return parent.stdout.strip()
+        return first  # root commit: use it as the base (delta = strictly after it)
     return None
 
 
-def changed_paths(root: Path) -> tuple[bool, list[str]]:
-    """Return (git_available, changed non-runtime files) for the active feature.
+def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]]:
+    """('ok' | 'no_git' | 'no_baseline', non-documentation paths changed for THIS
+    SPEC's era).
 
-    Combines the working tree (`git status --porcelain`) with the branch delta
-    (`git diff <base> HEAD`). Excludes `.specify/powerpack/` so PowerPack's own
-    state never counts as an implementation delta. This is the repository-evidence
-    signal that replaced the removed `speckit.implement` delta-capture receipt.
+    Scoped to the active SPEC via `feature_base_commit`: only changes **committed
+    since this SPEC's plan/tasks were introduced** count, so a different SPEC's
+    earlier code change on the same branch (or a re-used branch) is not accepted
+    as this SPEC's implementation evidence. The working tree is deliberately not
+    consulted — `implement-review` reviews a committed snapshot (its browserless
+    gate requires `HEAD == PR head SHA`). `.specify/powerpack/` is excluded so
+    PowerPack's own state never counts.
     """
     if run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
-        return False, []
-    paths: set[str] = set()
-    porcelain = run(["git", "status", "--porcelain", "-z"], root)
-    if porcelain.returncode == 0:
-        for entry in porcelain.stdout.split("\0"):
-            if len(entry) > 3:
-                paths.add(entry[3:])
-    base = _branch_base(root)
-    if base:
-        diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
-        if diff.returncode == 0:
-            paths.update(p for p in diff.stdout.split("\0") if p)
-    return True, sorted(
-        p for p in paths if p and not p.startswith(".specify/powerpack/")
+        return "no_git", []
+    base = feature_base_commit(root, feature)
+    if base is None:
+        return "no_baseline", []
+    diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
+    if diff.returncode != 0:
+        return "no_baseline", []
+    paths = sorted(
+        p
+        for p in diff.stdout.split("\0")
+        if p and not p.startswith(".specify/powerpack/")
     )
+    return "ok", paths
 
 
 def task_checkbox_counts(path: Path) -> tuple[int, int]:
@@ -220,9 +245,12 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
     """Repository-evidence prerequisite for `implement-review` (replaces the
     removed PowerPack `implement` completion receipt).
 
-    An explicit prior implementation is proven by: a `tasks.md` whose task
-    checkboxes are all checked, plus a non-documentation change delta on the
-    branch/worktree. When git is unavailable the delta check is skipped.
+    An explicit prior implementation **of the active SPEC** is proven by:
+    (1) a `tasks.md` whose task checkboxes are all checked; and
+    (2) a non-documentation change committed since this SPEC's plan/tasks were
+        introduced (`spec_implementation_delta`) — scoped to the SPEC so another
+        SPEC's earlier code change on the same branch does not satisfy it.
+    When git is unavailable only (1) is checked (degraded, flagged).
     """
     tasks = feature / "tasks.md"
     if not tasks.is_file():
@@ -236,19 +264,27 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
             "unchecked": unchecked,
             "total": total,
         }
-    git_ok, changed = changed_paths(root)
-    if not git_ok:
+    status, changed = spec_implementation_delta(root, feature)
+    if status == "no_git":
         return {
             "ok": True,
             "step": "implement-review",
             "reason": "OK",
             "git_unavailable": True,
         }
+    if status == "no_baseline":
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "NO_SPEC_BASELINE",
+            "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review",
+        }
     if is_documentation_only(changed):
         return {
             "ok": False,
             "step": "implement-review",
             "reason": "NO_IMPLEMENTATION_DELTA",
+            "detail": "no non-documentation change committed for this SPEC since its plan/tasks",
         }
     return {"ok": True, "step": "implement-review", "reason": "OK"}
 
@@ -489,7 +525,7 @@ def gate_for_project(root: Path, files: list[str]) -> dict[str, Any]:
 def cmd_gate_detect(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, changed_paths(root)[1])
+    result = gate_for_project(root, spec_implementation_delta(root, feature)[1])
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["status"] != "BLOCKED_CONFIGURATION" else 7
 
@@ -497,7 +533,7 @@ def cmd_gate_detect(args: argparse.Namespace) -> int:
 def cmd_gate_run(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, changed_paths(root)[1])
+    result = gate_for_project(root, spec_implementation_delta(root, feature)[1])
     print(json.dumps(result, ensure_ascii=False))
     if result["status"] == "NOT_APPLICABLE":
         return 0
