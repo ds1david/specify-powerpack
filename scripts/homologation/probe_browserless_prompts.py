@@ -13,8 +13,8 @@ review uses; no separate flow.
 
 The three prompts:
   1. name + mission of this project (<=100 words)   [uses the Project context]
-  2. list all my GitHub repositories                 [uses the GitHub connector]
-  3. list only the files changed in PR #15           [uses the GitHub connector]
+  2. list all my GitHub repositories                 [uses the Project context + GitHub connector]
+  3. list only the files changed in PR #15           [uses the Project context + GitHub connector]
 
 WARNING: this spends Codex/ChatGPT tokens on your plan.
 """
@@ -144,6 +144,16 @@ def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions:
                 f"HTTP {exc.code} from {RESPONSES_URL}: Cloudflare bot-mitigation interstitial "
                 "(not a real auth error). Retry later."
             ) from exc
+        if exc.code == 429 or "usage_limit" in detail.lower():
+            secs = 0
+            try:
+                secs = int(json.loads(detail).get("error", {}).get("resets_in_seconds") or 0)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+            raise ChatGPTProjectError(
+                "usage limit reached — no tokens were spent on this turn"
+                + (f"; resets in ~{secs}s" if secs else "")
+            ) from exc
         raise ChatGPTProjectError(f"HTTP {exc.code} from {RESPONSES_URL}: {detail[:1200]}") from exc
     except urllib.error.URLError as exc:
         raise ChatGPTProjectError(f"cannot reach {RESPONSES_URL}: {exc}") from exc
@@ -217,8 +227,13 @@ def main() -> int:
             _log("browserless", f"GitHub connector discovery failed (continuing): {exc}")
 
     instructions = (
-        "You are answering a short connectivity probe for Specify PowerPack. "
-        "Treat the ChatGPT Project context below as background memory. "
+        "You are answering a short connectivity probe for Specify PowerPack.\n"
+        "BOTH of the following are available to you for EVERY question below:\n"
+        "  (a) the serialized ChatGPT Project context (read-only background memory), and\n"
+        "  (b) the installed GitHub App / connector.\n"
+        "For questions 2 and 3 you MUST use the GitHub connector to get live data — do not "
+        "answer them from the Project context or from memory, and do not invent repository "
+        "or file names. Follow pagination until each list is complete.\n"
         "Do not run shell commands. Do not use web search. Do not mutate anything.\n\n"
         f"{github_hint}\n\n"
         "CHATGPT PROJECT CONTEXT (read-only):\n"
@@ -226,10 +241,12 @@ def main() -> int:
     )
 
     questions = [
-        "1) Qual é o nome deste projeto e descreva a missão do projeto em no máximo 100 palavras?",
-        "2) Liste todos os meus repositórios no GitHub.",
+        "1) Qual é o nome deste projeto e descreva a missão do projeto em no máximo 100 palavras? "
+        "(use o contexto do Project + o repositório via GitHub connector).",
+        "2) Liste todos os meus repositórios no GitHub. "
+        "(use o contexto do Project como pano de fundo E o GitHub connector para os dados reais).",
         f"3) Liste apenas os arquivos que foram modificados no pull request #{args.pr} do repositório {repo}. "
-        "Siga a paginação até a lista ficar completa.",
+        "(use o contexto do Project como pano de fundo E o GitHub connector; siga a paginação até a lista ficar completa).",
     ]
 
     turns = questions if args.separate else ["\n\n".join(questions)]
