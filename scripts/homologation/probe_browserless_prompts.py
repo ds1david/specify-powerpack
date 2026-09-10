@@ -276,7 +276,9 @@ def main() -> int:
 
     out = ROOT / "specs" / "001-single-skill-baseline" / "T025-evidence" / "probe-browserless-prompts.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"\n# report: {out.relative_to(ROOT)}", file=sys.stderr)
+    n_curl = sum(1 for ln in Path(http_log).read_text("utf-8").splitlines() if ln.startswith("curl "))
+    print(f"\n# report:     {out}", file=sys.stderr)
+    print(f"# curl trace: {http_log}  ({n_curl} requests)", file=sys.stderr)
     print("# check the Codex history at https://chatgpt.com/codex "
           f"(and the Project at {project.url})", file=sys.stderr)
     return exit_code
