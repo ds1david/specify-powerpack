@@ -568,6 +568,7 @@ def cmd_review_run(args: argparse.Namespace) -> None:
             max_project_conversations=args.max_conversations,
             locale=args.locale,
             verbose=verbose,
+            ephemeral=not args.keep_session,
         )
     except (BrowserlessReviewError, ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise PowerPackError(str(exc)) from exc
@@ -655,6 +656,12 @@ def build_parser() -> argparse.ArgumentParser:
     review_run.add_argument("--max-conversations", type=int, default=2)
     review_run.add_argument("--locale", default="pt-BR")
     review_run.add_argument("--quiet", action="store_true", help="suppress the per-turn progress stream on stderr")
+    review_run.add_argument(
+        "--keep-session",
+        action="store_true",
+        help="do NOT pass codex exec --ephemeral: persist the turn to ~/.codex/sessions/ "
+        "(and the Codex web history). Against DECISIONS_AND_TRADEOFFS.md §8 — for audit-trail experiments.",
+    )
     review_run.set_defaults(func=cmd_review_run)
     return parser
 

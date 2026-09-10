@@ -29,6 +29,7 @@ def run_codex_exec(
     timeout: int,
     effort: str = "xhigh",
     progress: ProgressFn | None = None,
+    ephemeral: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run one browserless Codex turn and expose its JSONL lifecycle.
 
@@ -38,6 +39,11 @@ def run_codex_exec(
     With ``progress`` set, the turn is streamed: stdout is read line by line and
     the callback is invoked per event plus a periodic heartbeat, so a long
     ``xhigh`` review is observable instead of a silent multi-minute hang.
+
+    ``ephemeral`` (default true, DECISIONS_AND_TRADEOFFS.md §8) keeps the turn
+    un-persisted. Pass ``ephemeral=False`` to write a local rollout under
+    `~/.codex/sessions/` (and let it surface in the Codex web history) — an
+    audit-trail experiment, at the state-leakage cost §8 accepts against.
     """
     codex = shutil.which("codex")
     if not codex:
@@ -46,7 +52,6 @@ def run_codex_exec(
         codex,
         "exec",
         "--json",
-        "--ephemeral",
         "--sandbox",
         "read-only",
         "-C",
@@ -67,6 +72,8 @@ def run_codex_exec(
         "--disable",
         "memories",
     ]
+    if ephemeral:
+        command.append("--ephemeral")
     if model.strip():
         command.extend(["-m", model.strip()])
     if effort.strip():

@@ -347,6 +347,7 @@ def run_browserless_code_review(
     max_project_conversations: int = 2,
     locale: str = "pt-BR",
     verbose: bool = False,
+    ephemeral: bool = True,
 ) -> BrowserlessReviewResult:
     project_path = project_path.resolve()
     if not project_path.is_dir():
@@ -382,6 +383,7 @@ def run_browserless_code_review(
         prompt=_snapshot_prompt(target, github.connector_id),
         timeout=min(timeout, 300),
         progress=_progress_for("snapshot"),
+        ephemeral=ephemeral,
     )
     if snapshot_turn.returncode != 0:
         raise BrowserlessReviewError((snapshot_turn.stderr or snapshot_turn.stdout or "snapshot turn failed").strip())
@@ -430,6 +432,7 @@ def run_browserless_code_review(
         ),
         timeout=timeout,
         progress=_progress_for("review"),
+        ephemeral=ephemeral,
     )
     if review_turn.returncode != 0:
         raise BrowserlessReviewError((review_turn.stderr or review_turn.stdout or "review turn failed").strip())

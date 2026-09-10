@@ -25,12 +25,14 @@ PROJECT=""
 TIMEOUT=3300
 EFFORT=""   # empty = the CLI default (xhigh, the SPEC reviewer contract)
 MODEL=""
+KEEP_SESSION=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project) PROJECT="${2:?}"; shift 2 ;;
     --timeout) TIMEOUT="${2:?}"; shift 2 ;;
     --effort)  EFFORT="${2:?}"; shift 2 ;;   # minimal|low|medium|high|xhigh — lower = fewer tokens
     --model)   MODEL="${2:?}"; shift 2 ;;
+    --keep-session) KEEP_SESSION=1; shift ;; # persist the codex turn (Codex web history); against Decision §8
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -106,6 +108,7 @@ RUN_ARGS=(--path "$WT" --pr "$PR"
           --output "$WT/review.json" --timeout "$TIMEOUT")
 [ -n "$EFFORT" ] && RUN_ARGS+=(--effort "$EFFORT")
 [ -n "$MODEL" ]  && RUN_ARGS+=(--model "$MODEL")
+[ "$KEEP_SESSION" = 1 ] && RUN_ARGS+=(--keep-session)
 
 say "S6 browserless deep review — PR #$PR, timeout ${TIMEOUT}s, effort ${EFFORT:-xhigh}"
 echo "  Two Codex turns (snapshot + deep review). Each fetched file goes through the model"

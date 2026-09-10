@@ -40,6 +40,25 @@ What each piece contributes:
 
 "**Browserless**" means no Chrome / Playwright / CDP driving a web UI — it is all API + MCP.
 
+### History — why nothing shows up in the ChatGPT web UI
+
+Early experimental branches (`feat/homologation-harness`) reviewed via
+`POST https://chatgpt.com/backend-api/codex/responses` (`codex_response()` in the provider)
+— a chatgpt.com-side call, so those runs *did* appear as conversations in the web UI. That
+helper was removed (`daada8c`) because the REST path **could not give the reviewer the
+GitHub App / `codex_apps` MCP tools** it needs to read the PR. The flow moved to
+`codex exec`, which can — and it runs `--ephemeral` (`DECISIONS_AND_TRADEOFFS.md §8`), so
+the turn is not persisted and does not surface in the Codex web history.
+
+`specify-powerpack review run --keep-session` (or `homologate.sh … --keep-session`) drops
+`--ephemeral`: the turn is written to `~/.codex/sessions/` and shows in the Codex web
+history. It is an audit-trail experiment, against §8's state-leakage stance — do not make it
+the default without amending the SPEC.
+
+The ChatGPT backend *is* still contacted on every run, just for reads: `list_projects`
+(what `review project discover` shows), `build_project_context` (Project metadata + 2 recent
+conversations), and GitHub connector discovery.
+
 ### Why `fetch_file` and not a `git clone`
 
 The reviewer never clones. Every code read goes through the GitHub App, one file at a time
