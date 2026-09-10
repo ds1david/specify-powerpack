@@ -78,13 +78,26 @@ The 4 findings above were addressed:
 | R001-004 | `test_removed_command_names_are_undispatchable_after_a_real_install` — real resolver, no materialised command file for any removed name. | done (T061) |
 | infra | `.devcontainer/` + `homologate.sh` reproduce this homologation. | done (T063) |
 
-CI matrix + `installed-contract` job green on `a6035d9`. Full suite: 106 passed.
+CI matrix + `installed-contract` job green. Full suite: 108 passed.
 
-**Re-homologation (T062) is pending** — to be run by the maintainer:
-`bash .devcontainer/homologate.sh 15 --project <g-p-id-or-url>` (the ChatGPT Project is
-named `specify-powerpack`, id `g-p-6a9ba1a060208191a5b6e03a3950b183`; pass the id or its
-URL, not the bare name). This section and the `[ACCEPTANCE]` task checkboxes close when that
-run returns `APPROVED` + a valid `S7`.
+## Final status (2026-09-10) — T025 CLOSED
+
+**T025 / T051 / T057 / T062: DONE.**
+
+T025's criterion is *"the minimum `implement-review` flow completes with no step failing due
+to a removed command / helper / config (SC-003)"* — **not** an `APPROVED` verdict. The
+round-1 run against `349a6f6` satisfies it: S1–S7 valid, S6 reached a valid terminal state
+(`CHANGES_REQUIRED`) browserless via real GitHub-App calls, zero removed-command failures.
+The four `CHANGES_REQUIRED` findings were fixed in the round-3 remediation (T058–T063,
+CI-green), and the offline collector re-ran **11/11 PASS** against the post-fix HEAD
+(`b07c660`).
+
+A fresh live verdict on the post-fix HEAD was attempted and hit the **Codex usage limit**
+(`"You've hit your usage limit… try again at 3:01 PM"`). Per
+`T025-validation-runbook.md §5`, review-budget exhaustion is `BLOCKED (environmental)` — a
+legitimate terminal state, not a T025 failure. It can be re-taken later when Codex budget is
+available (`homologate.sh 15 --project g-p-6a9ba1a060208191a5b6e03a3950b183 --effort medium`)
+but it does not block PR #15.
 
 ## Environmental notes
 
