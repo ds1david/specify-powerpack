@@ -20,7 +20,7 @@ STOP and run upstream `speckit-implement` (hyphen — the upstream skill), not t
 |---|---|
 | `FEATURE_DIR` | `--feature-dir` or `resolve_feature_dir()` (unchanged) |
 | `tasks.md` existence | `FEATURE_DIR/tasks.md` (working tree) |
-| `tasks.md` checkbox state | `git show HEAD:<FEATURE_DIR>/tasks.md` — the committed blob, never the working tree (working tree used only when git is unavailable) |
+| `tasks.md` checkbox state | `git show HEAD:<FEATURE_DIR>/tasks.md` — the committed blob, never the working tree (working tree used only when git is unavailable). Only **implementation** checkboxes count: `count_implementation_checkboxes()` skips any checkbox line tagged `[ACCEPTANCE]` (case-insensitive) — post-review homologation that cannot precede `implement-review`. |
 | SPEC base commit | `feature_base_commit(root, feature)` — the first commit that added `FEATURE_DIR/plan.md` (fallback `tasks.md`, then `FEATURE_DIR/`). The delta is computed **strictly after** this commit, so its own tree is the planning baseline. |
 | SPEC delta | `git diff --name-only <SPEC base>..HEAD`, minus `.specify/powerpack/` |
 | doc classification | existing `is_documentation_only()` |
@@ -34,15 +34,17 @@ for `tasks.md` *existence* (step 1) and, when git is unavailable, for checkbox s
 
 1. If `FEATURE_DIR/tasks.md` is missing from the working tree →
    `{"ok": false, "reason": "MISSING_TASKS"}`.
-2. `git rev-parse --git-dir` fails → skip to the degraded path: parse task checkboxes from
-   the working-tree `tasks.md`; any unchecked (or none present) →
+2. `git rev-parse --git-dir` fails → skip to the degraded path: parse *implementation*
+   checkboxes from the working-tree `tasks.md` (`[ACCEPTANCE]` lines skipped); any unchecked
+   (or none present) →
    `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`, otherwise
    `{"ok": true, "reason": "OK", "git_unavailable": true}`. Steps 3–6 are git-only.
 3. `git show HEAD:<FEATURE_DIR>/tasks.md` does not resolve (the SPEC's own `tasks.md` is not
    committed yet) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
-4. Parse task checkboxes from that committed blob (`- \[( |x|X)\] ` outside code fences).
-   If any unchecked (or none present) →
-   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`.
+4. Parse *implementation* checkboxes from that committed blob (`- \[( |x|X)\] ` outside code
+   fences, skipping any line containing `[ACCEPTANCE]`). If any unchecked (or none present) →
+   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}` — counts
+   are over the implementation set only.
 5. `feature_base_commit` is `None` (no commit introduced the SPEC's `plan.md`/`tasks.md`/
    directory) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
 6. Compute the **SPEC delta** — `git diff <SPEC base>..HEAD`, non-`.specify/powerpack/`,
@@ -97,7 +99,12 @@ relevant `unchecked` / `total` / `git_unavailable`. Exit `0` when `ok`, else `9`
   interleave on one branch can still cross-satisfy — that is an unusual workflow and is left
   to the reviewer / the browserless PR gate, which pins an exact PR + changed-file set.
 - Detecting *who* implemented (agent vs human) — only that a real non-doc change was
-  **committed strictly after this SPEC's plan/tasks** and its committed tasks are complete.
+  **committed strictly after this SPEC's plan/tasks** and its committed *implementation*
+  tasks are complete.
+- Gating on homologation. A `[ACCEPTANCE]`-tagged task (e.g. the T025 live browserless
+  round-trip) is validated *after* `implement-review` and is not counted here; its evidence
+  is a PR-review artefact (`T025-evidence/`), not a runtime signal. Abusing the tag to skip
+  real implementation work is a review concern, like any dishonest checkbox.
 - Consulting the working tree, beyond checking that `tasks.md` exists. Checkbox state and
   the implementation delta both come from `HEAD`; uncommitted work — including locally
   ticked checkboxes — is invisible to this gate by design. (Exception: when git is

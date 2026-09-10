@@ -123,6 +123,41 @@ def test_implement_evidence_ok_with_committed_code_delta(tmp_path: Path):
     assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
 
 
+def test_implement_evidence_ignores_acceptance_tasks(tmp_path: Path):
+    """R001-002 (round 3): `[ACCEPTANCE]`-tagged tasks are post-review homologation
+    and must not gate the prerequisite that proves the implementation — otherwise
+    the SPEC's own HEAD can never pass its own gate (they can only be done after
+    `implement-review` runs)."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text(
+        "- [X] T001 build it in src/app.py\n"
+        "- [ ] T099 [ACCEPTANCE] live homologation round-trip — runs after implement-review\n"
+    )
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement SPEC-001; acceptance task still open by design")
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
+def test_implement_evidence_still_blocks_on_unchecked_implementation_task(tmp_path: Path):
+    """The `[ACCEPTANCE]` exemption is narrow: a plain unchecked task still blocks."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text(
+        "- [X] T001 done\n"
+        "- [ ] T002 real implementation work, not tagged\n"
+        "- [ ] T099 [ACCEPTANCE] homologation\n"
+    )
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "partial implementation")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1  # T002 only; the [ACCEPTANCE] line is not counted
+    assert result["total"] == 2
+
+
 def test_implement_evidence_ignores_uncommitted_code(tmp_path: Path):
     """A committed snapshot is required — `implement-review` reviews HEAD."""
     root, feature = repo(tmp_path)

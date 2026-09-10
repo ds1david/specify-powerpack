@@ -83,6 +83,9 @@ tree.
 Negative checks:
 - Uncheck a task in `tasks.md` **and commit it** → `TASKS_INCOMPLETE`. (Unchecking without
   committing is invisible — the gate reads `git show HEAD:<feature>/tasks.md`.)
+- Add `[ACCEPTANCE]` to that unchecked task's line and commit → back to `OK`: `[ACCEPTANCE]`
+  tasks are post-review homologation and are not counted. A plain unchecked task still
+  blocks.
 - SPEC whose `plan.md`/`tasks.md` are not committed yet → `NO_SPEC_BASELINE`.
 - Only docs (or nothing) committed *strictly after* the SPEC's introduction commit →
   `NO_IMPLEMENTATION_DELTA`. Non-doc changes living **inside** that introduction commit are

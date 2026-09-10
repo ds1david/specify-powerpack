@@ -19,9 +19,11 @@ receipt-style gate on.
 
 **Decision.** Re-base the gate onto **SPEC-scoped repository evidence**, evaluated live:
 
-1. The SPEC's **committed** `tasks.md` (`git show HEAD:<FEATURE_DIR>/tasks.md`) has every
-   task checkbox line (`- [ ]` / `- [x]`) checked `[X]`. The working tree is read only to
-   confirm the file exists, and — when git is unavailable — for a degraded checkbox scan.
+1. Every **implementation** task checkbox in the SPEC's **committed** `tasks.md`
+   (`git show HEAD:<FEATURE_DIR>/tasks.md`) is `[X]` — `count_implementation_checkboxes`
+   skips any checkbox line tagged `[ACCEPTANCE]` (post-review homologation). The working
+   tree is read only to confirm the file exists, and — when git is unavailable — for a
+   degraded checkbox scan.
 2. A **non-documentation change has been committed strictly after this SPEC's plan/tasks
    were introduced** — the diff from `feature_base_commit` (the first commit that added the
    SPEC's `plan.md`/`tasks.md`, the anchor itself) to `HEAD`, minus `.specify/powerpack/`,
@@ -43,6 +45,15 @@ the working-tree `tasks.md`, so locally ticked-but-uncommitted boxes passed — 
 state is now read from the committed blob. Regression tests:
 `test_implement_evidence_rejects_code_bundled_into_spec_introduction_commit` and
 `test_implement_evidence_reads_task_checkboxes_from_head_not_working_tree`.
+
+**Revised again — PR #15 review round 3 (2026-09-10, after the live homologation).** The
+live T025 round-trip's deep review flagged that requiring *every* checkbox `[X]` made the
+SPEC's own HEAD unable to pass its own prerequisite: T025/T051/T057 are homologation tasks
+that only run *after* `implement-review`. Fix: a checkbox line tagged `[ACCEPTANCE]` is
+excluded from the count (`count_implementation_checkboxes`). Homologation evidence moves to
+PR review over the committed `T025-evidence/`. Regression tests:
+`test_implement_evidence_ignores_acceptance_tasks` and
+`test_implement_evidence_still_blocks_on_unchecked_implementation_task`.
 
 Implementation shape: `cmd_prereq_check` special-cases `--step implement-review` →
 `implement_evidence(root, feature)`, backed by `feature_base_commit` +

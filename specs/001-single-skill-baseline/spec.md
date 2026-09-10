@@ -53,6 +53,28 @@ defective. Removed capabilities may be redesigned and reintroduced later through
   (bundled-code-in-introduction-commit → `NO_IMPLEMENTATION_DELTA`; committed `[ ]` +
   working-tree `[X]` → `TASKS_INCOMPLETE`).
 
+### PR #15 review — round 3 (2026-09-10, live homologation)
+
+- The T025/T051 live browserless round-trip was executed against the PR head (evidence:
+  `T025-evidence/`). The mechanism passed (S1–S7, real Codex → ChatGPT Project → GitHub,
+  no step failed due to a removed command). The deep review returned `CHANGES_REQUIRED`.
+- Finding (HIGH, self-referential gate): `implement_evidence` required **every** `tasks.md`
+  checkbox `[X]`, including the T025/T051/T057 homologation tasks — which can only be done
+  *after* `implement-review` runs. The SPEC's own committed HEAD could therefore never pass
+  its own prerequisite. → Resolution: FR-018a below — a checkbox line tagged `[ACCEPTANCE]`
+  is implementation-complete work validated *after* `implement-review` and is **excluded**
+  from the prerequisite's checkbox count (`count_implementation_checkboxes`). Homologation
+  evidence is then a PR-review concern (the committed `T025-evidence/` + `RESULT.md`), not
+  a runtime gate. Regression test: an unchecked `[ACCEPTANCE]` task + all implementation
+  boxes `[X]` + a committed code delta → `{"ok": true}`.
+- Finding (HIGH): a normal `update` of an already-installed project never removed retired
+  removed-command runtimes/config. → Resolution: FR-003 / FR-012 below — `install_support`
+  prunes obsolete PowerPack-owned paths and removed-command routing/prerequisite keys on
+  every refresh (not a compatibility shim; dead-file removal).
+- Findings (MEDIUM ×2): `test_baseline_contract.py` proved the exact-set and
+  removed-command-unknown properties only against source/argparse. → Resolution: FR-011 /
+  FR-014 — the guard also exercises the real installed command namespace and dispatcher.
+
 ## Terminology *(reconciliation — mandatory reading)*
 
 The previous draft of this spec used the word "skill" throughout. The repository does not
@@ -219,7 +241,12 @@ the suite; the baseline contract test must fail.
 - **FR-003**: Every removed command MUST be removed completely: preset `provides` entry,
   command file, command-specific prompts/templates/manifests/metadata, command-specific
   runtime modules, command-specific configuration files and keys, command-specific scripts
-  and assets, dedicated tests and fixtures, and operational documentation.
+  and assets, dedicated tests and fixtures, and operational documentation. *(Resolved round
+  3, 2026-09-10)* This MUST also hold for an **already-installed project after a normal
+  `update`/refresh** — `install_support` MUST prune obsolete PowerPack-owned paths and
+  removed-command config keys from the target, not merely stop copying them. This is
+  dead-file removal, not a compatibility migration shim (which line "no migration shim is
+  provided" in Scope still forbids).
 - **FR-004**: After the cleanup, every discovery mechanism PowerPack controls (preset
   registration, manifest, filesystem scan, metadata scan, command generator, or equivalent)
   MUST expose exactly one PowerPack-provided command: `speckit.implement-review`.
@@ -253,7 +280,10 @@ the suite; the baseline contract test must fail.
   PowerPack-provided command namespace, not membership. `registered_powerpack_commands ==
   {"speckit.implement-review"}` and `installed_powerpack_commands ==
   {"speckit.implement-review"}` MUST both hold. A test of the form
-  `"speckit.implement-review" in commands` is insufficient on its own.
+  `"speckit.implement-review" in commands` is insufficient on its own. *(Resolved round 3)*
+  The `installed_powerpack_commands` assertion MUST enumerate the command namespace
+  materialised by a real installation composition (preset boundary), not only re-check the
+  source preset.
 - **FR-012**: Feature flags, aliases, mappings, constants, paths, environment variables,
   registry entries, and routing/prerequisite map entries used exclusively by removed
   commands MUST be removed. This includes removed-command keys in
@@ -261,7 +291,10 @@ the suite; the baseline contract test must fail.
   prerequisite maps. (Whole config *files* dedicated to a removed command — e.g.
   `config/default-full-cycle.json`, `config/default-technical-debt.json` — are covered by
   FR-003.) The `implement-review` prerequisite entry MUST be re-based onto an upstream
-  `speckit-implement` signal (FR-018), not deleted.
+  `speckit-implement` signal (FR-018), not deleted. *(Resolved round 3)* On a normal
+  `update`/refresh, `install_support` MUST also strip these removed-command keys from an
+  existing target's `model-routing.json` / `prerequisites.json` even without
+  `--reset-config`, while preserving keys and files that are not removed-command-specific.
 - **FR-013**: Generic infrastructure MUST remain when required by `implement-review`, the
   installation lifecycle, cross-agent support, shared tests, or the reusable PowerPack core.
   The `powerpack-tools` extension and `bin/powerpack.py` runtime remain in scope only for
@@ -273,7 +306,10 @@ the suite; the baseline contract test must fail.
   compatibility layer is required or permitted. Compliance MUST be verified behaviourally,
   not only by textual search: an automated check MUST invoke a removed command name against a
   clean install and assert unknown-command behaviour at the command registration/dispatch
-  layer (not merely that the string is absent from source).
+  layer (not merely that the string is absent from source). *(Resolved round 3)* This check
+  MUST drive the real resolver over a materialised install (guarded to skip only when the
+  `specify` binary is absent), covering at least `speckit.implement`, `speckit.full-cycle`
+  and one `speckit.debt-*`, and assert no `implement-review` side effect.
 - **FR-015**: Where technically applicable, direct invocation of a removed command name MUST
   behave as invocation of an unknown/nonexistent command. The system MUST NOT silently
   redirect the invocation to `implement-review` or any other capability.
@@ -296,19 +332,24 @@ the suite; the baseline contract test must fail.
 - **FR-018a** *(SPEC-scoped predecessor evidence — resolved after PR review, 2026-09-09)*:
   The re-based prerequisite MUST prove an explicit prior implementation **of the active
   SPEC**, not merely "some non-documentation change exists on the branch". It MUST be
-  satisfied only when (i) the SPEC's **committed** `tasks.md` (read from `HEAD`, not the
-  working tree) has all task checkboxes `[X]`, and (ii) a non-documentation change has been
-  **committed strictly after** the commit that introduced the SPEC's `plan.md`/`tasks.md`,
-  up to `HEAD`. Neither a different SPEC's earlier code change on the same (or a re-used)
-  branch nor a non-documentation change bundled into the SPEC's own introduction commit
-  MUST satisfy it. The working tree MUST NOT be consulted for checkbox state or the
+  satisfied only when (i) every **implementation** task checkbox in the SPEC's **committed**
+  `tasks.md` (read from `HEAD`, not the working tree) is `[X]`, and (ii) a non-documentation
+  change has been **committed strictly after** the commit that introduced the SPEC's
+  `plan.md`/`tasks.md`, up to `HEAD`. Neither a different SPEC's earlier code change on the
+  same (or a re-used) branch nor a non-documentation change bundled into the SPEC's own
+  introduction commit MUST satisfy it. A checkbox line tagged **`[ACCEPTANCE]`** is
+  implementation-complete work whose validation necessarily runs *after* `implement-review`
+  (homologation); it MUST be excluded from the checkbox count in (i), and homologation is
+  then proven by PR review over the committed evidence, not by this runtime gate. The
+  working tree MUST NOT be consulted for checkbox state or the
   implementation delta (the browserless gate already pins `HEAD == PR head SHA`); it is
   read only to confirm `tasks.md` exists, and — when git is unavailable — for the degraded
   checkbox scan.
   Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE` (the SPEC's own
   artifacts are not committed yet), `NO_IMPLEMENTATION_DELTA`. Git unavailable ⇒ degrade to
-  tasks-only, flagged `git_unavailable`. At least one automated test MUST encode the
-  cross-SPEC rejection (SPEC-A code must not satisfy SPEC-B's gate).
+  tasks-only, flagged `git_unavailable`. Automated tests MUST encode the cross-SPEC
+  rejection (SPEC-A code must not satisfy SPEC-B's gate) and the `[ACCEPTANCE]` exemption
+  (an unchecked `[ACCEPTANCE]` task must not block; a plain unchecked task still does).
 - **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to
   produce the same `powerpack-core` command inventory — `{"speckit.implement-review"}` — for
   the canonical integration `codex` (`DEFAULT_INTEGRATION` in `cli.py`). A platform-specific

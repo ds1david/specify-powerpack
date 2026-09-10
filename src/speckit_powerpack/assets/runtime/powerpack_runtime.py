@@ -239,9 +239,18 @@ def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]
     return "ok", paths
 
 
-def count_task_checkboxes(text: str) -> tuple[int, int]:
+ACCEPTANCE_TAG = re.compile(r"\[ACCEPTANCE\]", re.IGNORECASE)
+
+
+def count_task_checkboxes(text: str, *, skip_acceptance: bool = False) -> tuple[int, int]:
     """Return (total, unchecked) GitHub task checkboxes in markdown text,
-    ignoring anything inside fenced code blocks."""
+    ignoring anything inside fenced code blocks.
+
+    With ``skip_acceptance`` set, checkbox lines carrying an ``[ACCEPTANCE]`` tag
+    are excluded — those are implementation-complete tasks that are *validated
+    after* `implement-review` runs (homologation), so they must not gate the
+    prerequisite that proves the implementation itself (FR-018a).
+    """
     total = unchecked = 0
     in_fence = False
     for line in text.splitlines():
@@ -253,15 +262,18 @@ def count_task_checkboxes(text: str) -> tuple[int, int]:
             continue
         match = re.match(r"- \[([ xX])\]\s", stripped)
         if match:
+            if skip_acceptance and ACCEPTANCE_TAG.search(stripped):
+                continue
             total += 1
             if match.group(1) == " ":
                 unchecked += 1
     return total, unchecked
 
 
-def task_checkbox_counts(path: Path) -> tuple[int, int]:
-    """Return (total, unchecked) task checkboxes in a markdown file on disk."""
-    return count_task_checkboxes(path.read_text(encoding="utf-8", errors="replace"))
+def count_implementation_checkboxes(text: str) -> tuple[int, int]:
+    """(total, unchecked) task checkboxes that represent *implementation* work —
+    i.e. every checkbox except `[ACCEPTANCE]`-tagged post-review homologation."""
+    return count_task_checkboxes(text, skip_acceptance=True)
 
 
 def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
@@ -269,7 +281,9 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
     removed PowerPack `implement` completion receipt).
 
     An explicit prior implementation **of the active SPEC** is proven by:
-    (1) the SPEC's committed `tasks.md` has every task checkbox `[X]`; and
+    (1) the SPEC's committed `tasks.md` has every *implementation* task checkbox
+        `[X]` — `[ACCEPTANCE]`-tagged tasks are post-review homologation and are
+        excluded (`count_implementation_checkboxes`); and
     (2) a non-documentation change committed strictly after this SPEC's
         plan/tasks were introduced (`spec_implementation_delta`) — scoped to the
         SPEC so neither another SPEC's earlier code change nor a change bundled
@@ -298,9 +312,11 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
         blob = git_show(root, f"HEAD:{rel}/tasks.md") if rel else None
         if blob is None or blob.returncode != 0:
             return no_spec_baseline
-        total, unchecked = count_task_checkboxes(blob.stdout)
+        total, unchecked = count_implementation_checkboxes(blob.stdout)
     else:
-        total, unchecked = task_checkbox_counts(tasks)
+        total, unchecked = count_implementation_checkboxes(
+            tasks.read_text(encoding="utf-8", errors="replace")
+        )
 
     if total == 0 or unchecked > 0:
         return {

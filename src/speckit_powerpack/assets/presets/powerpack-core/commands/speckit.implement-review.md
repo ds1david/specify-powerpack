@@ -77,8 +77,9 @@ python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 
 This checks **repository evidence** of a prior implementation **of the active SPEC**:
 
-- the SPEC's **committed** `tasks.md` (`git show HEAD:<feature>/tasks.md`) has every task
-  checkbox `[X]`; and
+- every **implementation** task checkbox in the SPEC's **committed** `tasks.md`
+  (`git show HEAD:<feature>/tasks.md`) is `[X]` — checkbox lines tagged `[ACCEPTANCE]` are
+  post-review homologation (they can only run *after* this command) and are not counted; and
 - a non-documentation change has been committed **strictly after** the commit that
   introduced this SPEC's `plan.md`/`tasks.md`, up to `HEAD`.
 

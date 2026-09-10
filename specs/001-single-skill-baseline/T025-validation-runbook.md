@@ -114,7 +114,7 @@ grep -RnE 'debt\.py|full_cycle\.py|checklist-converge|speckit\.(implement|conver
 | P3 | Upstream Spec Kit commands present | `ls "$PP/.claude/skills/" \| grep -E 'speckit-(implement\|converge)'` | both exist — PowerPack delegates to them | listing |
 | P4 | Codex CLI + login | `codex --version`; `codex login` | `codex` on `PATH`; `~/.codex/auth.json` exists | version, `test -f ~/.codex/auth.json` |
 | P5 | Repo ↔ ChatGPT Project binding | `specify-powerpack review setup --path "$PP" --project "<id\|name>"` | prints `Repository linked to ChatGPT Project …` and `GitHub App: READY`; `review.json` has `review_backend = codex-apps-github` | command output, `review.json` |
-| P6 | A feature in `$PP` implemented + committed | its **committed** `tasks.md` all `[X]`; a real non-doc change committed **strictly after** the commit that introduced the SPEC's `plan.md`/`tasks.md` | `git show HEAD:specs/<feature>/tasks.md \| grep -c '^- \[ \]'` = 0; working tree clean | `git log --stat` |
+| P6 | A feature in `$PP` implemented + committed | its **committed** `tasks.md` has every **implementation** box `[X]` (`[ACCEPTANCE]`-tagged tasks — e.g. this very homologation — may stay `[ ]`); a real non-doc change committed **strictly after** the commit that introduced the SPEC's `plan.md`/`tasks.md` | `git show HEAD:specs/<feature>/tasks.md \| grep -v '\[ACCEPTANCE\]' \| grep -c '^- \[ \]'` = 0; working tree clean | `git log --stat` |
 | P7 | A GitHub PR, head == local HEAD | push the branch, open a PR | `git rev-parse HEAD` == PR head SHA | PR URL, HEAD SHA |
 
 > **If P4/P5/P7 are unobtainable:** run §3 (offline) + §6, record everything, and set T025's
