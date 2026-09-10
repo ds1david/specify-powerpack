@@ -39,6 +39,20 @@ defective. Removed capabilities may be redesigned and reintroduced later through
   commit that introduced the SPEC's plan/tasks to HEAD), the working tree is not consulted,
   and a cross-SPEC rejection test is mandatory.
 
+### PR #15 review — round 2 (2026-09-10)
+
+- Finding (HIGH ×2): the SPEC, the prerequisite contract and the runtime had diverged on
+  FR-018a. (a) `feature_base_commit` returned the *parent* of the SPEC-introduction commit,
+  so a non-doc change bundled into that commit counted as implementation evidence with no
+  later commit. (b) checkbox state was read from the working-tree `tasks.md`, so locally
+  ticking boxes without committing passed the gate. → Resolution: FR-018a below is the
+  single definition — the anchor is the SPEC-introduction commit itself and the delta is
+  **strictly after** it; checkbox state is read from `git show HEAD:<feature>/tasks.md`.
+  Contract, `speckit.implement-review.md`, `research.md`, `data-model.md`, `quickstart.md`
+  and `T025-validation-runbook.md` are aligned to it. Two regression tests are mandatory
+  (bundled-code-in-introduction-commit → `NO_IMPLEMENTATION_DELTA`; committed `[ ]` +
+  working-tree `[X]` → `TASKS_INCOMPLETE`).
+
 ## Terminology *(reconciliation — mandatory reading)*
 
 The previous draft of this spec used the word "skill" throughout. The repository does not
@@ -282,11 +296,15 @@ the suite; the baseline contract test must fail.
 - **FR-018a** *(SPEC-scoped predecessor evidence — resolved after PR review, 2026-09-09)*:
   The re-based prerequisite MUST prove an explicit prior implementation **of the active
   SPEC**, not merely "some non-documentation change exists on the branch". It MUST be
-  satisfied only when (i) the SPEC's `tasks.md` task checkboxes are all `[X]`, and (ii) a
-  non-documentation change has been **committed for that SPEC's era** — the diff from the
-  commit that introduced the SPEC's `plan.md`/`tasks.md` to `HEAD`. A different SPEC's
-  earlier code change on the same (or a re-used) branch MUST NOT satisfy it. The working
-  tree MUST NOT be consulted (the browserless gate already pins `HEAD == PR head SHA`).
+  satisfied only when (i) the SPEC's **committed** `tasks.md` (read from `HEAD`, not the
+  working tree) has all task checkboxes `[X]`, and (ii) a non-documentation change has been
+  **committed strictly after** the commit that introduced the SPEC's `plan.md`/`tasks.md`,
+  up to `HEAD`. Neither a different SPEC's earlier code change on the same (or a re-used)
+  branch nor a non-documentation change bundled into the SPEC's own introduction commit
+  MUST satisfy it. The working tree MUST NOT be consulted for checkbox state or the
+  implementation delta (the browserless gate already pins `HEAD == PR head SHA`); it is
+  read only to confirm `tasks.md` exists, and — when git is unavailable — for the degraded
+  checkbox scan.
   Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE` (the SPEC's own
   artifacts are not committed yet), `NO_IMPLEMENTATION_DELTA`. Git unavailable ⇒ degrade to
   tasks-only, flagged `git_unavailable`. At least one automated test MUST encode the

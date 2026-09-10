@@ -122,9 +122,11 @@ def resolve_feature_dir(root: Path, explicit: str | None = None, *, system: str 
 
 
 def _feature_base_commit(root: Path, feature: Path) -> str | None:
-    """Commit just before this SPEC's implementation era began (mirrors
+    """The commit that introduced this SPEC's planning artifacts (mirrors
     `powerpack_runtime.feature_base_commit`). Anchored on the first commit that
-    introduced the SPEC's plan.md / tasks.md / directory; returns its parent."""
+    added the SPEC's plan.md / tasks.md / directory; the implementation delta is
+    everything committed strictly after it (`git diff <anchor>..HEAD`), so the
+    anchor commit's own tree is the planning baseline."""
     try:
         rel = feature.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -133,16 +135,13 @@ def _feature_base_commit(root: Path, feature: Path) -> str | None:
         proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
         if proc.returncode != 0 or not proc.stdout.strip():
             continue
-        first = proc.stdout.strip().splitlines()[0]
-        parent = run(["git", "rev-parse", "--verify", "--quiet", f"{first}^"], root)
-        if parent.returncode == 0 and parent.stdout.strip():
-            return parent.stdout.strip()
-        return first
+        return proc.stdout.strip().splitlines()[0]
     return None
 
 
 def changed_paths(root: Path, feature: Path) -> list[str]:
-    """Non-documentation files committed for the active SPEC's era.
+    """Non-documentation files committed strictly after the active SPEC's
+    planning artifacts were introduced.
 
     SPEC-scoped evidence for the quality gate — `git diff <feature-base>..HEAD`,
     excluding `.specify/powerpack/`. Mirrors

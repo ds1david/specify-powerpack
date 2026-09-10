@@ -114,7 +114,7 @@ grep -RnE 'debt\.py|full_cycle\.py|checklist-converge|speckit\.(implement|conver
 | P3 | Upstream Spec Kit commands present | `ls "$PP/.claude/skills/" \| grep -E 'speckit-(implement\|converge)'` | both exist — PowerPack delegates to them | listing |
 | P4 | Codex CLI + login | `codex --version`; `codex login` | `codex` on `PATH`; `~/.codex/auth.json` exists | version, `test -f ~/.codex/auth.json` |
 | P5 | Repo ↔ ChatGPT Project binding | `specify-powerpack review setup --path "$PP" --project "<id\|name>"` | prints `Repository linked to ChatGPT Project …` and `GitHub App: READY`; `review.json` has `review_backend = codex-apps-github` | command output, `review.json` |
-| P6 | A feature in `$PP` implemented + committed | its `tasks.md` all `[X]`; a real non-doc change committed since the SPEC's `plan.md` | `grep -c '^- \[ \]' specs/<feature>/tasks.md` = 0 | `git log --stat` |
+| P6 | A feature in `$PP` implemented + committed | its **committed** `tasks.md` all `[X]`; a real non-doc change committed **strictly after** the commit that introduced the SPEC's `plan.md`/`tasks.md` | `git show HEAD:specs/<feature>/tasks.md \| grep -c '^- \[ \]'` = 0; working tree clean | `git log --stat` |
 | P7 | A GitHub PR, head == local HEAD | push the branch, open a PR | `git rev-parse HEAD` == PR head SHA | PR URL, HEAD SHA |
 
 > **If P4/P5/P7 are unobtainable:** run §3 (offline) + §6, record everything, and set T025's
@@ -139,7 +139,7 @@ This script runs and captures, into `specs/001-single-skill-baseline/T025-eviden
 | `P2-commands.txt` | P2 | command set `== {speckit.implement-review}` |
 | `P3-upstream.txt` | P3 | `speckit-implement` + `speckit-converge` found |
 | `S2-prereq.json` + `S2-prerequisites.json` | S2 | `implementation-evidence`, schema 2, no `checklist-converge`; `ok:true` **or** a documented `NO_*` reason |
-| `S2-negatives.txt` | S2 | `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE`, `NO_IMPLEMENTATION_DELTA` each reproduced |
+| `S2-negatives.txt` | S2 | `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE`, `NO_IMPLEMENTATION_DELTA` each reproduced. Note: `TASKS_INCOMPLETE` requires **committing** an unchecked `tasks.md` (the gate reads `git show HEAD:<feature>/tasks.md`, not the working tree); `NO_IMPLEMENTATION_DELTA` is also produced when the only non-doc change lives inside the SPEC-introduction commit itself. |
 | `S4-gate-detect.json` / `S4-gate-run.txt` | S4 | status reflects the real delta; **not** a false `NOT_APPLICABLE` |
 | `S4-capabilities-grep.txt` | S4 | no `implement_runs` / `latest_implement_files` in `capabilities.py` |
 | `S5-review-route.json` + `S5-stages.json` | S5 | valid Sol contract; `stages == {implement-review}` |

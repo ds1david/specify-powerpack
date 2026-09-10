@@ -19,20 +19,30 @@ receipt-style gate on.
 
 **Decision.** Re-base the gate onto **SPEC-scoped repository evidence**, evaluated live:
 
-1. `FEATURE_DIR/tasks.md` exists, and every task checkbox line (`- [ ]` / `- [x]`) is
-   checked `[X]`.
-2. A **non-documentation change has been committed for this SPEC's era** — the diff from
-   `feature_base_commit` (the parent of the first commit that added the SPEC's
-   `plan.md`/`tasks.md`) to `HEAD`, minus `.specify/powerpack/`, run through
-   `is_documentation_only`. The working tree is **not** consulted.
+1. The SPEC's **committed** `tasks.md` (`git show HEAD:<FEATURE_DIR>/tasks.md`) has every
+   task checkbox line (`- [ ]` / `- [x]`) checked `[X]`. The working tree is read only to
+   confirm the file exists, and — when git is unavailable — for a degraded checkbox scan.
+2. A **non-documentation change has been committed strictly after this SPEC's plan/tasks
+   were introduced** — the diff from `feature_base_commit` (the first commit that added the
+   SPEC's `plan.md`/`tasks.md`, the anchor itself) to `HEAD`, minus `.specify/powerpack/`,
+   run through `is_documentation_only`. The working tree is **not** consulted.
 
 **Revised after PR #15 review (see spec §Clarifications / FR-018a).** The first cut used
 `git merge-base(main, HEAD)` as the base — i.e. the whole branch — plus the working tree.
 That accepted a *different* SPEC's earlier code as evidence for the SPEC under review,
 contradicting the "explicit same-SPEC predecessor" guarantee. Anchoring on the SPEC's own
-base commit fixes that: another SPEC's code committed **before** this SPEC's plan/tasks is
-outside `feature_base_commit..HEAD`. Perfect attribution for interleaved commits is out of
-scope (left to the browserless PR gate, which pins an exact PR + file set).
+introduction commit fixes that: another SPEC's code committed **before** this SPEC's
+plan/tasks is outside `feature_base_commit..HEAD`. Perfect attribution for interleaved
+commits is out of scope (left to the browserless PR gate, which pins an exact PR + file set).
+
+**Revised again — PR #15 review round 2 (2026-09-10).** Two residual gaps, both spec/code
+divergence: (a) `feature_base_commit` returned the introduction commit's *parent*, so a
+non-doc change bundled into that commit satisfied step 2 with no later commit — the anchor
+is now the introduction commit itself and the delta is strictly after it; (b) step 1 read
+the working-tree `tasks.md`, so locally ticked-but-uncommitted boxes passed — checkbox
+state is now read from the committed blob. Regression tests:
+`test_implement_evidence_rejects_code_bundled_into_spec_introduction_commit` and
+`test_implement_evidence_reads_task_checkboxes_from_head_not_working_tree`.
 
 Implementation shape: `cmd_prereq_check` special-cases `--step implement-review` →
 `implement_evidence(root, feature)`, backed by `feature_base_commit` +

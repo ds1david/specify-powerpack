@@ -171,13 +171,16 @@ def feature_rel(root: Path, feature: Path) -> str | None:
 
 
 def feature_base_commit(root: Path, feature: Path) -> str | None:
-    """The commit just before this SPEC's implementation era began.
+    """The commit that introduced this SPEC's planning artifacts.
 
-    Anchored on the first commit that introduced the SPEC's `plan.md` (written by
+    Anchored on the first commit that added the SPEC's `plan.md` (written by
     `/speckit-plan`, before any implementation), falling back to `tasks.md` then
-    the `specs/<feature>/` directory. Returns that commit's PARENT — or the
-    anchor commit itself when it is the repository root. `None` when no anchor is
-    committed yet (the SPEC's artifacts must be committed before `implement-review`).
+    the `specs/<feature>/` directory. The implementation delta is everything
+    committed **strictly after** this commit (`git diff <anchor>..HEAD`), so the
+    anchor commit's own tree is the planning baseline and never counts as
+    implementation evidence — even when that commit also carries unrelated
+    non-documentation changes (FR-018a). `None` when no anchor is committed yet
+    (the SPEC's artifacts must be committed before `implement-review`).
     """
     rel = feature_rel(root, feature)
     if rel is None:
@@ -186,12 +189,25 @@ def feature_base_commit(root: Path, feature: Path) -> str | None:
         proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
         if proc.returncode != 0 or not proc.stdout.strip():
             continue
-        first = proc.stdout.strip().splitlines()[0]
-        parent = run(["git", "rev-parse", "--verify", "--quiet", f"{first}^"], root)
-        if parent.returncode == 0 and parent.stdout.strip():
-            return parent.stdout.strip()
-        return first  # root commit: use it as the base (delta = strictly after it)
+        return proc.stdout.strip().splitlines()[0]
     return None
+
+
+def git_show(root: Path, spec: str) -> subprocess.CompletedProcess[str]:
+    """`git show <spec>` decoded as UTF-8.
+
+    A dedicated helper rather than `run()` because the shared helper leaves
+    `encoding` unset and would decode `tasks.md` (em-dashes, accented text) with
+    the locale codec — a `UnicodeDecodeError` on Windows CI runners.
+    """
+    return subprocess.run(
+        ["git", "show", spec],
+        cwd=str(root),
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]]:
@@ -199,9 +215,10 @@ def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]
     SPEC's era).
 
     Scoped to the active SPEC via `feature_base_commit`: only changes **committed
-    since this SPEC's plan/tasks were introduced** count, so a different SPEC's
-    earlier code change on the same branch (or a re-used branch) is not accepted
-    as this SPEC's implementation evidence. The working tree is deliberately not
+    strictly after this SPEC's plan/tasks were introduced** count, so neither a
+    different SPEC's earlier code change on the same branch nor an unrelated
+    change bundled into the SPEC's own introduction commit is accepted as this
+    SPEC's implementation evidence. The working tree is deliberately not
     consulted — `implement-review` reviews a committed snapshot (its browserless
     gate requires `HEAD == PR head SHA`). `.specify/powerpack/` is excluded so
     PowerPack's own state never counts.
@@ -222,11 +239,12 @@ def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]
     return "ok", paths
 
 
-def task_checkbox_counts(path: Path) -> tuple[int, int]:
-    """Return (total, unchecked) GitHub task checkboxes in a markdown file."""
+def count_task_checkboxes(text: str) -> tuple[int, int]:
+    """Return (total, unchecked) GitHub task checkboxes in markdown text,
+    ignoring anything inside fenced code blocks."""
     total = unchecked = 0
     in_fence = False
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("```"):
             in_fence = not in_fence
@@ -241,21 +259,49 @@ def task_checkbox_counts(path: Path) -> tuple[int, int]:
     return total, unchecked
 
 
+def task_checkbox_counts(path: Path) -> tuple[int, int]:
+    """Return (total, unchecked) task checkboxes in a markdown file on disk."""
+    return count_task_checkboxes(path.read_text(encoding="utf-8", errors="replace"))
+
+
 def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
     """Repository-evidence prerequisite for `implement-review` (replaces the
     removed PowerPack `implement` completion receipt).
 
     An explicit prior implementation **of the active SPEC** is proven by:
-    (1) a `tasks.md` whose task checkboxes are all checked; and
-    (2) a non-documentation change committed since this SPEC's plan/tasks were
-        introduced (`spec_implementation_delta`) — scoped to the SPEC so another
-        SPEC's earlier code change on the same branch does not satisfy it.
-    When git is unavailable only (1) is checked (degraded, flagged).
+    (1) the SPEC's committed `tasks.md` has every task checkbox `[X]`; and
+    (2) a non-documentation change committed strictly after this SPEC's
+        plan/tasks were introduced (`spec_implementation_delta`) — scoped to the
+        SPEC so neither another SPEC's earlier code change nor a change bundled
+        into this SPEC's introduction commit satisfies it.
+
+    Both are read from the committed snapshot at `HEAD`; the working tree is
+    never consulted (FR-018a — `implement-review` reviews `HEAD == PR head SHA`).
+    `tasks.md` *existence* is still checked in the working tree; only checkbox
+    *state* comes from `HEAD`. When git is unavailable only (1) is checked,
+    against the working tree (degraded, flagged `git_unavailable`).
     """
     tasks = feature / "tasks.md"
     if not tasks.is_file():
         return {"ok": False, "step": "implement-review", "reason": "MISSING_TASKS"}
-    total, unchecked = task_checkbox_counts(tasks)
+
+    no_spec_baseline = {
+        "ok": False,
+        "step": "implement-review",
+        "reason": "NO_SPEC_BASELINE",
+        "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review",
+    }
+
+    git_available = run(["git", "rev-parse", "--git-dir"], root).returncode == 0
+    if git_available:
+        rel = feature_rel(root, feature)
+        blob = git_show(root, f"HEAD:{rel}/tasks.md") if rel else None
+        if blob is None or blob.returncode != 0:
+            return no_spec_baseline
+        total, unchecked = count_task_checkboxes(blob.stdout)
+    else:
+        total, unchecked = task_checkbox_counts(tasks)
+
     if total == 0 or unchecked > 0:
         return {
             "ok": False,
@@ -264,21 +310,18 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
             "unchecked": unchecked,
             "total": total,
         }
-    status, changed = spec_implementation_delta(root, feature)
-    if status == "no_git":
+
+    if not git_available:
         return {
             "ok": True,
             "step": "implement-review",
             "reason": "OK",
             "git_unavailable": True,
         }
+
+    status, changed = spec_implementation_delta(root, feature)
     if status == "no_baseline":
-        return {
-            "ok": False,
-            "step": "implement-review",
-            "reason": "NO_SPEC_BASELINE",
-            "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review",
-        }
+        return no_spec_baseline
     if is_documentation_only(changed):
         return {
             "ok": False,

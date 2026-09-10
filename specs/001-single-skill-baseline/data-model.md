@@ -65,8 +65,9 @@ derived live.
 |---|---|---|
 | `tasks_present` | `FEATURE_DIR/tasks.md` exists | true |
 | `tasks_complete` | all `- [ ]`/`- [x]` lines in `tasks.md` | zero unchecked |
-| `spec_base` | `feature_base_commit(root, feature)` — parent of the commit that added the SPEC's `plan.md`/`tasks.md`/dir | resolvable (SPEC artifacts are committed) |
-| `spec_implementation_delta` | `git diff <spec_base>..HEAD`, minus `.specify/powerpack/`, vs `is_documentation_only()` | ≥1 non-doc file **committed for this SPEC's era**; working tree not consulted |
+| `spec_base` | `feature_base_commit(root, feature)` — the commit that added the SPEC's `plan.md`/`tasks.md`/dir (the anchor itself, not its parent) | resolvable (SPEC artifacts are committed) |
+| `spec_implementation_delta` | `git diff <spec_base>..HEAD` (**strictly after** `spec_base`), minus `.specify/powerpack/`, vs `is_documentation_only()` | ≥1 non-doc file **committed strictly after the SPEC's plan/tasks**; working tree not consulted |
+| checkbox state | `git show HEAD:<feature>/tasks.md`, parsed outside code fences (working tree used only when git is unavailable) | all task checkboxes `[X]` in the committed blob |
 | `git_available` | `git rev-parse --git-dir` succeeds | if false → evaluate `tasks_*` only, annotate `git_unavailable: true` |
 
 **Output (JSON, stdout):** `{"ok": bool, "step": "implement-review", "feature": "<id>",

@@ -19,32 +19,45 @@ STOP and run upstream `speckit-implement` (hyphen — the upstream skill), not t
 | Input | How obtained |
 |---|---|
 | `FEATURE_DIR` | `--feature-dir` or `resolve_feature_dir()` (unchanged) |
-| `tasks.md` | `FEATURE_DIR/tasks.md` |
-| SPEC base commit | `feature_base_commit(root, feature)` — the parent of the first commit that added `FEATURE_DIR/plan.md` (fallback `tasks.md`, then `FEATURE_DIR/`); the anchor commit itself when it is the repo root |
+| `tasks.md` existence | `FEATURE_DIR/tasks.md` (working tree) |
+| `tasks.md` checkbox state | `git show HEAD:<FEATURE_DIR>/tasks.md` — the committed blob, never the working tree (working tree used only when git is unavailable) |
+| SPEC base commit | `feature_base_commit(root, feature)` — the first commit that added `FEATURE_DIR/plan.md` (fallback `tasks.md`, then `FEATURE_DIR/`). The delta is computed **strictly after** this commit, so its own tree is the planning baseline. |
 | SPEC delta | `git diff --name-only <SPEC base>..HEAD`, minus `.specify/powerpack/` |
 | doc classification | existing `is_documentation_only()` |
 
 ## Evaluation
 
-1. If `tasks.md` missing → `{"ok": false, "reason": "MISSING_TASKS"}`.
-2. Parse task checkboxes (`- \[( |x|X)\] ` outside code fences). If any unchecked →
-   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`.
-3. `git rev-parse --git-dir` fails → `{"ok": true, "reason": "OK", "git_unavailable": true}`
-   (degraded: tasks-only).
-4. `feature_base_commit` is `None` (the SPEC's own `plan.md`/`tasks.md` are not committed
-   yet) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
-5. Compute the **SPEC delta** — `git diff <SPEC base>..HEAD`, non-`.specify/powerpack/`.
-   The working tree is **not** consulted: `implement-review` reviews a committed snapshot
-   (its browserless gate requires `HEAD == PR head SHA`). If every path in the SPEC delta
-   satisfies `is_documentation_only()` (or the delta is empty) →
-   `{"ok": false, "reason": "NO_IMPLEMENTATION_DELTA"}`.
-6. Otherwise → `{"ok": true, "reason": "OK"}`.
+Every check reads the committed snapshot at `HEAD`; the working tree is consulted only
+for `tasks.md` *existence* (step 1) and, when git is unavailable, for checkbox state
+(step 3). `implement-review` reviews a committed snapshot — its browserless gate requires
+`HEAD == PR head SHA`.
 
-**Why SPEC-scoped.** Anchoring on the SPEC's own base commit means a *different* SPEC's
-earlier code change on the same branch (or a re-used branch that already carries code)
-does not count as this SPEC's implementation evidence — the property
-`speckit.implement-review.md` states ("Evidence from another SPEC's directory never
-satisfies this prerequisite") holds at runtime.
+1. If `FEATURE_DIR/tasks.md` is missing from the working tree →
+   `{"ok": false, "reason": "MISSING_TASKS"}`.
+2. `git rev-parse --git-dir` fails → skip to the degraded path: parse task checkboxes from
+   the working-tree `tasks.md`; any unchecked (or none present) →
+   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`, otherwise
+   `{"ok": true, "reason": "OK", "git_unavailable": true}`. Steps 3–6 are git-only.
+3. `git show HEAD:<FEATURE_DIR>/tasks.md` does not resolve (the SPEC's own `tasks.md` is not
+   committed yet) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
+4. Parse task checkboxes from that committed blob (`- \[( |x|X)\] ` outside code fences).
+   If any unchecked (or none present) →
+   `{"ok": false, "reason": "TASKS_INCOMPLETE", "unchecked": <n>, "total": <n>}`.
+5. `feature_base_commit` is `None` (no commit introduced the SPEC's `plan.md`/`tasks.md`/
+   directory) → `{"ok": false, "reason": "NO_SPEC_BASELINE"}`.
+6. Compute the **SPEC delta** — `git diff <SPEC base>..HEAD`, non-`.specify/powerpack/`,
+   i.e. everything committed **strictly after** the SPEC's introduction commit. If every
+   path satisfies `is_documentation_only()` (or the delta is empty) →
+   `{"ok": false, "reason": "NO_IMPLEMENTATION_DELTA"}`. Otherwise →
+   `{"ok": true, "reason": "OK"}`.
+
+**Why SPEC-scoped.** Anchoring on the SPEC's introduction commit — and taking the delta
+*strictly after* it — means neither a *different* SPEC's earlier code change on the same
+branch (or a re-used branch that already carries code) nor an unrelated non-doc change
+bundled into this SPEC's own introduction commit counts as this SPEC's implementation
+evidence. The property `speckit.implement-review.md` states ("Evidence from another SPEC's
+directory never satisfies this prerequisite") holds at runtime, and a real implementation
+commit must land *after* `/speckit-plan` + `/speckit-tasks`.
 
 ## Output (stdout JSON)
 
@@ -84,5 +97,8 @@ relevant `unchecked` / `total` / `git_unavailable`. Exit `0` when `ok`, else `9`
   interleave on one branch can still cross-satisfy — that is an unusual workflow and is left
   to the reviewer / the browserless PR gate, which pins an exact PR + changed-file set.
 - Detecting *who* implemented (agent vs human) — only that a real non-doc change was
-  **committed for this SPEC's era** and its tasks are complete.
-- Consulting the working tree. Uncommitted work is invisible to this gate by design.
+  **committed strictly after this SPEC's plan/tasks** and its committed tasks are complete.
+- Consulting the working tree, beyond checking that `tasks.md` exists. Checkbox state and
+  the implementation delta both come from `HEAD`; uncommitted work — including locally
+  ticked checkboxes — is invisible to this gate by design. (Exception: when git is
+  unavailable the gate degrades to a working-tree checkbox scan, flagged `git_unavailable`.)

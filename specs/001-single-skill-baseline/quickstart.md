@@ -76,12 +76,17 @@ python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 
 **Expect:** `{"ok": true, ... "reason": "OK"}`, exit 0 — **without** any
 `powerpack.py implement end` / `state mark implement` ever being run, and only because a
-non-doc change was **committed** for this SPEC since its plan/tasks.
+non-doc change was **committed** for this SPEC *strictly after* its plan/tasks were
+introduced. Both the checkbox state and the delta are read from `HEAD`, never the working
+tree.
 
 Negative checks:
-- Uncheck a task in `tasks.md` → `TASKS_INCOMPLETE`.
+- Uncheck a task in `tasks.md` **and commit it** → `TASKS_INCOMPLETE`. (Unchecking without
+  committing is invisible — the gate reads `git show HEAD:<feature>/tasks.md`.)
 - SPEC whose `plan.md`/`tasks.md` are not committed yet → `NO_SPEC_BASELINE`.
-- Only docs (or nothing) committed since the SPEC base → `NO_IMPLEMENTATION_DELTA`.
+- Only docs (or nothing) committed *strictly after* the SPEC's introduction commit →
+  `NO_IMPLEMENTATION_DELTA`. Non-doc changes living **inside** that introduction commit are
+  the planning baseline and do not count.
 - Code changed but not committed → `NO_IMPLEMENTATION_DELTA` (commit it).
 - Another SPEC's code, this SPEC's `plan.md` committed afterwards → `NO_IMPLEMENTATION_DELTA`
   for this SPEC.

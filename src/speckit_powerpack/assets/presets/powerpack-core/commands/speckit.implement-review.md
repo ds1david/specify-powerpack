@@ -77,13 +77,16 @@ python .specify/powerpack/bin/powerpack.py prereq check --step implement-review
 
 This checks **repository evidence** of a prior implementation **of the active SPEC**:
 
-- the SPEC's `tasks.md` task checkboxes are all `[X]`; and
-- a non-documentation change has been **committed for this SPEC's era** — the diff from the
-  commit that introduced this SPEC's `plan.md`/`tasks.md` up to `HEAD`.
+- the SPEC's **committed** `tasks.md` (`git show HEAD:<feature>/tasks.md`) has every task
+  checkbox `[X]`; and
+- a non-documentation change has been committed **strictly after** the commit that
+  introduced this SPEC's `plan.md`/`tasks.md`, up to `HEAD`.
 
-The working tree is not consulted (the browserless gate already requires
-`HEAD == PR head SHA`). A different SPEC's earlier code change on the same branch does not
-satisfy this. Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE`
+The working tree is not consulted — checkbox state and the implementation delta both come
+from `HEAD` (the browserless gate already requires `HEAD == PR head SHA`), so locally
+ticking checkboxes without committing does not satisfy this. Neither a different SPEC's
+earlier code change nor a non-doc change bundled into this SPEC's introduction commit
+satisfies it. Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE`
 (commit this SPEC's `spec.md`/`plan.md`/`tasks.md` first), `NO_IMPLEMENTATION_DELTA`. If it
 fails, STOP and run upstream `speckit-implement` for this SPEC, then commit.
 

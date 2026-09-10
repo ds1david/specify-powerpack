@@ -22,8 +22,9 @@ def commit(root: Path, message: str) -> None:
 
 
 def repo(tmp_path: Path, feature_name: str = "001-demo") -> tuple[Path, Path]:
-    """A repo whose SPEC artifacts are committed AFTER a base commit, so
-    `feature_base_commit` has a real pre-SPEC parent to anchor on."""
+    """A repo whose SPEC artifacts are committed AFTER a base commit, so the
+    SPEC-introduction commit `feature_base_commit` anchors on is distinct from
+    the repo root and the delta after it is well-defined."""
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init")
@@ -77,6 +78,25 @@ def test_implement_evidence_missing_tasks(tmp_path: Path):
 def test_implement_evidence_tasks_incomplete(tmp_path: Path):
     root, feature = repo(tmp_path)
     feature.joinpath("tasks.md").write_text("- [X] T001 done\n- [ ] T002 not done\n")
+    commit(root, "tasks: one still open")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1
+
+
+def test_implement_evidence_reads_task_checkboxes_from_head_not_working_tree(tmp_path: Path):
+    """Reviewer finding 1: checking the boxes only in the working tree, without
+    committing, must not satisfy the gate. Checkbox state comes from
+    `git show HEAD:<feature>/tasks.md`, matching the committed snapshot the
+    browserless review pins (`HEAD == PR head SHA`)."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text("- [ ] T001 build it in src/app.py\n")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement; tasks.md still unchecked in HEAD")
+    # working tree now claims completion; HEAD does not
+    feature.joinpath("tasks.md").write_text("- [X] T001 build it in src/app.py\n")
     result = rt.implement_evidence(root, feature)
     assert result["ok"] is False
     assert result["reason"] == "TASKS_INCOMPLETE"
@@ -138,6 +158,37 @@ def test_implement_evidence_rejects_other_specs_code_delta(tmp_path: Path):
     res_b = rt.implement_evidence(root, feat_b)
     assert res_b["ok"] is False
     assert res_b["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_rejects_code_bundled_into_spec_introduction_commit(tmp_path: Path):
+    """Reviewer finding 2: a non-documentation change living in the very commit
+    that introduced plan.md/tasks.md is the planning baseline, not implementation
+    evidence. With no implementation commit after the SPEC was introduced, the
+    gate must reject — even though that commit does touch a `.py` file."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test")
+    (root / ".specify").mkdir()
+    (root / "README.md").write_text("hello\n")
+    commit(root, "base")
+    feature = root / "specs" / "002-b"
+    feature.mkdir(parents=True)
+    (feature / "spec.md").write_text("# B\n")
+    (feature / "plan.md").write_text("# B plan\n")
+    (feature / "tasks.md").write_text("- [X] T001 do B in src/unrelated.py\n")
+    (root / "src").mkdir()
+    (root / "src" / "unrelated.py").write_text("x = 1\n")
+    commit(root, "spec 002-b: plan + tasks + bundled unrelated code")
+    # no implementation commit after the SPEC was introduced -> HEAD is the anchor
+
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    # anchor must be the introduction commit itself (delta strictly after it),
+    # not its parent — a parent anchor would surface src/unrelated.py and pass.
+    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
+    assert result["reason"] != "NO_SPEC_BASELINE"
 
 
 def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path: Path):
