@@ -14,6 +14,7 @@ from speckit_powerpack.browserless_review import (
     _changed_files_for_snapshot,
     _missing_snapshot_fields,
     _retain_snapshot_repair_evidence,
+    _complete_snapshot_from_local_git,
     _canonical_requirement_id,
     _merge_requirement_repair,
     _requirement_ids,
@@ -142,6 +143,26 @@ def test_snapshot_repair_retains_non_empty_inspection_evidence():
     assert _retain_snapshot_repair_evidence(previous, repaired)["coverage"]["inspection_evidence"] == [
         {"file": "a.py"}
     ]
+
+
+def test_local_git_snapshot_completion_only_fills_manifest_fields(tmp_path, monkeypatch):
+    def fake_git(_root, *args):
+        if args == ("symbolic-ref", "--short", "refs/remotes/origin/HEAD"):
+            return "origin/main"
+        if args == ("rev-parse", "origin/main"):
+            return "1" * 40
+        if args == ("merge-base", "1" * 40, "3" * 40):
+            return "2" * 40
+        if args == ("diff", "--name-only", "2" * 40 + ".." + "3" * 40):
+            return "src/app.py"
+        raise AssertionError(args)
+
+    monkeypatch.setattr("speckit_powerpack.browserless_review.git", fake_git)
+    review = {"findings": [{"id": "F1"}], "coverage": {"inspection_evidence": [{"file": "src/app.py"}]}}
+    assert _complete_snapshot_from_local_git(tmp_path, review, "3" * 40) is True
+    assert review["findings"] == [{"id": "F1"}]
+    assert review["review_context"]["merge_base"] == "2" * 40
+    assert review["coverage"]["changed_files"] == ["src/app.py"]
 
 
 def test_web_transport_parser_exposes_connector_tool_evidence():

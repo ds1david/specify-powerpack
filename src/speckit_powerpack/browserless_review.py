@@ -236,6 +236,68 @@ def _retain_snapshot_repair_evidence(
     return merged
 
 
+def _complete_snapshot_from_local_git(
+    project_path: Path,
+    review: dict[str, Any],
+    local_head: str,
+) -> bool:
+    """Complete omitted PR manifest fields from the verified PR worktree.
+
+    The worktree is created from the GitHub PR head before review starts. This
+    fallback only reconstructs manifest identity; GitHub tool evidence and the
+    review verdict remain mandatory and are never synthesized locally.
+    """
+    context = review.get("review_context") or {}
+    remote_base = ""
+    try:
+        remote_head = git(project_path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        if remote_head.startswith("origin/"):
+            remote_base = remote_head.removeprefix("origin/")
+    except Exception:
+        pass
+    base_ref = str(context.get("base_ref") or remote_base).strip()
+    if not base_ref:
+        return False
+    base_sha = str(context.get("base_sha") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        try:
+            base_sha = git(project_path, "rev-parse", f"origin/{base_ref}").strip().lower()
+        except Exception:
+            return False
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        return False
+    merge_base = str(context.get("merge_base") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", merge_base):
+        try:
+            merge_base = git(project_path, "merge-base", base_sha, local_head).strip().lower()
+        except Exception:
+            return False
+    if not re.fullmatch(r"[0-9a-f]{40}", merge_base):
+        return False
+    changed_files, _ = _changed_files_for_snapshot(review)
+    if not changed_files:
+        try:
+            changed_files = [
+                item.strip()
+                for item in git(project_path, "diff", "--name-only", f"{merge_base}..{local_head}").splitlines()
+                if item.strip()
+            ]
+        except Exception:
+            return False
+    if not changed_files:
+        return False
+    review.setdefault("review_context", {}).update(
+        {
+            "base_ref": base_ref,
+            "base_sha": base_sha,
+            "merge_base": merge_base,
+            "head_sha": local_head.lower(),
+        }
+    )
+    review.setdefault("coverage", {})["changed_files"] = changed_files
+    return True
+
+
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
@@ -726,10 +788,16 @@ def run_browserless_code_review(
         invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
 
     if missing_snapshot_fields:
-        raise BrowserlessReviewError(
-            "ChatGPT Web review did not return a complete immutable PR snapshot; "
-            "missing or invalid fields: " + ", ".join(missing_snapshot_fields)
-        )
+        if _complete_snapshot_from_local_git(project_path, review, local_head):
+            _log("browserless", "review evidence shape: completed omitted PR manifest from verified local PR worktree")
+            missing_snapshot_fields = _missing_snapshot_fields(review)
+            changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+            invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+        if missing_snapshot_fields:
+            raise BrowserlessReviewError(
+                "ChatGPT Web review did not return a complete immutable PR snapshot; "
+                "missing or invalid fields: " + ", ".join(missing_snapshot_fields)
+            )
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
     changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
