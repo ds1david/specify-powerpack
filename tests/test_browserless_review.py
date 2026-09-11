@@ -137,9 +137,10 @@ def test_every_turn_uses_project_binding_and_the_github_connector():
 def test_master_prompt_requires_github_connector_before_review_evidence():
     prompt = Path("src/speckit_powerpack/assets/review/master-review-prompt.md").read_text(encoding="utf-8")
 
-    assert "Before reading, interpreting or judging any repository content, invoke the" in prompt
-    assert "A response that contains no GitHub" in prompt
-    assert "tool invocation is invalid" in prompt
+    assert "Before reading or judging repository content, invoke the selected @GitHub" in prompt
+    assert "Use ONLY the selected @GitHub connector" in prompt
+    assert "ONE-MESSAGE EXECUTION MODEL" in prompt
+    assert "Do not request a bootstrap" in prompt
 
 
 def test_master_prompt_source_and_installed_copy_are_identical():

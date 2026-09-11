@@ -38,7 +38,7 @@ CANONICAL_REQUIREMENT_ID = re.compile(
     r"^(FR|NFR|REQ|SC|AC|UC)-?(\d{1,4})([A-Za-z]?)$", re.IGNORECASE
 )
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
-MASTER_PROMPT_VERSION = "1.0"
+MASTER_PROMPT_VERSION = "1.1"
 REVIEW_PROTOCOL_VERSION = "3.0"
 
 
@@ -415,7 +415,7 @@ POWERPACK REVIEW PACKET — VARIABLE EXECUTION STATE
 {json.dumps(packet, ensure_ascii=False, indent=2)}
 </POWERPACK_REVIEW_PACKET>
 
-TASK
+## EXECUTION COMMAND
 
 Use @GitHub exclusively for evidence from {target.repository} PR #{target.number}.
 This is the implementation code review itself, not a homologation probe. Do
