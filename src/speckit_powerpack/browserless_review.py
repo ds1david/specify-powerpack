@@ -592,11 +592,14 @@ def run_browserless_code_review(
         if not context.get(field)
         or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
-    if missing_snapshot_fields and web.conversation_id and review_tools:
+    changed_files_value = coverage.get("changed_files") or review.get("changed_files")
+    invalid_changed_files = not isinstance(changed_files_value, list)
+    if (missing_snapshot_fields or invalid_changed_files) and web.conversation_id and review_tools:
         _log(
             "browserless",
             "review object is missing immutable snapshot fields "
             + ", ".join(missing_snapshot_fields)
+            + (", changed_files array" if invalid_changed_files else "")
             + "; requesting evidence-complete JSON in the same segment…",
         )
         continuation = web.ask(
