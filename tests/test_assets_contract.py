@@ -109,6 +109,7 @@ def test_installed_metadata_uses_specify_powerpack_brand():
 
 def test_deep_review_protocol_and_validator_are_packaged():
     assert (ASSETS / "review" / "deep-review-protocol.md").is_file()
+    assert (ASSETS / "review" / "github-evidence-contract.md").is_file()
     assert (ASSETS / "runtime" / "powerpack_review_protocol.py").is_file()
     protocol = (ASSETS / "review" / "deep-review-protocol.md").read_text(encoding="utf-8")
     assert "exactly that same set of IDs" in protocol

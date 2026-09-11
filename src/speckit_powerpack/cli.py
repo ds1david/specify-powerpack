@@ -241,6 +241,7 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
     for source_name, dest_name in {
         "review/deep-review-protocol.md": "deep-review-protocol.md",
         "review/master-review-prompt.md": "master-review-prompt.md",
+        "review/github-evidence-contract.md": "github-evidence-contract.md",
     }.items():
         with asset(source_name) as source:
             shutil.copy2(source, base / dest_name)

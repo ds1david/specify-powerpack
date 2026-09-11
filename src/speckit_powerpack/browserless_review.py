@@ -38,7 +38,7 @@ CANONICAL_REQUIREMENT_ID = re.compile(
     r"^(FR|NFR|REQ|SC|AC|UC)-?(\d{1,4})([A-Za-z]?)$", re.IGNORECASE
 )
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
-MASTER_PROMPT_VERSION = "1.1"
+MASTER_PROMPT_VERSION = "1.2"
 REVIEW_PROTOCOL_VERSION = "3.0"
 
 
@@ -372,6 +372,29 @@ def _review_packet(
         previous_findings = ((previous_review or {}).get("coverage") or {}).get("previous_findings") or []
     return {
         "review_id": f"{target.repository}#{target.number}:{spec.spec_id}:implement-review",
+        "target": {
+            "repository": target.repository,
+            "pull_request": target.url,
+            "pull_request_number": target.number,
+            "active_spec": f"specs/{spec.spec_id}/",
+        },
+        "expected_evidence": [
+            "pr_metadata",
+            "base_ref",
+            "base_sha",
+            "merge_base",
+            "head_sha",
+            "snapshot_identity",
+            "changed_files",
+            "changed_file_contents",
+            "active_spec_artifacts",
+        ],
+        "provided_evidence": {
+            "snapshot": "verified" if snapshot else "pending_github_connector",
+            "changed_files": "verified" if snapshot else "pending_github_connector",
+            "changed_file_contents": "pending_github_connector",
+            "active_spec_artifacts": "attached_spec_artifacts",
+        },
         "round": round_number,
         "attempt": attempt,
         "conversation_segment": segment,
@@ -407,19 +430,23 @@ def _review_packet(
 def _master_review_prompt(master_prompt: str, packet: dict[str, Any], *, target: PullRequestTarget) -> str:
     return f"""@Github
 
-Execute POWERPACK MASTER CODE REVIEW v1.1 for {target.repository} PR #{target.number};
+Execute POWERPACK MASTER CODE REVIEW v1.2 for {target.repository} PR #{target.number};
 this is the implementation review, not a homologation probe.
 
-Use the attached structured review artifacts as the execution contract:
-- ReviewProtocol: immutable authority, evidence, findings and verdict rules;
-- ReviewPacket: target, snapshot, requirements and lineage;
-- SpecArtifacts: active SPEC material;
-- PreviousFindings: prior lifecycle state;
-- OutputSchema: terminal JSON shape.
+Use the attached structured review artifacts as the Review Evidence Package
+and execution contract, in this
+authority order:
+- OutputSchema: terminal structure only;
+- ReviewPacket: immutable target, snapshot, requirements and lineage;
+- GitHubEvidenceContract: mandatory evidence prerequisites;
+- ReviewProtocol: review method, fronts, findings and verdict rules;
+- SpecArtifacts: expected behavior and acceptance criteria;
+- PreviousFindings: lifecycle comparison only;
+- Instructions: operational constraints only.
 
-Use @GitHub exclusively for PR/repository evidence. Complete the review in
-one turn and one response, invoking the connector before reading or judging
-repository content.
+Use @GitHub exclusively for PR/repository evidence. Follow the state machine
+in the attached MasterPrompt and complete the review in one turn and one response,
+invoking the connector before reading or judging repository content.
 Return exactly one final JSON object following OutputSchema. If evidence is
 insufficient, return BLOCKED. Do not explain, summarize, emit partial output,
 request bootstrap/confirmation or ask for a second review prompt.
@@ -435,6 +462,7 @@ def _write_review_bundle(
     bundle_dir: Path,
     master_prompt: str,
     protocol: str,
+    evidence_contract: str,
     packet: dict[str, Any],
     spec_context: str,
     previous_review: dict[str, Any] | None,
@@ -447,13 +475,6 @@ def _write_review_bundle(
     """
     bundle_dir.mkdir(parents=True, exist_ok=True)
     artifacts: dict[str, str] = {
-        "instructions.md": (
-            "Execute review according to ReviewProtocol and ReviewPacket.\n"
-            "Return only the terminal JSON artifact described by OutputSchema.\n"
-        ),
-        "protocol.md": protocol,
-        "packet.json": json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
-        "spec-artifacts.md": spec_context,
         "output-schema.json": json.dumps({
             "type": "object",
             "required": ["review_context", "coverage", "findings", "review_divergences", "verdict_challenge", "lineage", "verdict"],
@@ -461,9 +482,21 @@ def _write_review_bundle(
                 "coverage": {"type": "object"},
                 "findings": {"type": "array"},
                 "review_divergences": {"type": "array"},
+                "blocked_reason": {"type": "array"},
                 "verdict": {"enum": ["APPROVED", "CHANGES_REQUIRED", "BLOCKED"]},
             },
         }, ensure_ascii=False, indent=2) + "\n",
+        "packet.json": json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
+        "protocol.md": protocol,
+        "github-evidence-contract.md": evidence_contract,
+        "spec-artifacts.md": spec_context,
+        "instructions.md": (
+            "Execute the Review Evidence Package in this authority order:\n"
+            "OutputSchema, ReviewPacket, GitHubEvidenceContract, ReviewProtocol, "
+            "SpecArtifacts, PreviousFindings, Instructions.\n"
+            "Return only the terminal JSON artifact after identity, evidence, "
+            "review, challenge and private schema validation.\n"
+        ),
     }
     if previous_review is not None:
         artifacts["previous-review.json"] = json.dumps(previous_review, ensure_ascii=False, indent=2) + "\n"
@@ -748,6 +781,10 @@ def run_browserless_code_review(
     if not protocol_path.is_file():
         raise BrowserlessReviewError(f"Installed Deep Review Protocol is missing: {protocol_path}")
     protocol = protocol_path.read_text(encoding="utf-8", errors="replace")
+    evidence_contract_path = project_path / ".specify" / "powerpack" / "github-evidence-contract.md"
+    if not evidence_contract_path.is_file():
+        raise BrowserlessReviewError(f"Installed GitHub Evidence Contract is missing: {evidence_contract_path}")
+    evidence_contract = evidence_contract_path.read_text(encoding="utf-8", errors="replace")
     master_path = _master_prompt_path(project_path)
     master_prompt = master_path.read_text(encoding="utf-8", errors="replace")
     previous_text = ""
@@ -788,6 +825,7 @@ def run_browserless_code_review(
         bundle_dir=bundle_path,
         master_prompt=master_prompt,
         protocol=protocol,
+        evidence_contract=evidence_contract,
         packet=packet,
         spec_context=spec.serialized,
         previous_review=previous_review,
