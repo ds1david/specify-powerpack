@@ -28,6 +28,7 @@ from speckit_powerpack.browserless_review import (
 from speckit_powerpack.chatgpt_pow_probe import build_conversation_body, parse_sse_assistant
 from speckit_powerpack.review_context import PullRequestTarget
 from speckit_powerpack.review_context import ReviewSnapshot
+from speckit_powerpack.review_response_normalizer import normalize_review_response
 
 
 def _snapshot() -> ReviewSnapshot:
@@ -81,6 +82,35 @@ def test_load_binding_uses_schema5_chatgpt_project(tmp_path: Path):
     binding = load_project_binding(tmp_path)
     assert binding.project_id == "g-p-test"
     assert binding.project_name == "Example"
+
+
+def test_normalizer_binds_immutable_snapshot_and_converts_shape_only():
+    snapshot = _snapshot()
+    review = {
+        "verdict": "CHANGES_REQUIRED",
+        "review_context": {"head_sha": "wrong"},
+        "changed_files": {"files": ["wrong.py"]},
+        "requirements": {"FR-001": {"status": "PASS", "evidence": ["proof"]}},
+        "coverage": {
+            "inspection_evidence": {
+                "a.py": "inspected code path",
+                "b.py": {"evidence": "inspected callers"},
+            }
+        },
+    }
+
+    normalized = normalize_review_response(review, snapshot)
+
+    assert normalized["review_context"] == snapshot.review_context()
+    assert normalized["coverage"]["changed_files"] == ["a.py", "b.py"]
+    assert normalized["coverage"]["requirements"] == [
+        {"id": "FR-001", "status": "PASS", "evidence": ["proof"]}
+    ]
+    assert normalized["coverage"]["inspection_evidence"] == [
+        {"file": "a.py", "evidence": "inspected code path"},
+        {"file": "b.py", "evidence": "inspected callers"},
+    ]
+    assert normalized["verdict"] == "CHANGES_REQUIRED"
 
 
 def test_every_turn_uses_project_binding_and_the_github_connector():

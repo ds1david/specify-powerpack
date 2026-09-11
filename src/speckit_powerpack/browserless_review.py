@@ -22,6 +22,7 @@ from .review_context import (
     resolve_pull_request,
     resolve_spec_context,
 )
+from .review_response_normalizer import normalize_review_response
 
 
 install_backend_compat()
@@ -736,6 +737,11 @@ def run_browserless_code_review(
             review = _extract_json(continuation)
         except BrowserlessReviewError:
             raise first_error
+    # Complete only immutable identity from the verified PR worktree before
+    # opening shape-repair continuations. The model's semantic review remains
+    # untouched and is still validated below.
+    if _complete_snapshot_from_local_git(project_path, review, local_head):
+        _log("browserless", "review response normalized from verified immutable local PR snapshot")
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
     missing_snapshot_fields = _missing_snapshot_fields(review)
@@ -843,6 +849,9 @@ def run_browserless_code_review(
         payload=snapshot_payload,
         local_head=local_head,
     )
+    review = normalize_review_response(review, snapshot)
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
     if str(context.get("snapshot_sha256") or "").strip().casefold() != snapshot.snapshot_sha256.casefold():
         _log("browserless", "review snapshot hash differs from immutable packet; requesting exact hash in the same segment…")
         continuation = web.ask(
