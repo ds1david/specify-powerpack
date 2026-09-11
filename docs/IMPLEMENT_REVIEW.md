@@ -102,20 +102,12 @@ python .specify/powerpack/bin/review_protocol.py validate \
   --previous <previous-review.json>
 ```
 
-## Project-context proof
+## Project binding
 
-The review must return:
-
-```json
-{
-  "project_context_evidence": {
-    "project_name": "exact bound Project name",
-    "literal_evidence": "3 to 20 consecutive words from serialized Project context"
-  }
-}
-```
-
-Specify PowerPack verifies that the literal excerpt actually occurs in the serialized context and is not merely the Project name.
+The review runs as a `gizmo_interaction` in the configured ChatGPT Project.
+The Project supplies its own Web context; PowerPack sends only the binding
+identity in the review packet and does not serialize Project conversations into
+the prompt.
 
 ## Output
 

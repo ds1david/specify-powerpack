@@ -1,0 +1,27 @@
+schema_version: "1.0"
+
+preset:
+  id: "powerpack-core"
+  name: "Specify PowerPack Core"
+  version: "0.1.0"
+  description: "Executor-aware, capability-driven deep implementation review with evidence validation and findings-to-tasks convergence for official Spec Kit."
+  author: "David Oliveira"
+  repository: "https://github.com/ds1david/specify-powerpack"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=1.0.0"
+  extensions:
+    - id: "powerpack-tools"
+      version: ">=0.1.0"
+      required: true
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.implement-review"
+      file: "commands/speckit.implement-review.md"
+      description: "Executor-aware, capability-driven deep implementation review with evidence validation and findings-to-tasks convergence."
+      strategy: "replace"
+
+tags: ["sdd", "workflow", "quality", "review", "portable"]

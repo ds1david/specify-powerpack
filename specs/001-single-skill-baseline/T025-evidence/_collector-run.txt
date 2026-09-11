@@ -1,5 +1,5 @@
 == T025 offline evidence -> /home/david/workspace/specify-powerpack/specs/001-single-skill-baseline/T025-evidence ==
-PP=/tmp/tmp.DUWGmmrJW5/pp  FEATURE=specs/001-single-skill-baseline  2026-09-10T16:42:02Z
+PP=/tmp/tmp.swTc3EEDSb/pp  FEATURE=specs/001-single-skill-baseline  2026-09-11T17:27:05Z
 PASS  P1 bin/ = exactly the 3 preserved runtimes (capabilities.py powerpack.py review_protocol.py )
 PASS  P2 command set has implement-review and no removed command file
 PASS  P3 upstream speckit-implement + speckit-converge present

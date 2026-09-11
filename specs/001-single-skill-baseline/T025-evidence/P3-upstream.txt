@@ -1,6 +1,6 @@
-/tmp/tmp.DUWGmmrJW5/pp/.claude/skills/speckit-converge
-/tmp/tmp.DUWGmmrJW5/pp/.claude/skills/speckit-implement
-/tmp/tmp.DUWGmmrJW5/pp/.claude/skills/speckit-implement-review
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-converge
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-implement
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-implement-review
 graphify
 speckit-analyze
 speckit-checklist

@@ -13,6 +13,36 @@ def test_curl_formats_method_url_and_body():
     assert '{"a": 1}' in line
 
 
+def test_curl_redacts_bearer_tokens_and_pats_in_the_body():
+    body = (
+        '{"tools":[{"type":"mcp","server_url":"https://api.githubcopilot.com/mcp/",'
+        '"headers":{"Authorization":"Bearer github_pat_11ABCDE0000fake_TOKEN_value"}}]}'
+    )
+    line = request_log.curl("POST", "https://x", body)
+    assert "github_pat_11ABCDE0000fake_TOKEN_value" not in line
+    assert "Bearer <redacted>" in line
+    assert '"type":"mcp"' in line  # non-secret content is preserved
+    bare = request_log.curl("POST", "https://x", '{"t":"ghp_abcdefghijklmnop1234"}')
+    assert "ghp_abcdefghijklmnop1234" not in bare and "gh" in bare
+
+
+def test_curl_raw_mode_keeps_headers_secrets_and_full_body(monkeypatch):
+    monkeypatch.setenv("SPECKIT_POWERPACK_HTTP_LOG_RAW", "1")
+    headers = {"Authorization": "Bearer sk-live-SECRET", "Cookie": "oai-did=abc"}
+    big_body = "A" * 9000 + "END_MARKER"
+    line = request_log.curl("POST", "https://x", big_body, headers)
+    assert "-H 'Authorization: Bearer sk-live-SECRET'" in line
+    assert "-H 'Cookie: oai-did=abc'" in line
+    assert "Bearer <redacted>" not in line  # no redaction in raw mode
+    assert "…[+" not in line and "END_MARKER" in line  # full body, untruncated
+    assert " \\\n  " in line  # one flag per continuation line
+
+
+def test_curl_raw_mode_off_by_default_still_drops_headers():
+    line = request_log.curl("GET", "https://x", None, {"Authorization": "Bearer x"})
+    assert line == "curl -sS -X GET 'https://x'"
+
+
 def test_curl_truncates_a_long_body():
     line = request_log.curl("POST", "https://x", "z" * 9000)
     assert "…[+" in line and "bytes]" in line

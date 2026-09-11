@@ -54,7 +54,7 @@ Therefore:
 - `native_binding = false`;
 - Project context is useful history, not authoritative current-code evidence;
 - SPEC + immutable GitHub PR evidence override conflicting Project memory;
-- the reviewer must return literal Project-context evidence so Specify PowerPack can prove the serialized context was consumed.
+- the configured ChatGPT Project supplies Web context; PowerPack does not duplicate its conversations in the prompt.
 
 ## GitHub capability
 
@@ -87,7 +87,7 @@ Before proceeding, local `HEAD` must equal the PR head SHA.
 A second read-only ChatGPT Web turn receives:
 
 - immutable snapshot;
-- serialized Project context;
+- bound ChatGPT Project identity;
 - active SPEC context;
 - Deep Review Protocol;
 - optional previous review;
@@ -95,7 +95,7 @@ A second read-only ChatGPT Web turn receives:
 
 It must inspect the exact PR through GitHub tools and return schema 2.0 JSON only.
 
-Specify PowerPack verifies snapshot identity, exact changed-file coverage, Project-context evidence and the installed review-protocol validator.
+Specify PowerPack verifies snapshot identity, exact changed-file coverage, Project binding and the installed review-protocol validator.
 
 ## Fail-closed classifications
 

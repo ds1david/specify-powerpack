@@ -1,5 +1,5 @@
 {
-  "review_config": "/tmp/tmp.DUWGmmrJW5/pp/.specify/powerpack/review.json",
+  "review_config": "/tmp/tmp.swTc3EEDSb/pp/.specify/powerpack/review.json",
   "provider": "chatgpt-project",
   "backend": "codex-apps-github",
   "project": {

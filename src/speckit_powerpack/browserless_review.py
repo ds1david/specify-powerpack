@@ -208,16 +208,11 @@ def _changed_files_for_snapshot(review: dict[str, Any]) -> tuple[list[Any] | Non
     return None, False
 
 
-def _snapshot_prompt(target: PullRequestTarget, connector_id: str, *, project_context: str = "") -> str:
+def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
 Use exclusively the installed GitHub connector selected dynamically for this turn:
 plugin:{connector_id} (the transport will emit the matching @Github ecosystem mention).
-
-CHATGPT PROJECT CONTEXT — serialized read-only background memory (present in every phase):
-<project_context>
-{(project_context or "NONE — the bound ChatGPT Project has no readable context")[:12000]}
-</project_context>
 
 Resolve the immutable identity of exactly this pull request:
 repository: {target.repository}
@@ -254,7 +249,6 @@ def _review_packet(
     spec: Any,
     snapshot: ReviewSnapshot | None,
     project: ProjectBinding,
-    project_context: str,
     protocol: str,
     previous_review: dict[str, Any] | None,
     round_number: int,
@@ -292,10 +286,10 @@ def _review_packet(
             "resolved_findings": [],
             "previous_review_context": previous_context,
         },
-        "project_context": {
+        "project": {
+            "project_id": project.project_id,
             "project_name": project.project_name,
-            "context": project_context[:24_000],
-            "authority": "supplemental-only",
+            "authority": "bound ChatGPT Project; context resolved by Web",
         },
     }
 
@@ -327,8 +321,6 @@ def _review_prompt(
     *,
     connector_id: str,
     snapshot: ReviewSnapshot,
-    project_name: str,
-    project_context: str,
     spec_context: str,
     protocol: str,
     user_instruction: str,
@@ -348,11 +340,6 @@ EXPECTED REQUIREMENT IDS — coverage.requirements must contain exactly this set
 {json.dumps(requirements, ensure_ascii=False)}
 
 The local implementation HEAD has already been verified by {PRODUCT_NAME} to equal the PR head SHA. Use GitHub tools to inspect the exact PR, complete diff, every changed file and all related source/tests/contracts needed to establish blast radius. Follow pagination. Do not rely on the PR description or CI as proof.
-
-CHATGPT PROJECT CONTEXT — serialized read-only background memory:
-<project_context>
-{project_context[:24000]}
-</project_context>
 
 ACTIVE SPEC KIT CONTEXT — authoritative requirements:
 <spec_context>
@@ -384,34 +371,8 @@ Rules:
 - coverage.inspection_evidence MUST contain one object per changed file with fields file and evidence describing what was inspected.
 - coverage.verdict_challenge MUST contain strongest_counterexample, result and non-empty evidence. APPROVED requires result SURVIVED or evidence-backed NOT_APPLICABLE.
 - coverage.context_gaps MUST be a list. If material Project-only knowledge is absent from durable repository evidence, describe it there and do not APPROVE.
-- Add this extra top-level object so {PRODUCT_NAME} can prove Project context was actually consumed:
-  "project_context_evidence": {{
-    "project_name": "{project_name}",
-    "literal_evidence": "3 to 20 consecutive words copied literally from the serialized Project context, not merely the Project name"
-  }}
 - If responsible review is impossible, return a structurally valid BLOCKED review rather than APPROVED.
 """
-
-
-def _normalize_spaces(value: str) -> str:
-    return " ".join((value or "").split())
-
-
-def _validate_project_evidence(review: dict[str, Any], *, project_name: str, project_context: str) -> None:
-    evidence = review.get("project_context_evidence")
-    if not isinstance(evidence, dict):
-        raise BrowserlessReviewError("Review is missing project_context_evidence.")
-    returned_name = str(evidence.get("project_name") or "").strip()
-    if returned_name.casefold() != project_name.casefold():
-        raise BrowserlessReviewError("Reviewer did not identify the bound ChatGPT Project correctly.")
-    literal = _normalize_spaces(str(evidence.get("literal_evidence") or ""))
-    words = literal.split()
-    if not (3 <= len(words) <= 20):
-        raise BrowserlessReviewError("project_context_evidence.literal_evidence must contain 3 to 20 words.")
-    if literal.casefold() == project_name.casefold():
-        raise BrowserlessReviewError("Project context evidence cannot be only the Project name.")
-    if literal.casefold() not in _normalize_spaces(project_context).casefold():
-        raise BrowserlessReviewError("Project context evidence is not a literal excerpt from the serialized Project context.")
 
 
 def _validate_snapshot_contract(review: dict[str, Any], snapshot: ReviewSnapshot) -> None:
@@ -543,7 +504,6 @@ def run_browserless_code_review(
     model: str = "gpt-5.6-sol",
     effort: str = "xhigh",
     timeout: int = 600,
-    max_project_conversations: int = 2,
     locale: str = "pt-BR",
     verbose: bool = False,
     ephemeral: bool = True,
@@ -580,12 +540,11 @@ def run_browserless_code_review(
             )
         _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
         github = discover_github_connector(client, locale=locale)
-        _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{binding.project_id} …)…")
-        project, project_context = client.build_project_context(
-            binding.project_id,
-            max_conversations=max(0, min(max_project_conversations, 4)),
-            max_chars=32_000,
-        )
+        _log("browserless", f"resolving bound ChatGPT Project (/backend-api/gizmos/{binding.project_id} …)…")
+        # The Project is already bound to the Web conversation. Do not fetch
+        # and serialize its conversations into the prompt again; gizmo
+        # interaction resolves that context server-side.
+        project = client.get_project(binding.project_id)
         _log("browserless", f"Project '{project.name}' bound; GitHub connector {github.connector_id}")
     except (ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise BrowserlessReviewError(str(exc)) from exc
@@ -624,7 +583,6 @@ def run_browserless_code_review(
         spec=spec,
         snapshot=None,
         project=binding,
-        project_context=project_context,
         protocol=protocol,
         previous_review=previous_review,
         round_number=round_number,
@@ -822,8 +780,6 @@ def run_browserless_code_review(
         coverage["previous_findings"] = review["previous_findings"]
     _validate_snapshot_contract(review, snapshot)
     _validate_hardened_review_contract(review, snapshot=snapshot, spec_context=spec.serialized)
-    _validate_project_evidence(review, project_name=binding.project_name, project_context=project_context)
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _validate_protocol(project_path, output_path, previous)

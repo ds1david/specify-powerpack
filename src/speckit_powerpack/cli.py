@@ -566,7 +566,6 @@ def cmd_review_run(args: argparse.Namespace) -> None:
             model=args.model,
             effort=args.effort,
             timeout=args.timeout,
-            max_project_conversations=args.max_conversations,
             locale=args.locale,
             verbose=verbose,
             ephemeral=not args.keep_session,
@@ -657,7 +656,6 @@ def build_parser() -> argparse.ArgumentParser:
     review_run.add_argument("--model", default="gpt-5.6-sol")
     review_run.add_argument("--effort", default="xhigh")
     review_run.add_argument("--timeout", type=int, default=600)
-    review_run.add_argument("--max-conversations", type=int, default=2)
     review_run.add_argument("--locale", default="pt-BR")
     review_run.add_argument("--quiet", action="store_true", help="suppress the per-turn progress stream on stderr")
     review_run.add_argument(

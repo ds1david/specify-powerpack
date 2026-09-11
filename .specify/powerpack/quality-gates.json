@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "policy": "capability-strategy",
+  "custom_command": null,
+  "unknown_architecture": "block",
+  "ambiguous_architecture": "block"
+}

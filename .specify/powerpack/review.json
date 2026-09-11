@@ -1,0 +1,58 @@
+{
+  "schema_version": 5,
+  "provider": "chatgpt-project",
+  "review_backend": "codex-apps-github",
+  "mode": "browserless",
+  "conversation_strategy": "master-prompt-plus-packet-per-segment",
+  "master_prompt": {
+    "path": ".specify/powerpack/master-review-prompt.md",
+    "version": "1.0",
+    "sha256_required": true
+  },
+  "lineage": {
+    "shape": "Review -> Round -> Attempt -> Conversation Segment",
+    "conversation_rollover_increments_round": false,
+    "checkpoint_authoritative": true
+  },
+  "deep_review": {
+    "schema_version": "2.0",
+    "protocol_path": ".specify/powerpack/deep-review-protocol.md",
+    "validate_output": true,
+    "full_snapshot_each_round": true,
+    "validate_previous_findings": true,
+    "adversarial_verdict_challenge": true,
+    "immutable_pr_manifest": true,
+    "exact_changed_file_coverage": true,
+    "exact_requirement_coverage": true,
+    "inspection_evidence_required": true,
+    "context_gaps_block_approval": true
+  },
+  "codex": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "sandbox": "read-only",
+    "ephemeral": true
+  },
+  "chatgpt_project": {
+    "required": true,
+    "project_id": "g-p-6a9ba1a060208191a5b6e03a3950b183",
+    "project_name": "specify-powerpack",
+    "project_url": "https://chatgpt.com/g/g-p-6a9ba1a060208191a5b6e03a3950b183-specify-powerpack/project",
+    "authorization": "codex-backend-api",
+    "context_mode": "serialized",
+    "native_binding": false
+  },
+  "github_app": {
+    "required": true,
+    "runtime": "codex_apps",
+    "authorization": "chatgpt-account-oauth",
+    "explicit_app_mention": true,
+    "require_structural_tool_evidence": true,
+    "allow_shell_fallback": false,
+    "allow_web_search_fallback": false
+  },
+  "quality_gate": {
+    "mode": "auto-detect",
+    "skip_documentation_only": true
+  }
+}

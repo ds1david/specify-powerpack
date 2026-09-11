@@ -42,9 +42,9 @@ repository .specify/powerpack/review.json
              ▼
        ~/.codex/auth.json
              │
-      ChatGPT backend reads
+      ChatGPT Web resolves
              │
-      serialized Project context
+      the bound Project context
              │
              ├───────────────┐
              │               │
@@ -76,13 +76,13 @@ the required `curl-cffi` transport dependency.
 
 ### What “Project context” means
 
-Specify PowerPack reads the bound ChatGPT Project through account-scoped ChatGPT backend APIs, serializes Project metadata/instructions and recent Project conversations, and injects that material as read-only context for the review turn.
+Specify PowerPack resolves the bound ChatGPT Project through account-scoped ChatGPT backend APIs and starts the review as a `gizmo_interaction`. ChatGPT Web supplies the Project's existing context; PowerPack does not serialize recent Project conversations into the review prompt.
 
 This is deliberately reported as:
 
 ```text
-project_context_serialized = true
-native_project_binding      = false
+project_context_serialized = false
+native_project_binding      = true
 response_visible_in_project = false
 ```
 
@@ -123,7 +123,7 @@ The review receives:
 - previous review on round 2+;
 - exact GitHub App binding.
 
-Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
+Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and bound Project identity before validating the review JSON.
 
 The Master Review turn resolves the immutable snapshot before returning its verdict; a connector authorization continuation is sent only when the SSE emits `confirm_action`.
 

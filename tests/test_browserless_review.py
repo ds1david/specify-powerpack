@@ -17,7 +17,6 @@ from speckit_powerpack.browserless_review import (
     _requirement_ids,
     _snapshot_prompt,
     _validate_hardened_review_contract,
-    _validate_project_evidence,
     _validate_snapshot_contract,
     load_project_binding,
     ProjectBinding,
@@ -80,18 +79,12 @@ def test_load_binding_uses_schema5_chatgpt_project(tmp_path: Path):
     assert binding.project_name == "Example"
 
 
-def test_every_turn_carries_project_context_and_the_github_connector():
-    """Firm requirement: BOTH the ChatGPT Project context and the GitHub App
-    mention are in every prompt sent to ChatGPT — including the complete
-    Master Review turn."""
+def test_every_turn_uses_project_binding_and_the_github_connector():
+    """The Web Project supplies context; the prompt only binds the connector."""
     target = PullRequestTarget("owner/repo", 15, "https://github.com/owner/repo/pull/15")
-    snap = _snapshot_prompt(target, "connector_github", project_context="CHATGPT PROJECT: Example\nmission: X")
+    snap = _snapshot_prompt(target, "connector_github")
     assert "plugin:connector_github" in snap
-    assert "CHATGPT PROJECT CONTEXT" in snap and "mission: X" in snap
-    # and it degrades cleanly when the Project has no readable context
-    bare = _snapshot_prompt(target, "connector_github")
-    assert "plugin:connector_github" in bare
-    assert "NONE — the bound ChatGPT Project has no readable context" in bare
+    assert "CHATGPT PROJECT CONTEXT" not in snap
 
 
 def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
@@ -262,8 +255,6 @@ def test_review_prompt_binds_project_spec_snapshot_and_github_app():
     prompt = _review_prompt(
         connector_id="connector_github",
         snapshot=_snapshot(),
-        project_name="Example",
-        project_context="CHATGPT PROJECT: Example\nmission: build safely",
         spec_context="FR-001 requirement\nSC-002 success criterion",
         protocol="schema 2.0 protocol",
         user_instruction="review it",
@@ -271,7 +262,7 @@ def test_review_prompt_binds_project_spec_snapshot_and_github_app():
     )
     assert "plugin:connector_github" in prompt
     assert '"snapshot_sha256": "' + "4" * 64 + '"' in prompt
-    assert "CHATGPT PROJECT CONTEXT" in prompt
+    assert "CHATGPT PROJECT CONTEXT" not in prompt
     assert "ACTIVE SPEC KIT CONTEXT" in prompt
     assert "schema 2.0 review JSON" in prompt
     assert '"FR-001"' in prompt
@@ -288,7 +279,6 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
         spec=type("Spec", (), {"spec_id": "SPEC-12"})(),
         snapshot=snapshot,
         project=ProjectBinding("g-p-test", "Example", None),
-        project_context="mission: build safely",
         protocol="protocol-v3",
         previous_review=None,
         round_number=1,
@@ -302,16 +292,14 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     assert "POWERPACK_REVIEW_PACKET" in prompt
     assert packet["review_id"] == "owner/repo#12:SPEC-12:implement-review"
     assert packet["master_prompt"]["sha256"]
+    assert packet["project"] == {
+        "project_id": "g-p-test",
+        "project_name": "Example",
+        "authority": "bound ChatGPT Project; context resolved by Web",
+    }
+    assert "project_context" not in packet
     assert "not a homologation probe" in prompt
     assert "Name the bound Project and summarize its mission" not in prompt
-
-
-def test_project_context_evidence_must_be_literal():
-    review = {"project_context_evidence": {"project_name": "Example", "literal_evidence": "mission build safely"}}
-    _validate_project_evidence(review, project_name="Example", project_context="prefix mission build safely suffix")
-    review["project_context_evidence"]["literal_evidence"] = "invented evidence does not exist"
-    with pytest.raises(BrowserlessReviewError, match="not a literal excerpt"):
-        _validate_project_evidence(review, project_name="Example", project_context="prefix mission build safely suffix")
 
 
 def test_snapshot_contract_requires_exact_changed_files():
