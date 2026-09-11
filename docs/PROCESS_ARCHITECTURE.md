@@ -36,9 +36,11 @@ Specify PowerPack CLI
           ├─ ChatGPT backend reads
           │    └─ serialized ChatGPT Project context
           │
-          └─ codex exec --ephemeral --sandbox read-only
-               └─ codex_apps MCP
-                    └─ GitHub App/connector
+          └─ Sentinel PoW/Turnstile requirements
+               └─ ChatGPT Web conversation SSE
+                    ├─ dynamic Project gizmo binding
+                    ├─ dynamic GitHub connector hint
+                    └─ JIT allow continuation
 ```
 
 Specify PowerPack does not use Chrome, Playwright, CDP or ChatGPT-Web2API in the supported runtime.
@@ -56,9 +58,9 @@ Therefore:
 
 ## GitHub capability
 
-Specify PowerPack first discovers the GitHub plugin/connector through the account-scoped ChatGPT backend and requires enabled/authorized/available state. It then passes the resolved connector internally to Codex as an explicit `app://` mention.
+Specify PowerPack first discovers the GitHub plugin/connector through the account-scoped ChatGPT backend and requires enabled/authorized/available state. It then passes the resolved connector to the ChatGPT Web conversation payload as a dynamic `plugin:connector_*` system hint and `@Github` ecosystem mention.
 
-The PR-reading model must use the `codex_apps` MCP surface. Specify PowerPack parses Codex JSONL and requires completed MCP tool calls with results. Command execution and web-search fallbacks are forbidden for GitHub evidence.
+The PR-reading model must invoke the selected GitHub connector through the ChatGPT Web SSE flow. Specify PowerPack parses assistant/tool messages, detects the JIT permission gate and submits the corresponding read-only `allow` continuation with fresh Sentinel tokens. Command execution and web-search fallbacks are forbidden for GitHub evidence.
 
 Connector/plugin IDs are operational identifiers and are redacted from normal reports.
 
@@ -66,7 +68,7 @@ Connector/plugin IDs are operational identifiers and are redacted from normal re
 
 ### Phase 1 — manifest
 
-A read-only Codex App turn resolves exactly one explicit PR and returns:
+A read-only ChatGPT Web turn resolves exactly one explicit PR and returns:
 
 - repository;
 - PR number;
@@ -82,7 +84,7 @@ Before proceeding, local `HEAD` must equal the PR head SHA.
 
 ### Phase 2 — deep review
 
-A second ephemeral read-only turn receives:
+A second read-only ChatGPT Web turn receives:
 
 - immutable snapshot;
 - serialized Project context;

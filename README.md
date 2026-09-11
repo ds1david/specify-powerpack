@@ -27,7 +27,7 @@ speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speck
 - Codex/Claude executor routing;
 - browserless ChatGPT Project context;
 - GitHub App/connector discovery and OAuth readiness checks;
-- GitHub tool execution through the official Codex Apps MCP runtime;
+- GitHub connector execution through the ChatGPT Web conversation transport;
 - immutable two-phase GitHub PR review;
 - cross-platform installer for Linux/WSL/macOS and Windows;
 - PowerPack-managed Spec Kit bootstrap/update.
@@ -54,12 +54,13 @@ repository .specify/powerpack/review.json
              │               │
              └──────┬────────┘
                     ▼
-          codex exec --json --ephemeral
-          --sandbox read-only
+          POST /backend-api/f/conversation
                     │
-          [$github](app://connector)
+          Sentinel PoW + Turnstile
                     │
-              codex_apps MCP
+          plugin:connector_* + @Github
+                    │
+          SSE + JIT allow (only on confirm_action)
                     │
                 GitHub tools
                     │
@@ -69,6 +70,9 @@ repository .specify/powerpack/review.json
 ```
 
 There is no Chrome, CDP, Playwright, Selenium or Web2API in the supported production path.
+The review uses the Codex token from `~/.codex/auth.json`, the ChatGPT Web Sentinel
+requirements flow and the SSE conversation endpoint. The browserless extra installs
+the required `curl-cffi` transport dependency.
 
 ### What “Project context” means
 
@@ -82,17 +86,23 @@ native_project_binding      = false
 response_visible_in_project = false
 ```
 
-The review is **not** written as a native conversation inside the ChatGPT Project.
+The review is created through the ChatGPT Web conversation API with the bound Project
+as `gizmo_interaction`; a PATCH fallback attaches it to the Project when necessary.
 
 ### What “GitHub connector” means
 
-Specify PowerPack does not manually inject private `tools[]` into `/backend-api/codex/responses`. It discovers the installed GitHub App/connector, then explicitly selects it with:
+Specify PowerPack discovers the installed GitHub App/connector, then explicitly selects
+the dynamic connector in the ChatGPT Web payload with:
 
 ```text
-[$github](app://<connector-id>)
+plugin:connector_<dynamic-id> + @Github
 ```
 
-The Codex runtime owns App resolution, MCP tools, approvals, tool execution and continuation. Specify PowerPack observes the JSONL lifecycle and requires structural `codex_apps` GitHub tool-call/result evidence. Shell and web-search fallbacks are rejected.
+The SSE parser observes GitHub tool invocation and permission-gate events. When the
+connector emits an explicit `confirm_action`, the transport refreshes Sentinel tokens
+and sends the HAR-compatible JIT `allow` continuation with conversation-level memory.
+Already-authorized tool results continue directly without another `allow`. Shell and
+web-search fallbacks are rejected.
 
 ## Immutable code review
 

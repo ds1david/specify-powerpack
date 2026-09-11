@@ -10,14 +10,8 @@ from typing import Any
 
 from .backend_compat import install_backend_compat
 from .chatgpt_project_provider import ChatGPTBackendClient, ChatGPTProjectError
-from .codex_apps_runtime import (
-    CodexAppsError,
-    make_progress_reporter,
-    parse_codex_jsonl,
-    require_github_tool_evidence,
-    run_codex_exec,
-)
 from .github_connector_discovery import GitHubConnectorDiscoveryError, discover_github_connector
+from .chatgpt_web_review import ChatGPTWebReviewClient, ChatGPTWebReviewError
 from .review_context import (
     PullRequestTarget,
     ReviewSnapshot,
@@ -116,8 +110,8 @@ def _requirement_ids(spec_context: str) -> tuple[str, ...]:
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str, *, project_context: str = "") -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
-Use exclusively the installed GitHub App selected by this explicit Codex App mention:
-[$github](app://{connector_id})
+Use exclusively the installed GitHub connector selected dynamically for this turn:
+plugin:{connector_id} (the transport will emit the matching @Github ecosystem mention).
 
 CHATGPT PROJECT CONTEXT — serialized read-only background memory (present in every phase):
 <project_context>
@@ -161,8 +155,8 @@ def _review_prompt(
     requirements = list(_requirement_ids(spec_context))
     return f"""You are the mandatory independent browserless code-review gate for {PRODUCT_NAME}.
 
-Use exclusively the installed GitHub App selected by this explicit Codex App mention for PR/repository evidence:
-[$github](app://{connector_id})
+Use exclusively the installed GitHub connector selected dynamically for PR/repository evidence:
+plugin:{connector_id} (the transport will emit the matching @Github ecosystem mention).
 
 IMMUTABLE REVIEW SNAPSHOT — authoritative; do not substitute another PR or snapshot:
 {json.dumps(snapshot.as_dict(), ensure_ascii=False, indent=2)}
@@ -360,13 +354,9 @@ def run_browserless_code_review(
 
     def _log(kind: str, msg: str) -> None:
         # kind: "browserless" = a chatgpt.com/backend-api call;
-        #       "codex"       = work inside a `codex exec` turn.
+        #       "codex"       = retained for compatibility with older logs.
         if verbose:
             print(f"  [{kind}] {msg}", file=sys.stderr, flush=True)
-
-    def _progress_for(phase: str):
-        # every ProgressReporter line is a codex-exec event -> prefix "codex/"
-        return make_progress_reporter(f"codex/{phase}", sys.stderr) if verbose else None
 
     binding = load_project_binding(project_path)
     target = resolve_pull_request(project_path, pull_request)
@@ -399,24 +389,22 @@ def run_browserless_code_review(
     if project.id != binding.project_id or project.name.casefold() != binding.project_name.casefold():
         raise BrowserlessReviewError("Serialized ChatGPT Project does not match the repository binding.")
 
-    _log("codex", "exec turn 1 (snapshot) — resolving the immutable PR manifest via the GitHub App…")
-    snapshot_turn = run_codex_exec(
-        project_path=project_path,
+    try:
+        web = ChatGPTWebReviewClient()
+    except ChatGPTWebReviewError as exc:
+        raise BrowserlessReviewError(str(exc)) from exc
+
+    _log("browserless", "ChatGPT Web turn 1 (snapshot) — resolving the immutable PR manifest via GitHub…")
+    snapshot_text = web.ask(
+        _snapshot_prompt(target, github.connector_id, project_context=project_context),
+        project_id=binding.project_id,
+        connector_id=github.connector_id,
+        repository=target.repository,
         model=model,
         effort=effort,
-        prompt=_snapshot_prompt(target, github.connector_id, project_context=project_context),
-        timeout=min(timeout, 300),
-        progress=_progress_for("snapshot"),
-        ephemeral=ephemeral,
     )
-    if snapshot_turn.returncode != 0:
-        raise BrowserlessReviewError((snapshot_turn.stderr or snapshot_turn.stdout or "snapshot turn failed").strip())
-    snapshot_events = parse_codex_jsonl(snapshot_turn.stdout, connector_id=github.connector_id)
-    try:
-        require_github_tool_evidence(snapshot_events)
-    except CodexAppsError as exc:
-        raise BrowserlessReviewError(f"PR snapshot discovery failed: {exc}") from exc
-    snapshot_payload = _extract_json(str(snapshot_events.get("assistant_text") or ""))
+    snapshot_tools = web.last_tool_invocations
+    snapshot_payload = _extract_json(snapshot_text)
     snapshot = build_snapshot(
         target=target,
         spec_id=spec.spec_id,
@@ -434,16 +422,9 @@ def run_browserless_code_review(
             raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
         previous_text = previous.read_text(encoding="utf-8", errors="replace")
 
-    _log(
-        "codex",
-        f"exec turn 2 (deep review) — model={model} effort={effort} timeout={timeout}s "
-        "(an xhigh review of a large delta can take 10–40 min)",
-    )
-    review_turn = run_codex_exec(
-        project_path=project_path,
-        model=model,
-        effort=effort,
-        prompt=_review_prompt(
+    _log("browserless", f"ChatGPT Web turn 2 (deep review) — model={model} timeout={timeout}s")
+    review_text = web.ask(
+        _review_prompt(
             connector_id=github.connector_id,
             snapshot=snapshot,
             project_name=binding.project_name,
@@ -453,18 +434,14 @@ def run_browserless_code_review(
             user_instruction=prompt,
             previous_review=previous_text,
         ),
-        timeout=timeout,
-        progress=_progress_for("review"),
-        ephemeral=ephemeral,
+        project_id=binding.project_id,
+        connector_id=github.connector_id,
+        repository=target.repository,
+        model=model,
+        effort=effort,
     )
-    if review_turn.returncode != 0:
-        raise BrowserlessReviewError((review_turn.stderr or review_turn.stdout or "review turn failed").strip())
-    review_events = parse_codex_jsonl(review_turn.stdout, connector_id=github.connector_id)
-    try:
-        require_github_tool_evidence(review_events)
-    except CodexAppsError as exc:
-        raise BrowserlessReviewError(f"Deep review GitHub evidence failed: {exc}") from exc
-    review = _extract_json(str(review_events.get("assistant_text") or ""))
+    review_tools = web.last_tool_invocations
+    review = _extract_json(review_text)
     _validate_snapshot_contract(review, snapshot)
     _validate_hardened_review_contract(review, snapshot=snapshot, spec_context=spec.serialized)
     _validate_project_evidence(review, project_name=binding.project_name, project_context=project_context)
@@ -479,8 +456,7 @@ def run_browserless_code_review(
         output_path=output_path,
         snapshot=snapshot,
         project=binding,
-        github_tools=tuple(review_events.get("codex_apps_tools") or ()),
-        snapshot_tools=tuple(snapshot_events.get("codex_apps_tools") or ()),
-        github_call_count=int(snapshot_events.get("codex_apps_completed_call_count") or 0)
-        + int(review_events.get("codex_apps_completed_call_count") or 0),
+        github_tools=review_tools,
+        snapshot_tools=snapshot_tools,
+        github_call_count=len(snapshot_tools) + len(review_tools),
     )

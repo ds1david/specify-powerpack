@@ -1,287 +1,96 @@
 #!/usr/bin/env python3
-"""Browserless prompt probe.
+"""Homologate the proven ChatGPT Web Project + GitHub connector transport.
 
-Submits three prompts through the **ChatGPT backend Codex Responses API**
-(`POST https://chatgpt.com/backend-api/codex/responses`) — the transport that
-surfaces in the ChatGPT web / Codex history — bound to a ChatGPT Project by
-serializing its context into the request `instructions`. Same auth
-(`~/.codex/auth.json`), same Project, same GitHub connector the browserless
-review uses; no separate flow.
-
-    python3 scripts/homologation/probe_browserless_prompts.py \
-        --project g-p-6a9ba1a060208191a5b6e03a3950b183 --effort medium
-
-The three prompts:
-  1. name + mission of this project (<=100 words)   [uses the Project context]
-  2. list all my GitHub repositories                 [uses the Project context + GitHub connector]
-  3. list only the files changed in PR #15           [uses the Project context + GitHub connector]
-
-WARNING: this spends Codex/ChatGPT tokens on your plan.
+This intentionally exercises the same package transport used by
+``speckit.implement-review``: Codex auth, Sentinel requirements, native Project
+binding, dynamic GitHub connector selection, SSE parsing and JIT allow.
 """
+
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
+import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(ROOT / "src"))
-
-import os  # noqa: E402
+sys.path.insert(0, str(ROOT / "src"))
 
 from speckit_powerpack.backend_compat import install_backend_compat  # noqa: E402
-from speckit_powerpack.chatgpt_project_provider import (  # noqa: E402
-    ChatGPTBackendClient,
-    ChatGPTProjectError,
-)
-from speckit_powerpack.request_log import log_request  # noqa: E402
-
-# Reuse the same backend-compat the CLI installs: Codex-CLI request shape
-# (User-Agent `codex-cli`, OpenAI-Beta, Origin/Referer) and the `/wham/usage`
-# auth probe instead of `/backend-api/me`, which the ChatGPT Web / Cloudflare
-# perimeter rejects (403 HTML interstitial) even for a valid Codex token.
-install_backend_compat()
-
-
-def _is_cloudflare_challenge(body: str) -> bool:
-    low = body.lower()
-    return "<html" in low and ("just a moment" in low or 'http-equiv="refresh"' in low
-                               or "enable javascript and cookies" in low or "cf-" in low)
-
-try:  # connector discovery is best-effort — the probe still runs without it
-    from speckit_powerpack.github_connector_discovery import (  # noqa: E402
-        GitHubConnectorDiscoveryError,
-        discover_github_connector,
-    )
-except ImportError:  # pragma: no cover
-    discover_github_connector = None
-    GitHubConnectorDiscoveryError = Exception  # type: ignore[assignment,misc]
-
-RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
+from speckit_powerpack.chatgpt_project_provider import ChatGPTBackendClient  # noqa: E402
+from speckit_powerpack.chatgpt_web_review import ChatGPTWebReviewClient  # noqa: E402
+from speckit_powerpack.github_connector_discovery import discover_github_connector  # noqa: E402
 
 
 def _origin_repo(path: Path) -> str:
-    import subprocess
-
-    try:
-        url = subprocess.run(
-            ["git", "-C", str(path), "remote", "get-url", "origin"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "ds1david/specify-powerpack"
-    url = url.removesuffix(".git")
-    if url.startswith("git@github.com:"):
-        return url.split(":", 1)[1]
-    parts = url.split("github.com/", 1)
-    return parts[1] if len(parts) == 2 else "ds1david/specify-powerpack"
-
-
-def _log(kind: str, msg: str) -> None:
-    # kind: "browserless" = a chatgpt.com/backend-api call;
-    #       "codex"       = a tool/command executed inside the Codex turn.
-    print(f"  [{kind}] {msg}", file=sys.stderr, flush=True)
-
-
-def _stream_response(client: ChatGPTBackendClient, *, prompt: str, instructions: str,
-                     model: str, effort: str) -> tuple[str, str | None, list[str]]:
-    body: dict[str, object] = {
-        "model": model,
-        "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
-        "instructions": instructions,
-        "stream": True,
-        # /backend-api/codex/responses rejects store:true ("Store must be set to
-        # false"). The turn still lands in the Codex web history regardless.
-        "store": False,
-    }
-    if effort:
-        body["reasoning"] = {"effort": effort}
-    headers = client._headers(accept="text/event-stream")
-    headers["Content-Type"] = "application/json"
-    raw_body = json.dumps(body).encode("utf-8")
-    log_request("POST", RESPONSES_URL, raw_body)
-    req = urllib.request.Request(RESPONSES_URL, data=raw_body, method="POST", headers=headers)
-    _log("browserless", f"POST {RESPONSES_URL} (model={model} effort={effort} store=false)")
-    text: list[str] = []
-    response_id: str | None = None
-    tool_events: list[str] = []
-    seen_tools: set[str] = set()
-    try:
-        with urllib.request.urlopen(req, timeout=900) as resp:
-            for raw in resp:
-                line = raw.decode("utf-8", errors="replace").strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if not data or data == "[DONE]":
-                    continue
-                try:
-                    event = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                etype = str(event.get("type") or "")
-                if etype == "response.output_text.delta" and isinstance(event.get("delta"), str):
-                    text.append(event["delta"])
-                elif etype == "response.completed" and isinstance(event.get("response"), dict):
-                    response_id = str(event["response"].get("id") or "") or None
-                    _log("browserless", f"response.completed id={response_id or 'n/a'}")
-                elif etype == "response.failed":
-                    err = (event.get("response") or {}).get("error") or {}
-                    raise ChatGPTProjectError(
-                        f"response.failed: {err.get('code') or 'unknown'}: {err.get('message') or event}"
-                    )
-                elif "tool" in etype or "mcp" in etype or "function_call" in etype:
-                    tool_events.append(etype)
-                    if etype not in seen_tools:
-                        seen_tools.add(etype)
-                        _log("codex", f"tool event: {etype}")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        if _is_cloudflare_challenge(detail):
-            raise ChatGPTProjectError(
-                f"HTTP {exc.code} from {RESPONSES_URL}: Cloudflare bot-mitigation interstitial "
-                "(not a real auth error). Retry later."
-            ) from exc
-        if exc.code == 429 or "usage_limit" in detail.lower():
-            secs = 0
-            try:
-                secs = int(json.loads(detail).get("error", {}).get("resets_in_seconds") or 0)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
-            raise ChatGPTProjectError(
-                "usage limit reached — no tokens were spent on this turn"
-                + (f"; resets in ~{secs}s" if secs else "")
-            ) from exc
-        raise ChatGPTProjectError(f"HTTP {exc.code} from {RESPONSES_URL}: {detail[:1200]}") from exc
-    except urllib.error.URLError as exc:
-        raise ChatGPTProjectError(f"cannot reach {RESPONSES_URL}: {exc}") from exc
-    return "".join(text).strip(), response_id, tool_events
+    value = subprocess.check_output(
+        ["git", "-C", str(path), "config", "--get", "remote.origin.url"],
+        text=True,
+    ).strip()
+    value = value.removesuffix(".git")
+    if value.startswith("git@github.com:"):
+        return value.removeprefix("git@github.com:")
+    marker = "github.com/"
+    if marker in value:
+        return value.split(marker, 1)[1].lstrip("/")
+    raise RuntimeError(f"origin is not a GitHub repository: {value}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", required=True, help="ChatGPT Project id (g-p-…) or URL")
-    parser.add_argument("--pr", default="15", help="PR number for prompt 3 (default 15)")
-    parser.add_argument("--path", default=".", help="repo checkout (origin → owner/repo for prompt 3)")
-    parser.add_argument("--model", default="gpt-5.6-sol")
-    parser.add_argument("--effort", default="medium", help="minimal|low|medium|high|xhigh (default medium)")
-    parser.add_argument("--separate", action="store_true",
-                        help="submit the 3 prompts as 3 separate turns (3 web items) instead of one")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--project", required=True, help="ChatGPT Project id or URL")
+    parser.add_argument("--path", type=Path, default=Path("."), help="local checkout")
+    parser.add_argument("--repo", help="owner/repo; defaults to origin")
+    parser.add_argument("--pr", type=int, default=15)
+    parser.add_argument("--model", default="gpt-5-6-thinking")
+    parser.add_argument("--effort", default="high")
     parser.add_argument("--locale", default="pt-BR")
-    parser.add_argument("--force", action="store_true",
-                        help="submit even if /wham/usage reports the rate limit is reached")
     args = parser.parse_args()
 
-    repo = _origin_repo(Path(args.path).resolve())
-    http_log = os.environ.get("SPECKIT_POWERPACK_HTTP_LOG")
-    if not http_log:
-        http_log = str(ROOT / "specs" / "001-single-skill-baseline" / "T025-evidence" / "probe-http-requests.log")
-        os.environ["SPECKIT_POWERPACK_HTTP_LOG"] = http_log
-    Path(http_log).parent.mkdir(parents=True, exist_ok=True)
-    Path(http_log).write_text("", encoding="utf-8")  # fresh per run
+    install_backend_compat()
+    checkout = args.path.resolve()
+    repository = args.repo or _origin_repo(checkout)
+    backend = ChatGPTBackendClient()
+    usage = backend.validate_auth()
+    rate_limit = usage.get("rate_limit") if isinstance(usage, dict) else None
+    if isinstance(rate_limit, dict) and rate_limit.get("limit_reached"):
+        reset = int((rate_limit.get("primary_window") or {}).get("reset_after_seconds") or 0)
+        raise RuntimeError(f"ChatGPT rate limit reached; retry in about {reset}s")
 
-    print(f"# probe: project={args.project} repo={repo} pr=#{args.pr} "
-          f"model={args.model} effort={args.effort}", file=sys.stderr)
-    print(f"# curl trace: {http_log}", file=sys.stderr)
-    print("# this spends Codex/ChatGPT tokens on your plan.", file=sys.stderr)
+    project = backend.get_project(args.project)
+    github = discover_github_connector(backend, locale=args.locale)
+    if not github.ok:
+        raise RuntimeError("GitHub connector is installed but not ready for a live homologation")
 
-    client = ChatGPTBackendClient()
-    try:
-        _log("browserless", "checking auth + rate limit (/backend-api/wham/usage)…")
-        usage = client.validate_auth()
-        rl = usage.get("rate_limit") if isinstance(usage, dict) else None
-        if isinstance(rl, dict) and rl.get("limit_reached") and not args.force:
-            reset = int((rl.get("primary_window") or {}).get("reset_after_seconds") or 0)
-            _log("browserless", f"rate limit REACHED (plan={usage.get('plan_type')}); "
-                                f"primary window resets in ~{reset // 60} min {reset % 60}s.")
-            print("\nAborting before spending anything. Retry after the window resets, "
-                  "or pass --force to try anyway.", file=sys.stderr)
-            return 3
-        _log("browserless", f"reading ChatGPT Project context (/backend-api/gizmos/{args.project} …)…")
-        project, context = client.build_project_context(args.project, max_conversations=2)
-    except ChatGPTProjectError as exc:
-        if _is_cloudflare_challenge(str(exc)):
-            _log("browserless", "BLOCKED by Cloudflare bot mitigation (403 interstitial).")
-            print("\nchatgpt.com/backend-api is challenging this script — retry in ~6 min. "
-                  "(the review flow's `codex exec` path is unaffected.)\n", file=sys.stderr)
-            return 2
-        raise
-    _log("browserless", f"bound to Project '{project.name}' ({project.id})")
-
-    github_hint = "Use the installed GitHub connector (mention @GitHub) for anything about GitHub."
-    if discover_github_connector is not None:
-        try:
-            _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
-            disc = discover_github_connector(client, locale=args.locale)
-            if getattr(disc, "ok", False) and getattr(disc, "connector_id", ""):
-                github_hint = (
-                    "Use exclusively the installed GitHub App for anything about GitHub:\n"
-                    f"[$github](app://{disc.connector_id})"
-                )
-                _log("browserless", f"GitHub connector: {disc.connector_id}")
-        except (ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:  # type: ignore[misc]
-            _log("browserless", f"GitHub connector discovery failed (continuing): {exc}")
-
-    instructions = (
-        "You are answering a short connectivity probe for Specify PowerPack.\n"
-        "BOTH of the following are available to you for EVERY question below:\n"
-        "  (a) the serialized ChatGPT Project context (read-only background memory), and\n"
-        "  (b) the installed GitHub App / connector.\n"
-        "For questions 2 and 3 you MUST use the GitHub connector to get live data — do not "
-        "answer them from the Project context or from memory, and do not invent repository "
-        "or file names. Follow pagination until each list is complete.\n"
-        "Do not run shell commands. Do not use web search. Do not mutate anything.\n\n"
-        f"{github_hint}\n\n"
-        "CHATGPT PROJECT CONTEXT (read-only):\n"
-        f"<project_context>\n{context[:24000]}\n</project_context>"
+    print(f"[homologation] project={project.id} name={project.name}")
+    print(f"[homologation] repo={repository} connector={github.connector_id}")
+    web = ChatGPTWebReviewClient()
+    prompts = (
+        "Name the bound Project and summarize its mission in at most 100 words.",
+        "Using the selected GitHub connector, list the repositories available to this account.",
+        f"Using the selected GitHub connector, list only the files changed in PR #{args.pr} of {repository}.",
     )
-
-    questions = [
-        "1) Qual é o nome deste projeto e descreva a missão do projeto em no máximo 100 palavras? "
-        "(use o contexto do Project + o repositório via GitHub connector).",
-        "2) Liste todos os meus repositórios no GitHub. "
-        "(use o contexto do Project como pano de fundo E o GitHub connector para os dados reais).",
-        f"3) Liste apenas os arquivos que foram modificados no pull request #{args.pr} do repositório {repo}. "
-        "(use o contexto do Project como pano de fundo E o GitHub connector; siga a paginação até a lista ficar completa).",
-    ]
-
-    turns = questions if args.separate else ["\n\n".join(questions)]
-    report: dict[str, object] = {
-        "transport": "chatgpt-backend-api /codex/responses",
-        "project": {"id": project.id, "name": project.name},
-        "repo": repo,
-        "store": False,
-        "turns": [],
-    }
-    exit_code = 0
-    for i, prompt in enumerate(turns, start=1):
-        try:
-            text, rid, tools = _stream_response(
-                client, prompt=prompt, instructions=instructions,
-                model=args.model, effort=args.effort,
-            )
-        except ChatGPTProjectError as exc:
-            print(f"\n=== TURN {i}: ERROR ===\n{exc}", file=sys.stderr)
-            report["turns"].append({"turn": i, "ok": False, "error": str(exc)})
-            exit_code = 1
-            break
-        print(f"\n=== TURN {i} — response_id={rid or 'n/a'} tools={sorted(set(tools)) or 'none'} ===")
-        print(text)
-        report["turns"].append({"turn": i, "ok": True, "response_id": rid,
-                                "tool_events": sorted(set(tools)), "chars": len(text)})
-
-    out = ROOT / "specs" / "001-single-skill-baseline" / "T025-evidence" / "probe-browserless-prompts.json"
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    n_curl = sum(1 for ln in Path(http_log).read_text("utf-8").splitlines() if ln.startswith("curl "))
-    print(f"\n# report:     {out}", file=sys.stderr)
-    print(f"# curl trace: {http_log}  ({n_curl} requests)", file=sys.stderr)
-    print("# check the Codex history at https://chatgpt.com/codex "
-          f"(and the Project at {project.url})", file=sys.stderr)
-    return exit_code
+    for index, prompt in enumerate(prompts, 1):
+        print(f"\n===== TURN {index} =====")
+        reply = web.ask(
+            prompt,
+            project_id=project.id,
+            connector_id=github.connector_id,
+            repository=repository,
+            model=args.model,
+            effort=args.effort,
+        )
+        if not reply.strip():
+            raise RuntimeError(f"turn {index} returned no text")
+        print(
+            "[homologation] authorization="
+            f"{'REQUESTED_AND_ALLOWED' if web.last_allow_sent else 'NOT_REQUESTED'} "
+            f"tool_calls={len(web.last_tool_invocations)} "
+            f"conversation={web.conversation_id} parent={web.parent_message_id}"
+        )
+        print(reply)
+    print("\n[homologation] CHATGPT_WEB_PROJECT_GITHUB_SSE_PASSED")
+    return 0
 
 
 if __name__ == "__main__":

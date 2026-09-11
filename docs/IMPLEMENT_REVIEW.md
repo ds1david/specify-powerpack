@@ -53,7 +53,9 @@ Project memory never substitutes for current PR evidence.
 
 ## GitHub evidence rules
 
-The selected GitHub App is injected as an explicit `app://` Codex App mention. The resulting Codex JSONL must contain completed `codex_apps` MCP calls with tool results associated with GitHub.
+The dynamically discovered GitHub connector is injected into the ChatGPT Web payload as
+`plugin:connector_*` plus the `@Github` ecosystem mention. The resulting SSE must contain
+GitHub tool activity and, when requested, a successful JIT `allow` continuation.
 
 Forbidden evidence fallbacks:
 
@@ -115,7 +117,8 @@ Default output path:
 .specify/powerpack/reviews/<spec>-pr<number>-<head-prefix>.json
 ```
 
-The CLI prints a machine-readable completion summary including verdict, snapshot and the GitHub tools observed. It explicitly reports browser/CDP/Playwright/Web2API usage as false.
+The CLI prints a machine-readable completion summary including verdict, snapshot and the
+resolved GitHub connector. It explicitly reports browser/CDP/Playwright/Web2API usage as false.
 
 ## Previous findings
 

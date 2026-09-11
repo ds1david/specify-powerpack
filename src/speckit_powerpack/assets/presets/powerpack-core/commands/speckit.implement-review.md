@@ -15,7 +15,7 @@ speckit-analyze
        -> speckit-converge
        -> capability-selected quality gate
        -> independent Sol/xhigh review
-       -> browserless ChatGPT Project + GitHub review
+  -> browserless ChatGPT Web Project + GitHub connector review
        -> both gates approve the same immutable snapshot
        -> COMPLETE
 ```
@@ -39,14 +39,15 @@ The browserless Project/GitHub reviewer is read-only and uses:
 ```text
 ~/.codex/auth.json
   -> ChatGPT Project backend reads
-  -> serialized Project context
-  -> explicit [$github](app://<connector-id>)
-  -> codex exec --json --ephemeral --sandbox read-only
-  -> codex_apps MCP
+  -> Sentinel PoW/Turnstile requirements
+  -> POST /backend-api/f/conversation (SSE)
+  -> gizmo_interaction + explicit dynamic connector hint
+  -> JIT allow continuation when requested
   -> GitHub tool calls/results
 ```
 
 It does **not** use Chrome, CDP, Playwright, Web2API, copied cookies or browser profiles.
+The live transport requires the `browserless` optional dependency (`curl-cffi`).
 
 ## Mandatory readiness
 
@@ -172,7 +173,7 @@ Specify PowerPack serializes:
 - Deep Review Protocol 2.0;
 - previous findings when provided.
 
-Codex receives an explicit GitHub App mention and must inspect the exact PR/diff/files through `codex_apps` MCP. Specify PowerPack rejects a run if it observes shell or web-search fallback, no GitHub tool call/result, a different snapshot, incomplete changed-file coverage, or missing literal Project-context evidence.
+ChatGPT Web receives the dynamically resolved GitHub connector and must inspect the exact PR/diff/files through its connector. Specify PowerPack rejects a run if the SSE flow returns no usable review, a different snapshot, incomplete changed-file coverage, or missing literal Project-context evidence.
 
 Reviewer output must be one schema `2.0` JSON object and cover all mandatory fronts:
 
@@ -219,7 +220,7 @@ Complete only when:
 3. all findings are resolved with evidence;
 4. quality gate passed or is correctly `NOT_APPLICABLE`;
 5. independent Sol/xhigh review approves;
-6. browserless ChatGPT Project + GitHub review approves the exact same snapshot.
+6. browserless ChatGPT Web Project + GitHub connector review approves the exact same snapshot.
 
 Return:
 

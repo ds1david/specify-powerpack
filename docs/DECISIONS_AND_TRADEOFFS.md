@@ -24,7 +24,7 @@ Historical experimental branches may retain old probes as research evidence; the
 
 **Decision:** PowerPack reads the existing Codex authentication store and never converts its bearer token into browser cookies/session state.
 
-**Benefit:** one authenticated identity for Project discovery/context and Codex execution.
+**Benefit:** one authenticated identity for Project discovery/context and ChatGPT Web review turns.
 
 **Cost:** `codex login` is a required setup step and changes in account-scoped ChatGPT backend behavior can block the provider.
 
@@ -38,15 +38,15 @@ Historical experimental branches may retain old probes as research evidence; the
 
 **Safety:** Project context is background memory. Current SPEC and immutable PR evidence are authoritative.
 
-## 5. Use the ChatGPT GitHub connector through Codex Apps
+## 5. Use the ChatGPT GitHub connector through ChatGPT Web SSE
 
-**Decision:** connector discovery verifies GitHub installed/enabled/OAuth/availability state, then the resolved connector is selected through an explicit `app://` mention in `codex exec`.
+**Decision:** connector discovery verifies GitHub installed/enabled/OAuth/availability state, then the resolved connector is selected dynamically through the ChatGPT Web payload (`plugin:connector_*` plus `@Github`). A pending JIT permission is continued with a fresh-Sentinel `allow` request.
 
-**Benefit:** the model gets structured GitHub tools without shell tokens or a browser.
+**Benefit:** the model gets the same GitHub connector used by ChatGPT Web, with Project binding and permission continuation, without shell tokens or a browser profile.
 
-**Cost:** this depends on current Codex Apps/MCP behavior and account connector configuration. These are treated as product-internal capabilities, not as a guaranteed public OpenAI API schema.
+**Cost:** this depends on current ChatGPT Web Sentinel, SSE and connector payload behavior. These are product-internal capabilities, not a guaranteed public API schema.
 
-**Safety:** PowerPack requires structural MCP call/result evidence and forbids command/web-search fallback for GitHub evidence.
+**Safety:** PowerPack requires observable connector/tool activity and successful review-contract validation; it forbids command/web-search fallback for GitHub evidence and never enables writes in the connector allow payload.
 
 ## 6. Two-phase review instead of one prompt
 
@@ -68,11 +68,11 @@ The correctness gain is preferred because a fast review against the wrong snapsh
 
 ## 8. Ephemeral read-only Codex turns
 
-**Decision:** review turns use `--ephemeral` and `--sandbox read-only`.
+**Decision:** review turns use fresh Sentinel requirements and read-only connector permission continuations.
 
-**Benefit:** reduced state leakage and clear authority separation from implementation.
+**Benefit:** reduced state leakage, explicit Project/connector binding and clear authority separation from implementation.
 
-**Cost:** each turn must receive enough context again; persistent conversational continuity is intentionally limited.
+**Cost:** each turn must renew Sentinel requirements; persistent conversational continuity is intentionally limited.
 
 ## 9. Fail closed
 

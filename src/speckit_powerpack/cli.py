@@ -499,7 +499,7 @@ def cmd_review_setup(args: argparse.Namespace) -> None:
             "Project binding was saved, but the GitHub App is not ready for code review: " + str(exc)
         ) from exc
     print("GitHub App: READY" if github.ok else "GitHub App: NOT READY")
-    print("Transport: browserless Codex Apps MCP; no Chrome, CDP, Playwright or Web2API.")
+    print("Transport: ChatGPT Web SSE via Codex token + Sentinel; no Chrome, CDP, Playwright or Web2API.")
 
 
 def cmd_project_discover(args: argparse.Namespace) -> None:

@@ -123,9 +123,9 @@ def test_implement_review_contract_routes_browserless_project_github_gate():
     assert "speckit-implement\n  -> speckit-implement-review" in text
     assert "speckit-converge" in text
     assert "gpt-5.6-sol/xhigh/read-only" in text
-    assert "browserless ChatGPT Project + GitHub review" in text
-    assert "[$github](app://<connector-id>)" in text
-    assert "codex_apps MCP" in text
+    assert "browserless ChatGPT Web Project + GitHub connector review" in text
+    assert "POST /backend-api/f/conversation (SSE)" in text
+    assert "JIT allow continuation" in text
     assert "specify-powerpack review run" in text
     assert "--pr <number-or-canonical-github-pr-url>" in text
     assert "local `HEAD == PR head SHA`" in text

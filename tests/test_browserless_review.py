@@ -13,6 +13,7 @@ from speckit_powerpack.browserless_review import (
     _validate_snapshot_contract,
     load_project_binding,
 )
+from speckit_powerpack.chatgpt_pow_probe import build_conversation_body, parse_sse_assistant
 from speckit_powerpack.review_context import PullRequestTarget
 from speckit_powerpack.review_context import ReviewSnapshot
 
@@ -75,12 +76,71 @@ def test_every_turn_carries_project_context_and_the_github_connector():
     only the deep-review turn."""
     target = PullRequestTarget("owner/repo", 15, "https://github.com/owner/repo/pull/15")
     snap = _snapshot_prompt(target, "connector_github", project_context="CHATGPT PROJECT: Example\nmission: X")
-    assert "[$github](app://connector_github)" in snap
+    assert "plugin:connector_github" in snap
     assert "CHATGPT PROJECT CONTEXT" in snap and "mission: X" in snap
     # and it degrades cleanly when the Project has no readable context
     bare = _snapshot_prompt(target, "connector_github")
-    assert "[$github](app://connector_github)" in bare
+    assert "plugin:connector_github" in bare
     assert "NONE — the bound ChatGPT Project has no readable context" in bare
+
+
+def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
+    body = build_conversation_body(
+        "list the changed files",
+        "gpt-5-6-thinking",
+        project_id="g-p-dynamic-project",
+        github_repos=["owner/repo"],
+        connector_id="connector_dynamic",
+    )
+    assert body["conversation_mode"] == {
+        "kind": "gizmo_interaction",
+        "gizmo_id": "g-p-dynamic-project",
+    }
+    assert body["system_hints"] == ["plugin:connector_dynamic"]
+    metadata = body["messages"][0]["metadata"]
+    assert metadata["system_hints"] == ["plugin:connector_dynamic"]
+    assert metadata["selected_github_repos"] == ["owner/repo"]
+    assert metadata["serialization_metadata"]["custom_symbol_offsets"][0]["id"] == "plugin:connector_dynamic"
+
+
+def test_web_transport_parser_exposes_connector_tool_evidence():
+    class Response:
+        def iter_lines(self):
+            yield b'data: {"type":"server_ste_metadata","metadata":{"tool_invoked":true,"tool_name":"ApiToolWrapper"}}'
+            yield b'data: {"conversation_id":"conv-1"}'
+            yield b'data: {"message":{"id":"assistant-1","author":{"role":"assistant"},"content":{"parts":["done"]}}}'
+            yield b'data: [DONE]'
+
+    text, meta = parse_sse_assistant(Response())
+    assert text == "done"
+    assert meta["conversation_id"] == "conv-1"
+    assert meta["tool_invocations"] == ("ApiToolWrapper",)
+
+
+def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
+    class Response:
+        def __init__(self, confirmation: bool):
+            self.confirmation = confirmation
+
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"assistant-1","author":{"role":"assistant"},"content":{"content_type":"code","text":"github call"}}}}'
+            if self.confirmation:
+                yield b'data: {"v":{"message":{"id":"tool-1","author":{"role":"tool","name":"api_tool.call_tool"},"content":{"content_type":"text","parts":[""]},"metadata":{"jit_plugin_data":{"from_server":{"type":"confirm_action","actions":[{"type":"allow","target_message_id":"assistant-1"}]}}}}}}'
+            else:
+                yield b'data: {"v":{"message":{"id":"tool-1","author":{"role":"tool","name":"api_tool.call_tool"},"content":{"content_type":"text","parts":["github result"]},"metadata":{}}}}'
+            yield b'data: [DONE]'
+
+    _, needs_allow = parse_sse_assistant(Response(True))
+    _, already_allowed = parse_sse_assistant(Response(False))
+    assert needs_allow["pending_allow"] == {
+        "target_message_id": "assistant-1",
+        "parent_message_id": "tool-1",
+    }
+    assert already_allowed["pending_allow"] == {}
+    assert needs_allow["authorization_required"] is True
+    assert already_allowed["authorization_required"] is False
+    assert needs_allow["parent_message_id"] == "assistant-1"
+    assert already_allowed["parent_message_id"] == "assistant-1"
 
 
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():
@@ -94,7 +154,7 @@ def test_review_prompt_binds_project_spec_snapshot_and_github_app():
         user_instruction="review it",
         previous_review="",
     )
-    assert "[$github](app://connector_github)" in prompt
+    assert "plugin:connector_github" in prompt
     assert '"snapshot_sha256": "' + "4" * 64 + '"' in prompt
     assert "CHATGPT PROJECT CONTEXT" in prompt
     assert "ACTIVE SPEC KIT CONTEXT" in prompt
