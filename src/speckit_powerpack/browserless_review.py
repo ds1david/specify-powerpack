@@ -38,6 +38,14 @@ CANONICAL_REQUIREMENT_ID = re.compile(
     r"^(FR|NFR|REQ|SC|AC|UC)-?(\d{1,4})([A-Za-z]?)$", re.IGNORECASE
 )
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
+EXTERNAL_BLOCKED_REASONS = {
+    "MISSING_GITHUB_SNAPSHOT",
+    "MISSING_CHANGED_FILES",
+    "MISSING_CHANGED_FILE_CONTENTS",
+    "MISSING_SPEC",
+    "MISSING_TOOL",
+    "INCOMPLETE_CONTEXT",
+}
 MASTER_PROMPT_VERSION = "1.2"
 REVIEW_PROTOCOL_VERSION = "3.0"
 
@@ -127,6 +135,37 @@ def _extract_json(text: str, *, allow_partial: bool = False) -> dict[str, Any]:
     if candidates:
         raise BrowserlessReviewError("Reviewer returned JSON, but not the required final code-review object.")
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
+
+
+def _external_blocked_reasons(review: dict[str, Any]) -> list[str]:
+    values: list[Any] = []
+    for key in ("blocked_reason", "status"):
+        value = review.get(key)
+        values.extend(value if isinstance(value, list) else [value] if value else [])
+    for container in (review.get("coverage"), review.get("review_context")):
+        if isinstance(container, dict):
+            value = container.get("blocked_reason")
+            values.extend(value if isinstance(value, list) else [value] if value else [])
+    return sorted({str(value).strip().upper() for value in values if str(value).strip().upper() in EXTERNAL_BLOCKED_REASONS})
+
+
+def _abort_external_review(
+    review: dict[str, Any],
+    *,
+    output_path: Path,
+    packet: dict[str, Any],
+    reasons: list[str],
+) -> None:
+    """Persist an external BLOCKED result and stop before any repair/closure."""
+    review.setdefault("lineage", packet)
+    review["execution_status"] = "PENDING_EXTERNAL_REVIEW"
+    review["blocked_reason"] = reasons
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    raise BrowserlessReviewError(
+        "Review aborted because external evidence was unavailable; implementation review remains pending: "
+        + ", ".join(reasons)
+    )
 
 
 def _canonical_requirement_id(value: object) -> str | None:
@@ -885,6 +924,19 @@ def run_browserless_code_review(
             review = _extract_json(continuation)
         except BrowserlessReviewError:
             raise first_error
+    external_blocked_reasons = _external_blocked_reasons(review)
+    if external_blocked_reasons:
+        _log(
+            "browserless",
+            "aborting review attempt; external evidence is unavailable and implementation review remains pending: "
+            + ", ".join(external_blocked_reasons),
+        )
+        _abort_external_review(
+            review,
+            output_path=output_path_hint,
+            packet=packet,
+            reasons=external_blocked_reasons,
+        )
     # Complete only immutable identity from the verified PR worktree before
     # opening shape-repair continuations. The model's semantic review remains
     # untouched and is still validated below.

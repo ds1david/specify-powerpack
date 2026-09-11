@@ -119,10 +119,26 @@ echo "  [browserless] = ChatGPT backend-api call · [codex/*] = work inside a co
 echo "  Two codex exec turns (snapshot + deep review). Each fetched file goes through the model"
 echo "  at the chosen effort — that is what spends Codex tokens. --effort high roughly halves"
 echo "  it vs xhigh. Live progress streams below (also captured to S6-review-run.txt):"
+set +e
 SPECIFY_FEATURE="001-single-skill-baseline" \
 SPECKIT_POWERPACK_REVIEW_PROMPT_EVIDENCE="$EVID/review-prompt.txt" \
   "${PP[@]}" review run "${RUN_ARGS[@]}" \
   2>&1 | tee "$EVID/S6-review-run.txt"
+REVIEW_EXIT=${PIPESTATUS[0]}
+set -e
+
+# An external evidence failure is a terminal pending state for this attempt.
+# Preserve the first BLOCKED artifact, but do not run protocol validation or
+# any task-closing step against it.
+if [ "$REVIEW_EXIT" -ne 0 ]; then
+  if [ -f "$WT/review.json" ]; then
+    cp "$WT/review.json" "$EVID/review.json"
+  fi
+  say "review attempt aborted; implementation review remains PENDING"
+  echo "review exit: $REVIEW_EXIT"
+  echo "No S7 validation or task closure was performed."
+  exit "$REVIEW_EXIT"
+fi
 
 cp "$WT/review.json" "$EVID/review.json"
 say "S7 protocol validation"

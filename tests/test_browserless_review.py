@@ -19,6 +19,7 @@ from speckit_powerpack.browserless_review import (
     _canonical_requirement_id,
     _merge_requirement_repair,
     _write_review_bundle,
+    _external_blocked_reasons,
     _requirement_ids,
     _snapshot_prompt,
     _validate_hardened_review_contract,
@@ -619,6 +620,16 @@ def test_review_bundle_persists_structured_inputs_and_hash_manifest(tmp_path: Pa
         "output-schema.json", "master-prompt.md", "packet.json", "protocol.md", "github-evidence-contract.md", "spec-artifacts.md", "instructions.md"
     }
     assert (tmp_path / "review-bundle" / "manifest.json").is_file()
+
+
+def test_external_blocked_review_is_classified_as_pending():
+    assert _external_blocked_reasons({"verdict": "BLOCKED", "blocked_reason": ["MISSING_GITHUB_SNAPSHOT"]}) == [
+        "MISSING_GITHUB_SNAPSHOT"
+    ]
+    assert _external_blocked_reasons({"verdict": "BLOCKED", "coverage": {"blocked_reason": ["MISSING_TOOL"]}}) == [
+        "MISSING_TOOL"
+    ]
+    assert _external_blocked_reasons({"verdict": "BLOCKED", "blocked_reason": ["IMPLEMENTATION_DEFECT"]}) == []
 
 
 def test_snapshot_contract_requires_exact_changed_files():
