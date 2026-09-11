@@ -28,7 +28,7 @@ speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speck
 - browserless ChatGPT Project context;
 - GitHub App/connector discovery and OAuth readiness checks;
 - GitHub connector execution through the ChatGPT Web conversation transport;
-- immutable two-phase GitHub PR review;
+- immutable Master Prompt + Review Packet GitHub PR review;
 - cross-platform installer for Linux/WSL/macOS and Windows;
 - PowerPack-managed Spec Kit bootstrap/update.
 

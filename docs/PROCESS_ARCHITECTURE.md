@@ -64,7 +64,7 @@ The PR-reading model must invoke the selected GitHub connector through the ChatG
 
 Connector/plugin IDs are operational identifiers and are redacted from normal reports.
 
-## Immutable two-phase PR review
+## Immutable Master Prompt + Review Packet PR review
 
 ### Phase 1 — manifest
 

@@ -154,7 +154,7 @@ def _review_packet(
     *,
     target: PullRequestTarget,
     spec: Any,
-    snapshot: ReviewSnapshot,
+    snapshot: ReviewSnapshot | None,
     project: ProjectBinding,
     project_context: str,
     protocol: str,
@@ -176,8 +176,8 @@ def _review_packet(
         "repository": target.repository,
         "pull_request": target.url,
         "active_spec": f"specs/{spec.spec_id}/",
-        "current_head_sha": snapshot.head_sha,
-        "current_snapshot_sha256": snapshot.snapshot_sha256,
+        "current_head_sha": snapshot.head_sha if snapshot else current_head,
+        "current_snapshot_sha256": snapshot.snapshot_sha256 if snapshot else None,
         "previous_snapshot_sha256": previous_context.get("snapshot_sha256") or None,
         "master_prompt": {
             "version": MASTER_PROMPT_VERSION,
@@ -497,24 +497,6 @@ def run_browserless_code_review(
     except ChatGPTWebReviewError as exc:
         raise BrowserlessReviewError(str(exc)) from exc
 
-    _log("browserless", "ChatGPT Web turn 1 (snapshot) — resolving the immutable PR manifest via GitHub…")
-    snapshot_text = web.ask(
-        _snapshot_prompt(target, github.connector_id, project_context=project_context),
-        project_id=binding.project_id,
-        connector_id=github.connector_id,
-        repository=target.repository,
-        model=model,
-        effort=effort,
-    )
-    snapshot_tools = web.last_tool_invocations
-    snapshot_payload = _extract_json(snapshot_text)
-    snapshot = build_snapshot(
-        target=target,
-        spec_id=spec.spec_id,
-        payload=snapshot_payload,
-        local_head=local_head,
-    )
-
     protocol_path = project_path / ".specify" / "powerpack" / "deep-review-protocol.md"
     if not protocol_path.is_file():
         raise BrowserlessReviewError(f"Installed Deep Review Protocol is missing: {protocol_path}")
@@ -540,7 +522,7 @@ def run_browserless_code_review(
     packet = _review_packet(
         target=target,
         spec=spec,
-        snapshot=snapshot,
+        snapshot=None,
         project=binding,
         project_context=project_context,
         protocol=protocol,
@@ -550,8 +532,8 @@ def run_browserless_code_review(
         segment=segment,
         master_prompt=master_prompt,
     )
-    output_path = (output or _default_output(project_path, snapshot)).resolve()
-    packet_path = output_path.with_name(output_path.stem + "-packet.json")
+    output_path_hint = (output.resolve() if output else project_path / ".specify" / "powerpack" / "reviews" / f"round-{round_number}-pr{target.number}.json")
+    packet_path = output_path_hint.with_name(output_path_hint.stem + "-packet.json")
     packet_path.parent.mkdir(parents=True, exist_ok=True)
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -568,6 +550,30 @@ def run_browserless_code_review(
     )
     review_tools = web.last_tool_invocations
     review = _extract_json(review_text)
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
+    snapshot_payload = {
+        "repository": target.repository,
+        "pull_request_number": target.number,
+        "base_ref": context.get("base_ref"),
+        "base_sha": context.get("base_sha"),
+        "merge_base": context.get("merge_base"),
+        "head_sha": context.get("head_sha"),
+        "changed_files": coverage.get("changed_files") or review.get("changed_files"),
+    }
+    snapshot = build_snapshot(
+        target=target,
+        spec_id=spec.spec_id,
+        payload=snapshot_payload,
+        local_head=local_head,
+    )
+    output_path = (output or _default_output(project_path, snapshot)).resolve()
+    packet_path = output_path.with_name(output_path.stem + "-packet.json")
+    packet.update({
+        "current_head_sha": snapshot.head_sha,
+        "current_snapshot_sha256": snapshot.snapshot_sha256,
+    })
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     review.setdefault("lineage", packet)
     review.setdefault("powerpack_checkpoint", packet["checkpoint"])
     coverage = review.setdefault("coverage", {})
@@ -587,6 +593,6 @@ def run_browserless_code_review(
         snapshot=snapshot,
         project=binding,
         github_tools=review_tools,
-        snapshot_tools=snapshot_tools,
-        github_call_count=len(snapshot_tools) + len(review_tools),
+        snapshot_tools=(),
+        github_call_count=len(review_tools),
     )

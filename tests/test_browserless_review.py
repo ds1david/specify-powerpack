@@ -76,8 +76,8 @@ def test_load_binding_uses_schema5_chatgpt_project(tmp_path: Path):
 
 def test_every_turn_carries_project_context_and_the_github_connector():
     """Firm requirement: BOTH the ChatGPT Project context and the GitHub App
-    mention are in every prompt sent to ChatGPT — the snapshot turn too, not
-    only the deep-review turn."""
+    mention are in every prompt sent to ChatGPT — including the complete
+    Master Review turn."""
     target = PullRequestTarget("owner/repo", 15, "https://github.com/owner/repo/pull/15")
     snap = _snapshot_prompt(target, "connector_github", project_context="CHATGPT PROJECT: Example\nmission: X")
     assert "plugin:connector_github" in snap
