@@ -642,17 +642,20 @@ def build_conversation_body(
     """
     Payload alinhado ao HAR real (project + GitHub connector).
 
-    Connector GitHub observado:
-      plugin:connector_76869538009648d5b282a4bb21c3d157
-    Ativacao:
+    O connector_id é obrigatório quando o GitHub é usado e deve vir da
+    descoberta account-scoped do ChatGPT Web. Nunca use um ID observado em
+    outra conta: a troca de conta/workspace pode gerar outro connector.
+
+    Ativação:
       system_hints no top-level e em messages[0].metadata
       texto com prefixo @Github + serialization_metadata ecosystemMention
     """
     message_id = str(uuid.uuid4())
     github_repos = github_repos or []
-    connector_id = connector_id or (
-        "plugin:connector_76869538009648d5b282a4bb21c3d157" if github_repos else None
-    )
+    if github_repos and not connector_id:
+        raise ValueError(
+            "GitHub connector_id must be resolved for the current ChatGPT account"
+        )
     if connector_id and not connector_id.startswith("plugin:"):
         connector_id = f"plugin:{connector_id}"
 
@@ -1236,8 +1239,8 @@ def main() -> int:
     ap.add_argument("--no-project", action="store_true", help="nao usar project")
     ap.add_argument(
         "--connector",
-        default="plugin:connector_76869538009648d5b282a4bb21c3d157",
-        help="system_hint do connector GitHub (do HAR)",
+        default=None,
+        help="connector GitHub atual; se omitido, deve ser resolvido pelo chamador",
     )
     ap.add_argument("--no-github", action="store_true", help="nao ativar connector GitHub")
     args = ap.parse_args()
@@ -1276,6 +1279,24 @@ def main() -> int:
         f"proof={'sim' if requirements.get('proof_token') else 'nao'} "
         f"turnstile={'sim' if requirements.get('turnstile_token') else 'nao'}"
     )
+
+    if args.github and not args.connector:
+        # Resolve the connector in the same account-scoped session before
+        # building the conversation payload. The connector id is not a
+        # credential and must never be carried over from another account.
+        try:
+            from speckit_powerpack.chatgpt_project_provider import ChatGPTBackendClient
+            from speckit_powerpack.github_connector_discovery import discover_github_connector
+
+            resolved = discover_github_connector(
+                ChatGPTBackendClient(args.auth),
+                locale="pt-BR",
+            )
+            args.connector = resolved.connector_id
+            print(f"[github] connector resolvido para a conta atual: {args.connector}")
+        except Exception as exc:
+            print(f"[erro] connector GitHub não resolvido para a conta atual: {exc}", file=sys.stderr)
+            return 2
 
     print(f"[chat] model={args.model!r} prompt={args.prompt!r}")
     try:

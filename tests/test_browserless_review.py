@@ -106,6 +106,16 @@ def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
     assert metadata["serialization_metadata"]["custom_symbol_offsets"][0]["id"] == "plugin:connector_dynamic"
 
 
+def test_web_transport_rejects_missing_connector_for_github():
+    with pytest.raises(ValueError, match="current ChatGPT account"):
+        build_conversation_body(
+            "list the changed files",
+            "gpt-5-6-thinking",
+            project_id="g-p-dynamic-project",
+            github_repos=["owner/repo"],
+        )
+
+
 def test_web_transport_parser_exposes_connector_tool_evidence():
     class Response:
         def iter_lines(self):

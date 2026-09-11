@@ -21,6 +21,7 @@ class GitHubConnectorDiscovery:
     connector_type: str | None
     auth_type: str | None
     auth_status: str
+    authorization_link_found: bool
     visibility: str | None
     apps_privacy_control: str | None
     availability_status: str
@@ -33,7 +34,10 @@ class GitHubConnectorDiscovery:
         return bool(
             self.plugin_status == "ENABLED"
             and self.connector_status == "ENABLED"
-            and self.auth_status == "ACTIVE"
+            # The Web conversation may request authorization through the
+            # explicit JIT confirm_action/allow flow. ACTIVE is evidence, not
+            # a discovery-time precondition.
+            and self.authorization_link_found
             and self.availability_status == "ENABLED"
             and self.installed
             and self.available
@@ -181,7 +185,7 @@ def discover_github_connector(
     )
     if not link:
         raise GitHubConnectorDiscoveryError(
-            "No accessible GitHub connector authorization link was returned"
+            "No GitHub connector authorization link was returned for this account"
         )
 
     availability_payload = client.request_json(
@@ -218,6 +222,7 @@ def discover_github_connector(
         connector_type=str(app.get("connector_type") or "") or None,
         auth_type=str(link.get("auth_type") or "") or None,
         auth_status=str(link.get("auth_status") or "").upper(),
+        authorization_link_found=True,
         visibility=str(link.get("visibility") or "") or None,
         apps_privacy_control=str(link.get("apps_privacy_control") or "") or None,
         availability_status=str(availability.get("status") or "").upper(),
@@ -227,6 +232,6 @@ def discover_github_connector(
     )
     if not state.ok:
         raise GitHubConnectorDiscoveryError(
-            "GitHub connector was discovered but is not fully enabled/authorized/available"
+            "GitHub connector was discovered but is not enabled/available for this account"
         )
     return state
