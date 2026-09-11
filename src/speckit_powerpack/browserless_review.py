@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -31,6 +32,8 @@ PROJECT_PROVIDER = "chatgpt-project"
 REVIEW_BACKEND = "codex-apps-github"
 REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4})\b", re.IGNORECASE)
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
+MASTER_PROMPT_VERSION = "1.0"
+REVIEW_PROTOCOL_VERSION = "3.0"
 
 
 class BrowserlessReviewError(RuntimeError):
@@ -137,6 +140,87 @@ Return JSON only with exactly these semantic fields:
   "head_sha": "40-char SHA",
   "changed_files": ["complete/path/a", "complete/path/b"]
 }}
+"""
+
+
+def _master_prompt_path(project: Path) -> Path:
+    path = project / ".specify" / "powerpack" / "master-review-prompt.md"
+    if not path.is_file():
+        raise BrowserlessReviewError(f"Installed Master Review Prompt is missing: {path}")
+    return path
+
+
+def _review_packet(
+    *,
+    target: PullRequestTarget,
+    spec: Any,
+    snapshot: ReviewSnapshot,
+    project: ProjectBinding,
+    project_context: str,
+    protocol: str,
+    previous_review: dict[str, Any] | None,
+    round_number: int,
+    attempt: int,
+    segment: int,
+    master_prompt: str,
+) -> dict[str, Any]:
+    previous_context = (previous_review or {}).get("review_context") or {}
+    previous_findings = (previous_review or {}).get("findings") or []
+    if not previous_findings:
+        previous_findings = ((previous_review or {}).get("coverage") or {}).get("previous_findings") or []
+    return {
+        "review_id": f"{target.repository}#{target.number}:{spec.spec_id}:implement-review",
+        "round": round_number,
+        "attempt": attempt,
+        "conversation_segment": segment,
+        "repository": target.repository,
+        "pull_request": target.url,
+        "active_spec": f"specs/{spec.spec_id}/",
+        "current_head_sha": snapshot.head_sha,
+        "current_snapshot_sha256": snapshot.snapshot_sha256,
+        "previous_snapshot_sha256": previous_context.get("snapshot_sha256") or None,
+        "master_prompt": {
+            "version": MASTER_PROMPT_VERSION,
+            "sha256": hashlib.sha256(master_prompt.encode("utf-8")).hexdigest(),
+        },
+        "review_protocol": {
+            "version": REVIEW_PROTOCOL_VERSION,
+            "sha256": hashlib.sha256(protocol.encode("utf-8")).hexdigest(),
+        },
+        "checkpoint": {
+            "last_completed_round": max(0, round_number - 1),
+            "open_findings": [item for item in previous_findings if isinstance(item, dict)],
+            "resolved_findings": [],
+            "previous_review_context": previous_context,
+        },
+        "project_context": {
+            "project_name": project.project_name,
+            "context": project_context[:24_000],
+            "authority": "supplemental-only",
+        },
+    }
+
+
+def _master_review_prompt(master_prompt: str, packet: dict[str, Any], *, target: PullRequestTarget) -> str:
+    return f"""{master_prompt}
+
+======================================================================
+POWERPACK REVIEW PACKET — VARIABLE EXECUTION STATE
+======================================================================
+
+<POWERPACK_REVIEW_PACKET>
+{json.dumps(packet, ensure_ascii=False, indent=2)}
+</POWERPACK_REVIEW_PACKET>
+
+TASK
+
+Use @GitHub exclusively for evidence from {target.repository} PR #{target.number}.
+This is the implementation code review itself, not a homologation probe. Do
+not answer the old probe questions about Project mission, repository lists or
+changed filenames as standalone tasks. First resolve the immutable PR evidence,
+then read the active SPEC and perform the complete Master Code Review. Continue
+after the first blocker and return one final JSON object only. Do not return a
+tool call, progress note or partial answer as the final result.
 """
 
 
@@ -312,6 +396,22 @@ def _validate_hardened_review_contract(
     if review.get("verdict") == "APPROVED" and context_gaps:
         raise BrowserlessReviewError("APPROVED is forbidden while coverage.context_gaps is non-empty.")
 
+    divergences = review.get("review_divergences")
+    if not isinstance(divergences, list):
+        raise BrowserlessReviewError("review_divergences must be a list.")
+    if review.get("verdict") == "APPROVED" and divergences:
+        raise BrowserlessReviewError("APPROVED is forbidden while review_divergences is non-empty.")
+
+    for index, finding in enumerate(review.get("findings") or []):
+        if not isinstance(finding, dict):
+            raise BrowserlessReviewError(f"findings[{index}] must be an object.")
+        required = ("authority_ref", "implementation_evidence", "failure_scenario", "required_change")
+        missing = [field for field in required if not str(finding.get(field) or "").strip()]
+        if missing:
+            raise BrowserlessReviewError(
+                f"findings[{index}] is missing causal authority/evidence fields: {', '.join(missing)}"
+            )
+
 
 def _validate_protocol(project: Path, review_path: Path, previous: Path | None) -> None:
     validator = project / ".specify" / "powerpack" / "bin" / "review_protocol.py"
@@ -347,6 +447,9 @@ def run_browserless_code_review(
     locale: str = "pt-BR",
     verbose: bool = False,
     ephemeral: bool = True,
+    round_number: int | None = None,
+    attempt: int = 1,
+    segment: int = 1,
 ) -> BrowserlessReviewResult:
     project_path = project_path.resolve()
     if not project_path.is_dir():
@@ -416,24 +519,47 @@ def run_browserless_code_review(
     if not protocol_path.is_file():
         raise BrowserlessReviewError(f"Installed Deep Review Protocol is missing: {protocol_path}")
     protocol = protocol_path.read_text(encoding="utf-8", errors="replace")
+    master_path = _master_prompt_path(project_path)
+    master_prompt = master_path.read_text(encoding="utf-8", errors="replace")
     previous_text = ""
+    previous_review: dict[str, Any] | None = None
     if previous:
         if not previous.is_file():
             raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
         previous_text = previous.read_text(encoding="utf-8", errors="replace")
+        try:
+            parsed_previous = json.loads(previous_text)
+        except json.JSONDecodeError as exc:
+            raise BrowserlessReviewError(f"Previous review is not valid JSON: {previous}") from exc
+        if not isinstance(parsed_previous, dict):
+            raise BrowserlessReviewError(f"Previous review must be a JSON object: {previous}")
+        previous_review = parsed_previous
+    if round_number is None:
+        previous_round = int((previous_review or {}).get("round") or 0)
+        round_number = previous_round + 1 if previous_review else 1
+    packet = _review_packet(
+        target=target,
+        spec=spec,
+        snapshot=snapshot,
+        project=binding,
+        project_context=project_context,
+        protocol=protocol,
+        previous_review=previous_review,
+        round_number=round_number,
+        attempt=attempt,
+        segment=segment,
+        master_prompt=master_prompt,
+    )
+    output_path = (output or _default_output(project_path, snapshot)).resolve()
+    packet_path = output_path.with_name(output_path.stem + "-packet.json")
+    packet_path.parent.mkdir(parents=True, exist_ok=True)
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    _log("browserless", f"ChatGPT Web turn 2 (deep review) — model={model} timeout={timeout}s")
+    _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
     review_text = web.ask(
-        _review_prompt(
-            connector_id=github.connector_id,
-            snapshot=snapshot,
-            project_name=binding.project_name,
-            project_context=project_context,
-            spec_context=spec.serialized,
-            protocol=protocol,
-            user_instruction=prompt,
-            previous_review=previous_text,
-        ),
+        _master_review_prompt(master_prompt, packet, target=target)
+        + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
+        + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot."),
         project_id=binding.project_id,
         connector_id=github.connector_id,
         repository=target.repository,
@@ -442,11 +568,15 @@ def run_browserless_code_review(
     )
     review_tools = web.last_tool_invocations
     review = _extract_json(review_text)
+    review.setdefault("lineage", packet)
+    review.setdefault("powerpack_checkpoint", packet["checkpoint"])
+    coverage = review.setdefault("coverage", {})
+    if "previous_findings" in review and "previous_findings" not in coverage:
+        coverage["previous_findings"] = review["previous_findings"]
     _validate_snapshot_contract(review, snapshot)
     _validate_hardened_review_contract(review, snapshot=snapshot, spec_context=spec.serialized)
     _validate_project_evidence(review, project_name=binding.project_name, project_context=project_context)
 
-    output_path = (output or _default_output(project_path, snapshot)).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _validate_protocol(project_path, output_path, previous)

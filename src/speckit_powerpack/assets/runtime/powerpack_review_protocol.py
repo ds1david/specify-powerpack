@@ -21,12 +21,17 @@ FRONTS = (
 FRONT_STATUSES = {"PASS", "FINDINGS", "BLOCKED", "NOT_APPLICABLE"}
 REQUIREMENT_STATUSES = {"PASS", "PARTIAL", "FAIL", "NOT_APPLICABLE"}
 BASELINE_RESULTS = {"PRESERVED", "CHANGED_AS_SPECIFIED", "REGRESSION", "NOT_APPLICABLE"}
-PREVIOUS_FINDING_STATUSES = {"RESOLVED", "PARTIALLY_RESOLVED", "NOT_RESOLVED", "REGRESSED"}
+PREVIOUS_FINDING_STATUSES = {
+    "NEW", "NEWLY_DISCOVERED", "STILL_OPEN", "PARTIALLY_RESOLVED",
+    "RESOLVED", "INVALIDATED", "REGRESSED", "NOT_RESOLVED",
+}
 VERDICTS = {"APPROVED", "CHANGES_REQUIRED", "BLOCKED"}
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
 FINDING_FIELDS = {
     "id", "severity", "category", "title", "file", "line", "evidence",
-    "failure_scenario", "behavioral_impact", "required_change", "acceptance_criteria",
+    "authority_ref", "implementation_evidence", "failure_scenario",
+    "actual_behavior", "required_behavior", "behavioral_impact", "required_change",
+    "acceptance_criteria", "lifecycle_state",
 }
 CONTEXT_FIELDS = {"spec_id", "base_ref", "base_sha", "merge_base", "head_sha", "snapshot_sha256"}
 HEX40 = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -182,6 +187,16 @@ def validate_review(review: dict[str, Any], previous: dict[str, Any] | None = No
             errors.append(f"findings[{index}] missing fields: {', '.join(missing)}")
         if not _list(finding.get("acceptance_criteria")):
             errors.append(f"findings[{index}].acceptance_criteria must not be empty")
+        if not str(finding.get("authority_ref") or "").strip():
+            errors.append(f"findings[{index}].authority_ref is required")
+        for field in ("implementation_evidence", "actual_behavior", "required_behavior"):
+            if not str(finding.get(field) or "").strip():
+                errors.append(f"findings[{index}].{field} is required")
+        if finding.get("lifecycle_state") not in {
+            "NEW", "NEWLY_DISCOVERED", "STILL_OPEN", "PARTIALLY_RESOLVED",
+            "RESOLVED", "INVALIDATED", "REGRESSED",
+        }:
+            errors.append(f"findings[{index}].lifecycle_state is invalid")
 
     seen_previous: set[str] = set()
     prior_status_by_id: dict[str, str] = {}
@@ -203,6 +218,15 @@ def validate_review(review: dict[str, Any], previous: dict[str, Any] | None = No
         expected = {str(item.get("id")) for item in previous_items if item.get("id")}
         if seen_previous != expected:
             errors.append("coverage.previous_findings must contain exactly every finding id from the previous review")
+
+        previous_snapshot = ((previous.get("review_context") or {}).get("snapshot_sha256"))
+        current_snapshot = ((review.get("review_context") or {}).get("snapshot_sha256"))
+        if previous_snapshot and current_snapshot and previous_snapshot == current_snapshot:
+            for item in previous_findings:
+                if isinstance(item, dict) and item.get("status") in {"RESOLVED", "PARTIALLY_RESOLVED"}:
+                    errors.append(
+                        f"same snapshot forbids {item.get('status')} for previous finding {item.get('id')}"
+                    )
 
         resolved_fingerprints: dict[str, str] = {}
         for item in previous_items:

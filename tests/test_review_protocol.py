@@ -73,16 +73,21 @@ def valid_review(*, verdict: str = "APPROVED", findings=None, previous_findings=
 def finding(item_id="R001-001"):
     return {
         "id": item_id,
+        "authority_ref": "SPEC FR-001",
         "severity": "REQUIRED",
         "category": "CORRECTNESS",
         "title": "broken behavior",
         "file": "src/a.py",
         "line": 10,
         "evidence": "proof",
+        "implementation_evidence": "implementation path skips validation",
         "failure_scenario": "fails",
+        "actual_behavior": "request is accepted incorrectly",
+        "required_behavior": "request must be rejected",
         "behavioral_impact": "wrong result",
         "required_change": "fix it",
         "acceptance_criteria": ["test proves fix"],
+        "lifecycle_state": "NEW",
     }
 
 
@@ -106,11 +111,19 @@ def test_approved_rejects_findings():
 def test_previous_round_requires_exact_finding_ids_and_resolution():
     previous = valid_review(verdict="CHANGES_REQUIRED", findings=[finding("R001-001")])
     current = valid_review(previous_findings=[{"id": "R001-001", "status": "RESOLVED", "evidence": ["fixed"]}])
+    current["review_context"]["snapshot_sha256"] = "d" * 64
     assert protocol.validate_review(current, previous) == []
 
     current["coverage"]["previous_findings"] = []
     errors = protocol.validate_review(current, previous)
     assert any("exactly every finding id" in error for error in errors)
+
+
+def test_same_snapshot_cannot_mark_previous_finding_resolved():
+    previous = valid_review(verdict="CHANGES_REQUIRED", findings=[finding("R001-001")])
+    current = valid_review(previous_findings=[{"id": "R001-001", "status": "RESOLVED", "evidence": ["fixed"]}])
+    errors = protocol.validate_review(current, previous)
+    assert any("same snapshot forbids RESOLVED" in error for error in errors)
 
 
 def test_changes_required_needs_finding_and_findings_front():

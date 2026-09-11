@@ -240,6 +240,7 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
                 dest.chmod(0o755)
     for source_name, dest_name in {
         "review/deep-review-protocol.md": "deep-review-protocol.md",
+        "review/master-review-prompt.md": "master-review-prompt.md",
     }.items():
         with asset(source_name) as source:
             shutil.copy2(source, base / dest_name)
@@ -569,6 +570,9 @@ def cmd_review_run(args: argparse.Namespace) -> None:
             locale=args.locale,
             verbose=verbose,
             ephemeral=not args.keep_session,
+            round_number=args.round_number,
+            attempt=args.attempt,
+            segment=args.segment,
         )
     except (BrowserlessReviewError, ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise PowerPackError(str(exc)) from exc
@@ -662,6 +666,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="do NOT pass codex exec --ephemeral: persist the turn to ~/.codex/sessions/ "
         "(and the Codex web history). Against DECISIONS_AND_TRADEOFFS.md §8 — for audit-trail experiments.",
     )
+    review_run.add_argument("--round-number", type=int)
+    review_run.add_argument("--attempt", type=int, default=1)
+    review_run.add_argument("--segment", type=int, default=1)
     review_run.set_defaults(func=cmd_review_run)
     return parser
 

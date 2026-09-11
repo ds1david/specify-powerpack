@@ -7,11 +7,14 @@ import pytest
 from speckit_powerpack.browserless_review import (
     BrowserlessReviewError,
     _review_prompt,
+    _master_review_prompt,
+    _review_packet,
     _snapshot_prompt,
     _validate_hardened_review_contract,
     _validate_project_evidence,
     _validate_snapshot_contract,
     load_project_binding,
+    ProjectBinding,
 )
 from speckit_powerpack.chatgpt_pow_probe import build_conversation_body, parse_sse_assistant
 from speckit_powerpack.review_context import PullRequestTarget
@@ -37,6 +40,7 @@ def _hardened_review() -> dict:
     snapshot = _snapshot()
     return {
         "verdict": "APPROVED",
+        "review_divergences": [],
         "review_context": snapshot.review_context(),
         "coverage": {
             "changed_files": ["a.py", "b.py"],
@@ -175,6 +179,30 @@ def test_review_prompt_binds_project_spec_snapshot_and_github_app():
     assert "coverage.inspection_evidence" in prompt
     assert "coverage.verdict_challenge" in prompt
     assert "coverage.context_gaps" in prompt
+
+
+def test_master_review_packet_is_distinct_from_homologation_prompts():
+    snapshot = _snapshot()
+    packet = _review_packet(
+        target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"),
+        spec=type("Spec", (), {"spec_id": "SPEC-12"})(),
+        snapshot=snapshot,
+        project=ProjectBinding("g-p-test", "Example", None),
+        project_context="mission: build safely",
+        protocol="protocol-v3",
+        previous_review=None,
+        round_number=1,
+        attempt=1,
+        segment=1,
+        master_prompt="MASTER CONTRACT",
+    )
+    prompt = _master_review_prompt("MASTER CONTRACT", packet, target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"))
+    assert "MASTER CONTRACT" in prompt
+    assert "POWERPACK_REVIEW_PACKET" in prompt
+    assert packet["review_id"] == "owner/repo#12:SPEC-12:implement-review"
+    assert packet["master_prompt"]["sha256"]
+    assert "not a homologation probe" in prompt
+    assert "Name the bound Project and summarize its mission" not in prompt
 
 
 def test_project_context_evidence_must_be_literal():

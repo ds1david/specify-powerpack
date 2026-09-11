@@ -38,6 +38,8 @@ The local Git origin must be GitHub and must match the PR repository.
 
 Each round starts with a fresh GitHub-tool manifest containing base/head/merge-base and complete changed files. Specify PowerPack binds the active SPEC to that manifest and hashes the canonical snapshot.
 
+The judgment turn uses the versioned `.specify/powerpack/master-review-prompt.md` plus a generated Review Packet. The packet carries the immutable snapshot, Project context as supplemental data, protocol/master hashes and the authoritative checkpoint. Its lineage is `Review -> Round -> Attempt -> Conversation Segment`: a conversation rollover increments only the segment; a changed implementation snapshot starts a new round.
+
 If local `HEAD != PR head SHA`, the review stops. Any implementation change therefore invalidates previous approval automatically because the next run produces a different head/snapshot.
 
 ## Evidence inputs
@@ -47,7 +49,7 @@ The deep reviewer receives four distinct evidence classes:
 1. **immutable GitHub PR evidence** — authoritative current code/diff identity;
 2. **Spec Kit context** — authoritative current requirements;
 3. **ChatGPT Project context** — serialized historical/background memory;
-4. **previous review** — mandatory finding revalidation on round 2+.
+4. **previous review/checkpoint** — mandatory finding revalidation on round 2+; the checkpoint is lifecycle authority.
 
 Project memory never substitutes for current PR evidence.
 
@@ -64,6 +66,12 @@ Forbidden evidence fallbacks:
 - PR description alone;
 - CI status alone;
 - Project memory alone.
+
+## Master Prompt and Review Packet
+
+The runner never uses the homologation probe questions as a code-review task. The probe remains a separate live transport test. The review task explicitly asks the GitHub connector to inspect the exact PR, then return one consolidated structured result after all review fronts and the adversarial pass. Mission summaries, repository listings and standalone changed-file probes are not substitutes for code review.
+
+The generated packet is persisted beside the review result as `<review-stem>-packet.json` when an explicit output path is supplied.
 
 ## Deep Review Protocol
 
