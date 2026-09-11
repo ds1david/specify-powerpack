@@ -716,6 +716,29 @@ def run_browserless_code_review(
         review_files, _ = _changed_files_for_snapshot(review)
         if not review_files:
             review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
+    expected_requirement_ids = set(_requirement_ids(spec.serialized))
+    actual_requirement_ids = {
+        str(item.get("id") or "").upper()
+        for item in (review.get("coverage") or {}).get("requirements", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    if expected_requirement_ids and actual_requirement_ids != expected_requirement_ids:
+        _log("browserless", "review requirement coverage differs from active SPEC; requesting exact requirement set in the same segment…")
+        continuation = web.ask(
+            "Return the same final review JSON again. Preserve the immutable review_context, findings and changed-file evidence. Set coverage.requirements to an array containing exactly these requirement IDs, with one evidence-backed status object for each: "
+            + json.dumps(sorted(expected_requirement_ids), ensure_ascii=False),
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        review = _extract_json(continuation)
+        requirement_files, _ = _changed_files_for_snapshot(review)
+        if not requirement_files:
+            review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
     output_path = (output or _default_output(project_path, snapshot)).resolve()
     packet_path = output_path.with_name(output_path.stem + "-packet.json")
     packet.update({
