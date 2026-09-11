@@ -1134,6 +1134,8 @@ def send_connector_allow(
     project_id: Optional[str],
     model: str,
     account_id: Optional[str],
+    connector_id: Optional[str] = None,
+    github_repos: Optional[List[str]] = None,
     dpl: str = "",
     script: str = "",
 ) -> Tuple[str, Dict[str, Any]]:
@@ -1208,6 +1210,12 @@ def send_connector_allow(
     }
     if project_id:
         body["messages"][0]["metadata"]["gizmo_id"] = project_id
+    if connector_id:
+        plugin_id = connector_id if connector_id.startswith("plugin:") else f"plugin:{connector_id}"
+        body["system_hints"] = [plugin_id]
+        body["messages"][0]["metadata"]["system_hints"] = [plugin_id]
+        body["messages"][0]["metadata"]["selected_github_repos"] = list(github_repos or [])
+        body["selected_github_repos"] = list(github_repos or [])
 
     print(f"[allow] target={target_message_id} parent={parent_message_id}")
     print(
@@ -1344,6 +1352,8 @@ def send_prompt(
                     project_id=project_id,
                     model=model,
                     account_id=account_id,
+                    connector_id=connector_id,
+                    github_repos=github_repos,
                     dpl=LAST_DPL,
                     script=LAST_SCRIPT,
                 )

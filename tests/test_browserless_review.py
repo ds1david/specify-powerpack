@@ -553,6 +553,45 @@ def test_connector_allow_falls_back_to_legacy_conversation_route(monkeypatch):
     assert text
 
 
+def test_connector_allow_preserves_dynamic_github_binding():
+    class Response:
+        status_code = 200
+        text = ""
+
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"assistant-allow","author":{"role":"assistant"},"content":{"parts":["{\\"verdict\\":\\"BLOCKED\\"}"]}}}}'
+            yield b'data: [DONE]'
+
+    class Session:
+        def __init__(self):
+            self.kwargs = None
+
+        def post(self, url, **kwargs):
+            self.kwargs = kwargs
+            return Response()
+
+    session = Session()
+    send_connector_allow(
+        session,
+        {"token": "sentinel"},
+        conversation_id="conversation",
+        parent_message_id="parent",
+        target_message_id="target",
+        project_id="g-p-project",
+        model="gpt-5-6-thinking",
+        account_id="account",
+        connector_id="connector_current",
+        github_repos=["owner/repo"],
+    )
+
+    body = session.kwargs["json"]
+    assert body["system_hints"] == ["plugin:connector_current"]
+    assert body["selected_github_repos"] == ["owner/repo"]
+    metadata = body["messages"][0]["metadata"]
+    assert metadata["system_hints"] == ["plugin:connector_current"]
+    assert metadata["selected_github_repos"] == ["owner/repo"]
+
+
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():
     prompt = _review_prompt(
         connector_id="connector_github",
