@@ -486,6 +486,261 @@ The title is a human convenience only and MUST NOT be used as workflow authority
 - **FR-049**: `implement-review` capability readiness MAY consume environment facts discovered by SPEC-002 infrastructure, but the readiness decision and failure semantics remain owned by SPEC-001A.
 - **FR-050**: The implementation MUST provide deterministic contract tests for same-snapshot monotonicity, prior-finding completeness, finding identity stability, resolution evidence, rollover continuity and divergence handling.
 
+## PR15 Review Maturity Extensions
+
+This section is a normative amendment derived from repeated review rounds of PR15. It strengthens the evidence and merge-gate protocol without changing the ownership boundary already established by SPEC-001A.
+
+### PR15-001 — Review Readiness Gate
+
+An `implement-review` MUST NOT enter substantive implementation review until the immutable review context is complete.
+
+The pre-review Evidence Package MUST identify, at minimum:
+
+```text
+repository
+pull_request_number
+base_ref
+base_sha
+merge_base
+head_sha
+changed_files
+spec_id
+spec_bundle_sha256
+review_protocol_version
+review_protocol_sha256
+master_prompt_version
+master_prompt_sha256
+```
+
+If any required identity element cannot be proven from authoritative repository evidence, the review MUST enter a blocked context state rather than begin partial substantive review.
+
+### PR15-002 — Requirement Traceability Contract
+
+Every normative requirement selected for the review MUST be traceable through:
+
+```text
+requirement
+  -> implementation evidence
+  -> validation/test evidence
+  -> observed result
+```
+
+A machine-readable traceability matrix SHOULD expose requirement ID, statement, implementation files/symbols, validation tests/commands and status. A requirement without sufficient implementation or validation evidence MUST be classified as a verification gap rather than inferred to be compliant.
+
+### PR15-003 — Three-Phase Review Model
+
+The lifecycle MUST distinguish:
+
+1. **Context Integrity Review** — prove repository, PR, snapshot, active SPEC, changed files and review-contract identity.
+2. **Implementation Correctness Review** — evaluate implementation behavior, architecture, invariants, failure modes, persistence, concurrency, recovery and test quality as applicable.
+3. **SPEC Compliance Merge Gate** — reconcile every requirement, prior finding, blocker, evidence gap and verdict against the same final immutable snapshot.
+
+A substantive verdict MUST NOT be emitted from an incomplete Context Integrity Review.
+
+### PR15-004 — Finding Classification
+
+Every material observation MUST have one primary classification:
+
+```text
+BUG
+SPEC_VIOLATION
+VERIFICATION_GAP
+ARCHITECTURE_RISK
+ENHANCEMENT
+FUTURE_CAPABILITY
+```
+
+Only `BUG`, `SPEC_VIOLATION` and blocking `VERIFICATION_GAP` findings MAY block the merge gate when their blocking criteria are satisfied. `ENHANCEMENT` and `FUTURE_CAPABILITY` MUST NOT become blockers merely because they are desirable. `ARCHITECTURE_RISK` MUST identify the violated current authority or invariant before becoming a blocker.
+
+### PR15-005 — Evidence-First Blocking
+
+A blocker MUST contain:
+
+```text
+authority_reference
+changed_file_or_contract_anchor
+implementation_evidence
+causal_failure_scenario
+actual_behavior
+required_behavior
+impact
+required_correction
+verifiable_acceptance_criteria
+```
+
+A blocker MUST NOT be based solely on intuition, generic best practice, future design preference or an unverified interpretation of the SPEC.
+
+### PR15-006 — Anti-Roundtrip Full-Pass Rule
+
+Finding the first blocker MUST NOT terminate the substantive review.
+
+After identifying a blocker, the reviewer MUST continue through all mandatory review fronts and consolidate independent findings before returning the result. At minimum:
+
+```text
+full changed-file pass
+full requirement/acceptance pass
+blast-radius/invariant pass
+non-happy-path pass
+regression/behavior-preservation pass
+adversarial verdict challenge
+```
+
+A later review round SHOULD therefore be caused primarily by implementation changes or newly available authoritative evidence, not by a reviewer stopping after the first defect.
+
+### PR15-007 — Self-Validation Before Review
+
+The implementation owner SHOULD provide a PR self-validation declaration before requesting substantive review:
+
+```yaml
+implementation_ready: true
+spec_mapped: true
+tests_added_or_verified: true
+changed_files_known: true
+evidence_complete: true
+```
+
+A failed self-validation MUST be surfaced as `NOT_READY_FOR_REVIEW` or an equivalent context state instead of being disguised as an implementation defect.
+
+### PR15-008 — Immutable Changed-File Coverage
+
+`coverage.changed_files` MUST contain the complete changed-file set for the immutable snapshot under review. A coverage mismatch is a context-integrity failure and MUST block the merge gate until reconciled.
+
+### PR15-009 — Contract Tests for Review Readiness
+
+The implementation MUST add or maintain deterministic tests for incomplete Evidence Package rejection, changed-file coverage mismatch, requirement-to-evidence traceability gaps, finding classification validation, blocker authority validation, anti-roundtrip full-pass behavior, prior-finding completeness, same-snapshot monotonicity, changed-snapshot resolution evidence, same-snapshot divergence and continuation/recovery behavior.
+
+### PR15-010 — Review Quality Metrics
+
+The lifecycle SHOULD expose:
+
+```text
+review_round_count
+review_attempt_count
+context_block_count
+evidence_missing_count
+finding_reopen_count
+finding_resolution_count
+same_snapshot_divergence_count
+```
+
+These are process-quality signals and MUST NOT themselves determine approval.
+
+### PR15-011 — Recurring Finding to SPEC Evolution
+
+When a review repeatedly identifies the same process-level deficiency across independent PRs or review rounds, the deficiency MUST be evaluated as a possible specification/process gap.
+
+Preferred evolution:
+
+```text
+recurring review failure
+  -> process gap
+  -> durable normative rule
+  -> SPEC amendment
+  -> future PR inheritance
+```
+
+The same deficiency MUST NOT be rediscovered indefinitely as an ad-hoc reviewer comment.
+
+### PR15-012 — Scope-Control Rule
+
+A review MUST distinguish:
+
+```text
+current contract violation
+current verification failure
+architecture risk against current authority
+future capability
+engineering preference
+```
+
+Only the first three categories can become blocking findings, and only with evidence satisfying the blocker contract.
+
+### PR15-013 — Final Approval Preconditions
+
+Before `APPROVED`, the merge gate MUST establish:
+
+```text
+context complete
+changed-file coverage complete
+requirements accounted for
+prior findings accounted for
+blocking findings resolved or otherwise validly closed
+review divergence resolved
+required validation evidence present
+full review pass completed
+adversarial verdict challenge completed
+```
+
+The verdict MUST bind to the exact immutable snapshot whose evidence was reviewed.
+
+### PR15-014 — Review Evidence Manifest
+
+The implementation SHOULD generate a manifest similar to:
+
+```json
+{
+  "schema_version": "1.0",
+  "review_context": {
+    "repository": "owner/repository",
+    "pull_request_number": 15,
+    "base_ref": "main",
+    "base_sha": "<40-char-sha>",
+    "merge_base": "<40-char-sha>",
+    "head_sha": "<40-char-sha>",
+    "snapshot_sha256": "<sha256>",
+    "spec_id": "001-single-skill-baseline"
+  },
+  "coverage": {
+    "changed_files": []
+  },
+  "requirements": [],
+  "findings": []
+}
+```
+
+The manifest is evidence metadata, not a replacement for authoritative GitHub evidence.
+
+### PR15-015 — Added Invariants
+
+```text
+review_start
+  => context_integrity_proven
+```
+
+```text
+blocker
+  => authority
+  => evidence
+  => causal_failure
+  => acceptance_criteria
+```
+
+```text
+first_blocker
+  != review_end
+```
+
+```text
+changed_files_manifest
+  == immutable_pr_changed_files
+```
+
+```text
+requirement
+  => implementation_evidence
+  => validation_evidence
+```
+
+```text
+future_capability
+  != current_spec_violation
+```
+
+```text
+recurring_process_failure
+  => candidate_SPEC_evolution
+```
+
 ## Required Contract Tests
 
 At minimum, automated tests MUST prove:
@@ -506,6 +761,10 @@ At minimum, automated tests MUST prove:
 | Conversation limit reached | continuation packet resumes without losing round/finding state |
 | Master prompt/protocol digest differs | attempts are not treated as contract-equivalent without explicit handling |
 | Blocking finding has no authority reference | result rejected as invalid blocker |
+| Evidence Package is incomplete | review blocked before substantive review |
+| Changed-file coverage is incomplete | review blocked as context-integrity failure |
+| Requirement has no validation evidence | verification gap, not inferred compliance |
+| First blocker is found early | reviewer completes mandatory review fronts before verdict |
 
 ## Success Criteria
 
@@ -520,6 +779,10 @@ At minimum, automated tests MUST prove:
 - **SC-009**: A full review can be resumed in a new ChatGPT Project conversation using only the generated continuation packet plus the current authoritative repository/PR evidence.
 - **SC-010**: No supported baseline path requires private/undocumented ChatGPT conversation-write APIs.
 - **SC-011**: SPEC-002 and SPEC-003 can be implemented/reviewed without acting as competing normative owners of `implement-review` semantics.
+- **SC-012**: A substantive review cannot begin when required immutable review context is missing.
+- **SC-013**: Every blocking finding accepted by the merge gate contains the required authority and evidence fields.
+- **SC-014**: Contract tests prove that finding the first blocker does not terminate the mandatory review pass.
+- **SC-015**: Repeated process deficiencies can be encoded as durable review/SPEC rules rather than requiring repeated ad-hoc review comments.
 
 ## Assumptions
 
@@ -610,4 +873,35 @@ CONFIG != STATE != EVIDENCE
 ```text
 future_infrastructure_or_orchestration
   != capability_semantic_owner
+```
+
+```text
+review_start
+  => context_integrity_proven
+```
+
+```text
+first_blocker
+  != review_end
+```
+
+```text
+changed_files_manifest
+  == immutable_pr_changed_files
+```
+
+```text
+requirement
+  => implementation_evidence
+  => validation_evidence
+```
+
+```text
+future_capability
+  != current_spec_violation
+```
+
+```text
+recurring_process_failure
+  => candidate_SPEC_evolution
 ```
