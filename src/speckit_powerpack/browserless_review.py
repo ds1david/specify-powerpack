@@ -599,6 +599,18 @@ def run_browserless_code_review(
     ]
     changed_files_value = coverage.get("changed_files") or review.get("changed_files")
     invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+    if invalid_changed_files:
+        _log(
+            "browserless",
+            "review evidence shape: top_keys="
+            + ",".join(sorted(str(key) for key in review.keys()))
+            + " coverage_keys="
+            + ",".join(sorted(str(key) for key in coverage.keys()))
+            + " changed_files_type="
+            + type(changed_files_value).__name__
+            + " changed_files_len="
+            + str(len(changed_files_value) if hasattr(changed_files_value, "__len__") else 0),
+        )
     if (missing_snapshot_fields or invalid_changed_files) and web.conversation_id and review_tools:
         _log(
             "browserless",
