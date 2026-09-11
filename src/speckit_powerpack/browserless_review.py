@@ -698,6 +698,24 @@ def run_browserless_code_review(
         payload=snapshot_payload,
         local_head=local_head,
     )
+    if str(context.get("snapshot_sha256") or "").strip().casefold() != snapshot.snapshot_sha256.casefold():
+        _log("browserless", "review snapshot hash differs from immutable packet; requesting exact hash in the same segment…")
+        continuation = web.ask(
+            f"Return the same final review JSON again with review_context exactly bound to the immutable snapshot. Set review_context.snapshot_sha256 to this exact lowercase SHA-256 value: {snapshot.snapshot_sha256}. Preserve all findings, coverage and changed-file evidence; do not recalculate or abbreviate it.",
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        review = _extract_json(continuation)
+        review_context = review.get("review_context") or {}
+        review_coverage = review.get("coverage") or {}
+        review_files, _ = _changed_files_for_snapshot(review)
+        if not review_files:
+            review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
     output_path = (output or _default_output(project_path, snapshot)).resolve()
     packet_path = output_path.with_name(output_path.stem + "-packet.json")
     packet.update({
