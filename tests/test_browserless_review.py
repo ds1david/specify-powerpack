@@ -12,6 +12,7 @@ from speckit_powerpack.browserless_review import (
     _review_packet,
     _extract_json,
     _changed_files_for_snapshot,
+    _missing_snapshot_fields,
     _canonical_requirement_id,
     _merge_requirement_repair,
     _requirement_ids,
@@ -114,6 +115,24 @@ def test_web_transport_rejects_missing_connector_for_github():
             project_id="g-p-dynamic-project",
             github_repos=["owner/repo"],
         )
+
+
+def test_missing_snapshot_fields_requires_full_sha_values():
+    assert _missing_snapshot_fields({"review_context": {"base_ref": "main"}}) == [
+        "base_sha",
+        "merge_base",
+        "head_sha",
+    ]
+    assert _missing_snapshot_fields(
+        {
+            "review_context": {
+                "base_ref": "main",
+                "base_sha": "1" * 40,
+                "merge_base": "2" * 40,
+                "head_sha": "3" * 40,
+            }
+        }
+    ) == []
 
 
 def test_web_transport_parser_exposes_connector_tool_evidence():

@@ -208,6 +208,16 @@ def _changed_files_for_snapshot(review: dict[str, Any]) -> tuple[list[Any] | Non
     return None, False
 
 
+def _missing_snapshot_fields(review: dict[str, Any]) -> list[str]:
+    context = review.get("review_context") or {}
+    return [
+        field
+        for field in ("base_ref", "base_sha", "merge_base", "head_sha")
+        if not context.get(field)
+        or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
+    ]
+
+
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
@@ -637,12 +647,7 @@ def run_browserless_code_review(
             raise first_error
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
-    missing_snapshot_fields = [
-        field
-        for field in ("base_ref", "base_sha", "merge_base", "head_sha")
-        if not context.get(field)
-        or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
-    ]
+    missing_snapshot_fields = _missing_snapshot_fields(review)
     if str(context.get("spec_id") or "").strip().casefold() != spec.spec_id.casefold():
         missing_snapshot_fields.append("spec_id")
     changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
@@ -662,7 +667,14 @@ def run_browserless_code_review(
             + " changed_files_len="
             + str(len(changed_files_value) if hasattr(changed_files_value, "__len__") else 0),
         )
-    if (missing_snapshot_fields or invalid_changed_files) and web.conversation_id and review_tools:
+    repair_attempts = 0
+    while (
+        (missing_snapshot_fields or invalid_changed_files)
+        and web.conversation_id
+        and review_tools
+        and repair_attempts < 2
+    ):
+        repair_attempts += 1
         _log(
             "browserless",
             "review object is missing immutable snapshot fields "
@@ -686,6 +698,16 @@ def run_browserless_code_review(
         if (not completed_changed_files) and prior_changed_files:
             review.setdefault("coverage", {})["changed_files"] = prior_changed_files
             _log("browserless", "review evidence shape: retained prior non-empty changed_files evidence")
+        context = review.get("review_context") or {}
+        missing_snapshot_fields = _missing_snapshot_fields(review)
+        changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+        invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+
+    if missing_snapshot_fields:
+        raise BrowserlessReviewError(
+            "ChatGPT Web review did not return a complete immutable PR snapshot; "
+            "missing or invalid fields: " + ", ".join(missing_snapshot_fields)
+        )
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
     changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
