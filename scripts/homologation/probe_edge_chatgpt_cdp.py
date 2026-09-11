@@ -99,6 +99,7 @@ from collections import deque
 import json
 from pathlib import Path
 import queue
+import random
 import re
 import shutil
 import subprocess
@@ -417,6 +418,13 @@ def _eval(client: MCPStdioClient, page_id: int, js: str, timeout: float = 60.0) 
     return _extract(raw)
 
 
+def human_wait(*, minimum: float = 1.5, maximum: float = 4.0) -> float:
+    """Use a variable human-paced interval for browser observations."""
+    duration = random.uniform(minimum, maximum)
+    time.sleep(duration)
+    return duration
+
+
 def _await_answer(client: MCPStdioClient, page_id: int, sel: dict, *,
                   baseline: int, overall_timeout: float) -> str:
     deadline = time.monotonic() + overall_timeout
@@ -424,7 +432,7 @@ def _await_answer(client: MCPStdioClient, page_id: int, sel: dict, *,
     stable_text = ""
     stable_hits = 0
     while time.monotonic() < deadline:
-        time.sleep(2.0)
+        human_wait()
         st = _eval(client, page_id, _bake(_JS_STATE_TMPL, SEL=sel))
         if st.get("login_wall"):
             raise MCPError("hit a login wall — sign in to the dedicated Edge profile once "
@@ -664,7 +672,7 @@ def main() -> int:
         else:
             _log("no chatgpt.com tab — opening one")
             client.call("new_page", {"url": proj, "timeout": 45000}, timeout=75)
-            time.sleep(2.0)
+            human_wait()
             pages, pages_raw = _pages(client)
             cand = [pid for pid, u in pages if "chatgpt.com" in u]
             if not cand:
@@ -684,7 +692,7 @@ def main() -> int:
         # wall shows), before spending anything.
         st0 = {}
         for _ in range(20):
-            time.sleep(2.0)
+            human_wait()
             st0 = _eval(client, page_id, _bake(_JS_STATE_TMPL, SEL=sel))
             if st0.get("login_wall"):
                 raise MCPError("login wall — open the Edge window, sign in to chatgpt.com "

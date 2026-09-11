@@ -28,6 +28,7 @@ from speckit_powerpack.browserless_review import (
 )
 from speckit_powerpack.chatgpt_pow_probe import (
     build_conversation_body,
+    human_wait,
     parse_sse_assistant,
     send_connector_allow,
 )
@@ -178,6 +179,14 @@ def test_web_transport_rejects_missing_connector_for_github():
             project_id="g-p-dynamic-project",
             github_repos=["owner/repo"],
         )
+
+
+def test_human_wait_uses_dynamic_interval(monkeypatch):
+    observed = []
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.random.uniform", lambda minimum, maximum: (minimum + maximum) / 2)
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.time.sleep", observed.append)
+    assert human_wait() == 2.75
+    assert observed == [2.75]
 
 
 def test_missing_snapshot_fields_requires_full_sha_values():

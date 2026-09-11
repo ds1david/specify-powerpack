@@ -81,6 +81,20 @@ WIN_KEYS = [
     "performance", "crypto", "localStorage", "fetch",
 ]
 
+HUMAN_WAIT_MIN_SECONDS = 1.5
+HUMAN_WAIT_MAX_SECONDS = 4.0
+
+
+def human_wait(*, minimum: float = HUMAN_WAIT_MIN_SECONDS, maximum: float = HUMAN_WAIT_MAX_SECONDS) -> float:
+    """Pause for a variable reading/interaction interval.
+
+    Keep transport polling from using a fixed cadence. The returned duration
+    is also useful in logs and deterministic tests can patch ``time.sleep``.
+    """
+    duration = random.uniform(minimum, maximum)
+    time.sleep(duration)
+    return duration
+
 
 def load_codex_auth(path: Path) -> Tuple[str, Optional[str]]:
     if not path.is_file():
@@ -1326,8 +1340,7 @@ def main() -> int:
     if not reply and LAST_CONVERSATION_ID:
         print(f"[chat] buscando conteudo de {LAST_CONVERSATION_ID}...")
         try:
-            import time as _t
-            _t.sleep(2)
+            human_wait()
             gr = session.get(
                 f"{BASE}/backend-api/conversation/{LAST_CONVERSATION_ID}",
                 timeout=30,

@@ -85,8 +85,9 @@ function Read-ActivePort($dir) {
 }
 
 function Wait-And-Emit($dir, $seconds) {
-    for ($i = 0; $i -lt ($seconds * 2); $i++) {
-        Start-Sleep -Milliseconds 500
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds (Get-Random -Minimum 1500 -Maximum 4001)
         $ap = Read-ActivePort $dir
         if (-not $ap) { continue }
         Say "DevToolsActivePort ready (port $($ap.port))"
@@ -128,7 +129,7 @@ function Kill-Edge {
         $p = Get-Process msedge -ErrorAction SilentlyContinue
         if (-not $p) { return $true }
         $p | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 700
+        Start-Sleep -Milliseconds (Get-Random -Minimum 1500 -Maximum 4001)
     }
     return $false
 }
@@ -161,7 +162,7 @@ if ($Relaunch) {
     Say "Closing all Edge processes ..."
     $gone = Kill-Edge
     if (-not $gone) { Say "  (some msedge processes survived - startup boost?)" }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds (Get-Random -Minimum 1500 -Maximum 4001)
     Remove-Item (Join-Path $EdgeUserData "DevToolsActivePort") -Force -ErrorAction SilentlyContinue
     Say "Relaunching your DEFAULT Edge profile with remote debugging ..."
     Start-Process -FilePath $edge -ArgumentList @(
