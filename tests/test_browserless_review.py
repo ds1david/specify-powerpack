@@ -142,6 +142,13 @@ def test_master_prompt_requires_github_connector_before_review_evidence():
     assert "tool invocation is invalid" in prompt
 
 
+def test_master_prompt_source_and_installed_copy_are_identical():
+    source = Path("src/speckit_powerpack/assets/review/master-review-prompt.md").read_text(encoding="utf-8")
+    installed = Path(".specify/powerpack/master-review-prompt.md").read_text(encoding="utf-8")
+
+    assert installed == source
+
+
 def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
     body = build_conversation_body(
         "list the changed files",

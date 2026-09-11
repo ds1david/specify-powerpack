@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -719,6 +720,20 @@ def run_browserless_code_review(
         + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
         + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot.")
     )
+    prompt_evidence_path = os.environ.get("SPECKIT_POWERPACK_REVIEW_PROMPT_EVIDENCE", "").strip()
+    if prompt_evidence_path:
+        prompt_evidence = review_prompt
+        if not prompt_evidence.lstrip().lower().startswith("@github"):
+            prompt_evidence = "@Github " + prompt_evidence
+        evidence_path = Path(prompt_evidence_path).resolve()
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(prompt_evidence, encoding="utf-8")
+        _log(
+            "browserless",
+            "prompt evidence written: "
+            + str(evidence_path)
+            + f" chars={len(prompt_evidence)} sha256={hashlib.sha256(prompt_evidence.encode('utf-8')).hexdigest()}",
+        )
     review_text = web.ask(
         review_prompt,
         project_id=binding.project_id,

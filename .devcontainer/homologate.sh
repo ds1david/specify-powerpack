@@ -120,6 +120,7 @@ echo "  Two codex exec turns (snapshot + deep review). Each fetched file goes th
 echo "  at the chosen effort — that is what spends Codex tokens. --effort high roughly halves"
 echo "  it vs xhigh. Live progress streams below (also captured to S6-review-run.txt):"
 SPECIFY_FEATURE="001-single-skill-baseline" \
+SPECKIT_POWERPACK_REVIEW_PROMPT_EVIDENCE="$EVID/review-prompt.txt" \
   "${PP[@]}" review run "${RUN_ARGS[@]}" \
   2>&1 | tee "$EVID/S6-review-run.txt"
 
