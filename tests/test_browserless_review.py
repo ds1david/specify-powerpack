@@ -163,6 +163,12 @@ def test_extract_json_rejects_json_without_review_contract():
         _extract_json('{"path":"/GitHub/get_pull_request"}')
 
 
+def test_extract_json_prefers_last_review_object_after_incomplete_progress():
+    first = {"verdict": "BLOCKED", "review_context": {}}
+    second = _hardened_review()
+    assert _extract_json(json.dumps(first) + "\n" + json.dumps(second)) == second
+
+
 def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
     class Response:
         def __init__(self, confirmation: bool):

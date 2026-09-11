@@ -104,9 +104,14 @@ def _extract_json(text: str) -> dict[str, Any]:
             continue
         if isinstance(value, dict):
             candidates.append(value)
-    for value in candidates:
-        if "verdict" in value and "review_context" in value:
-            return value
+    review_candidates = [
+        value for value in candidates if "verdict" in value and "review_context" in value
+    ]
+    if review_candidates:
+        # A continuation can contain an earlier incomplete object followed by
+        # the evidence-complete final object. The last matching object is the
+        # final protocol result, not the first progress snapshot.
+        return review_candidates[-1]
     if candidates:
         raise BrowserlessReviewError("Reviewer returned JSON, but not the required final code-review object.")
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
