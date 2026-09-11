@@ -593,7 +593,7 @@ def run_browserless_code_review(
         or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
     changed_files_value = coverage.get("changed_files") or review.get("changed_files")
-    invalid_changed_files = not isinstance(changed_files_value, list)
+    invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
     if (missing_snapshot_fields or invalid_changed_files) and web.conversation_id and review_tools:
         _log(
             "browserless",
@@ -622,7 +622,7 @@ def run_browserless_code_review(
         "base_sha": context.get("base_sha"),
         "merge_base": context.get("merge_base"),
         "head_sha": context.get("head_sha"),
-        "changed_files": coverage.get("changed_files") or review.get("changed_files"),
+        "changed_files": changed_files_value,
     }
     snapshot = build_snapshot(
         target=target,
