@@ -236,6 +236,17 @@ def _retain_snapshot_repair_evidence(
     return merged
 
 
+def _missing_inspection_files(review: dict[str, Any], snapshot: ReviewSnapshot) -> list[str]:
+    coverage = review.get("coverage") or {}
+    raw = coverage.get("inspection_evidence")
+    evidence_by_file = {
+        str(item.get("file") or "").strip()
+        for item in raw
+        if isinstance(item, dict) and len(str(item.get("evidence") or "").strip()) >= 8
+    } if isinstance(raw, list) else set()
+    return sorted(set(snapshot.changed_files) - evidence_by_file)
+
+
 def _complete_snapshot_from_local_git(
     project_path: Path,
     review: dict[str, Any],
@@ -844,7 +855,7 @@ def run_browserless_code_review(
             require_connector_evidence=False,
         )
         review_tools.extend(web.last_tool_invocations)
-        review = _extract_json(continuation)
+        review = _retain_snapshot_repair_evidence(review, _extract_json(continuation))
         review_context = review.get("review_context") or {}
         review_coverage = review.get("coverage") or {}
         review_files, _ = _changed_files_for_snapshot(review)
@@ -878,6 +889,41 @@ def run_browserless_code_review(
         requirement_files, _ = _changed_files_for_snapshot(review)
         if not requirement_files:
             review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
+
+    missing_inspection_files = _missing_inspection_files(review, snapshot)
+    if missing_inspection_files and web.conversation_id and review_tools:
+        _log(
+            "browserless",
+            "review object is missing inspection evidence for "
+            + str(len(missing_inspection_files))
+            + " changed files; requesting targeted GitHub inspection evidence…",
+        )
+        continuation = web.ask(
+            "Continue the same review using @GitHub. Return only a JSON object with "
+            "coverage.inspection_evidence entries for these missing changed files, "
+            "with each entry containing the exact file path and concrete evidence of "
+            "what was inspected. Do not change the verdict, findings, review_context, "
+            "or existing evidence. Missing files: "
+            + json.dumps(missing_inspection_files, ensure_ascii=False),
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        repaired_evidence = _extract_json(continuation)
+        existing_coverage = review.setdefault("coverage", {})
+        existing_entries = existing_coverage.get("inspection_evidence")
+        existing_entries = existing_entries if isinstance(existing_entries, list) else []
+        new_entries = (repaired_evidence.get("coverage") or {}).get("inspection_evidence")
+        new_entries = new_entries if isinstance(new_entries, list) else []
+        existing_paths = {str(item.get("file") or "").strip() for item in existing_entries if isinstance(item, dict)}
+        existing_coverage["inspection_evidence"] = existing_entries + [
+            item for item in new_entries
+            if isinstance(item, dict) and str(item.get("file") or "").strip() not in existing_paths
+        ]
     output_path = (output or _default_output(project_path, snapshot)).resolve()
     packet_path = output_path.with_name(output_path.stem + "-packet.json")
     packet.update({

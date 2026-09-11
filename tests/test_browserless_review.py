@@ -15,6 +15,7 @@ from speckit_powerpack.browserless_review import (
     _missing_snapshot_fields,
     _retain_snapshot_repair_evidence,
     _complete_snapshot_from_local_git,
+    _missing_inspection_files,
     _canonical_requirement_id,
     _merge_requirement_repair,
     _requirement_ids,
@@ -163,6 +164,12 @@ def test_local_git_snapshot_completion_only_fills_manifest_fields(tmp_path, monk
     assert review["findings"] == [{"id": "F1"}]
     assert review["review_context"]["merge_base"] == "2" * 40
     assert review["coverage"]["changed_files"] == ["src/app.py"]
+
+
+def test_missing_inspection_files_is_scoped_to_changed_snapshot_files():
+    snapshot = _snapshot()
+    review = {"coverage": {"inspection_evidence": [{"file": "a.py", "evidence": "read callers"}]}}
+    assert _missing_inspection_files(review, snapshot) == ["b.py"]
 
 
 def test_web_transport_parser_exposes_connector_tool_evidence():
