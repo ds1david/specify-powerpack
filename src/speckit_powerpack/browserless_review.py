@@ -516,9 +516,8 @@ def _write_review_bundle(
 ) -> dict[str, Any]:
     """Persist the structured inputs used by one review execution.
 
-    ChatGPT Web's current conversation endpoint has no verified file-upload
-    contract, so the transport keeps the packet inline and records the other
-    logical attachments here for homologation and reproducibility.
+    The transport uploads these exact files as native conversation attachments;
+    the local bundle is retained as the reproducibility/evidence copy.
     """
     bundle_dir.mkdir(parents=True, exist_ok=True)
     artifacts: dict[str, str] = {

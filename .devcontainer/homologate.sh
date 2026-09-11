@@ -127,6 +127,27 @@ SPECKIT_POWERPACK_REVIEW_PROMPT_EVIDENCE="$EVID/review-prompt.txt" \
 REVIEW_EXIT=${PIPESTATUS[0]}
 set -e
 
+# review run executes in the throwaway worktree. Persist the complete structured
+# attachment bundle before the EXIT trap removes that worktree; review.json is
+# not sufficient evidence because the prompt and package files are separate
+# native uploads. This runs for both successful and externally blocked attempts.
+ATTACHMENT_SOURCE="$WT/review-attachments"
+ATTACHMENT_TARGET="$EVID/review-attachments"
+ATTACHMENT_COPY_EXIT=0
+if [ -d "$ATTACHMENT_SOURCE" ]; then
+  mkdir -p "$ATTACHMENT_TARGET"
+  cp -R "$ATTACHMENT_SOURCE/." "$ATTACHMENT_TARGET/" || ATTACHMENT_COPY_EXIT=$?
+  if [ "$ATTACHMENT_COPY_EXIT" -eq 0 ] && [ -f "$ATTACHMENT_TARGET/manifest.json" ]; then
+    echo "  [browserless] review attachments evidence copied: $ATTACHMENT_TARGET"
+  else
+    echo "  [browserless] review attachments evidence is incomplete: $ATTACHMENT_TARGET" >&2
+    ATTACHMENT_COPY_EXIT=1
+  fi
+else
+  echo "  [browserless] review attachments bundle missing: $ATTACHMENT_SOURCE" >&2
+  ATTACHMENT_COPY_EXIT=1
+fi
+
 # An external evidence failure is a terminal pending state for this attempt.
 # Preserve the first BLOCKED artifact, but do not run protocol validation or
 # any task-closing step against it.
@@ -138,6 +159,11 @@ if [ "$REVIEW_EXIT" -ne 0 ]; then
   echo "review exit: $REVIEW_EXIT"
   echo "No S7 validation or task closure was performed."
   exit "$REVIEW_EXIT"
+fi
+
+if [ "$ATTACHMENT_COPY_EXIT" -ne 0 ]; then
+  echo "review succeeded but attachment evidence persistence failed; refusing S7/closure" >&2
+  exit 1
 fi
 
 cp "$WT/review.json" "$EVID/review.json"

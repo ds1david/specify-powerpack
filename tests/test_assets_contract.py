@@ -191,3 +191,7 @@ def test_devcontainer_homologation_assets_present_and_valid():
     assert "review run" in homologate and "--timeout" in homologate
     assert "--effort" in homologate  # token-cost lever is exposed
     assert "git worktree remove --force" in homologate  # cleanup on exit
+    assert 'ATTACHMENT_SOURCE="$WT/review-attachments"' in homologate
+    assert 'ATTACHMENT_TARGET="$EVID/review-attachments"' in homologate
+    assert 'cp -R "$ATTACHMENT_SOURCE/." "$ATTACHMENT_TARGET/"' in homologate
+    assert 'No S7 validation or task closure was performed.' in homologate
