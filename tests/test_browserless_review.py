@@ -317,6 +317,22 @@ def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
     assert already_allowed["parent_message_id"] == "assistant-1"
 
 
+def test_web_transport_parser_detects_confirmation_on_nonstandard_message_envelope():
+    class Response:
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"assistant-2","author":{"role":"assistant"},"content":{"content_type":"code","text":"github call"}}}}'
+            yield b'data: {"v":{"message":{"id":"tool-2","author":{"role":"tool","name":"web.run"},"content":{"content_type":"text","parts":[""]},"metadata":{"jit_plugin_data":{"from_server":{"type":"confirm_action","actions":[{"type":"allow","target_message_id":"assistant-2"}]}}}}}}'
+            yield b'data: [DONE]'
+
+    _, pending = parse_sse_assistant(Response())
+
+    assert pending["pending_allow"] == {
+        "target_message_id": "assistant-2",
+        "parent_message_id": "tool-2",
+    }
+    assert pending["authorization_required"] is True
+
+
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():
     prompt = _review_prompt(
         connector_id="connector_github",

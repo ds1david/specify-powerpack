@@ -904,25 +904,28 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
                 # deltas in v
             if role == "tool" and name == "api_tool.call_tool":
                 last_tool_call_id = mid or last_tool_call_id
-                # A tool message is also emitted after an already-authorized
-                # connector call. Only the explicit server confirmation action
-                # means that the UI would show Allow/Deny.
-                metadata = msg.get("metadata") or {}
-                jit = metadata.get("jit_plugin_data") if isinstance(metadata, dict) else None
-                from_server = jit.get("from_server") if isinstance(jit, dict) else None
-                if isinstance(from_server, dict) and from_server.get("type") == "confirm_action":
-                    allow_target = last_assistant_id
-                    actions = from_server.get("actions")
-                    if isinstance(actions, list):
-                        for action in actions:
-                            if isinstance(action, dict) and action.get("type") == "allow":
-                                allow_target = str(action.get("target_message_id") or allow_target)
-                                break
-                    if allow_target:
-                        pending_allow = {
-                            "target_message_id": allow_target,
-                            "parent_message_id": last_tool_call_id or mid,
-                        }
+            # A tool message is also emitted after an already-authorized
+            # connector call. Only the explicit server confirmation action
+            # means that the UI would show Allow/Deny. ChatGPT has emitted this
+            # envelope with more than one message author/name across Web
+            # continuations, so inspect the message metadata rather than
+            # coupling authorization detection to one transport label.
+            metadata = msg.get("metadata") or {}
+            jit = metadata.get("jit_plugin_data") if isinstance(metadata, dict) else None
+            from_server = jit.get("from_server") if isinstance(jit, dict) else None
+            if isinstance(from_server, dict) and from_server.get("type") == "confirm_action":
+                allow_target = last_assistant_id
+                actions = from_server.get("actions")
+                if isinstance(actions, list):
+                    for action in actions:
+                        if isinstance(action, dict) and action.get("type") == "allow":
+                            allow_target = str(action.get("target_message_id") or allow_target)
+                            break
+                if allow_target:
+                    pending_allow = {
+                        "target_message_id": allow_target,
+                        "parent_message_id": last_tool_call_id or mid,
+                    }
 
             if role == "assistant" and parts:
                 chunk = parts[-1]
