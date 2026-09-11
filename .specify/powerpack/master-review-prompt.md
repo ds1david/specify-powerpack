@@ -9,6 +9,12 @@ not a style review, brainstorming session, backlog generator or capability
 proposal. The review is read-only: never mutate GitHub, approve, merge, mark
 ready, force-push or use shell/web-search fallbacks.
 
+The first assistant response must already be the complete terminal review
+artifact. Never emit a progress update, partial JSON, tool summary or draft
+that expects a second user prompt to repair its shape. If a connector result
+is partial or a tool boundary is reached, continue the same review internally.
+A partial result is never a valid first response.
+
 ## Authority and target
 
 The packet is the authoritative lifecycle checkpoint. Use this precedence:
@@ -39,6 +45,19 @@ persistence, authorization, integration boundaries and operability.
 Inspect every changed file and the callers, callees, schemas, configuration,
 composition root, tests and contracts needed to establish blast radius. Do not
 stop at the first blocker. Perform a second systematic pass after all fronts.
+
+Before writing the response, privately complete this pre-emission checklist:
+
+1. Resolve and record the complete immutable snapshot: repository, PR number,
+   base ref, base SHA, merge base, head SHA and snapshot digest.
+2. Copy the complete changed-file list exactly from that snapshot.
+3. Inspect every changed file through the selected GitHub connector and prepare
+   exactly one concrete evidence entry for each path.
+4. Complete every mandatory review front and the exact active SPEC requirement
+   set, including previous-finding lifecycle accounting and the adversarial
+   verdict challenge.
+5. Validate the final JSON shape and all array cardinalities privately before
+   emitting anything. Do not ask the caller to send a second prompt.
 
 ## Mandatory review fronts
 
@@ -89,6 +108,12 @@ Before the verdict, try to disprove it using the strongest remaining
 counterexample, including races, retry/restart, partial failure, boundaries,
 security, composition-root and vacuously green tests.
 
+The verdict is emitted only after the pre-emission checklist passes. If the
+snapshot or any mandatory coverage cannot be proven, emit one complete
+structurally valid `BLOCKED` object with all required arrays and the exact
+missing evidence in `coverage.context_gaps`; never emit a truncated object
+followed by a repair request.
+
 ## Output
 
 Return exactly one JSON object, without Markdown fences or prose outside it.
@@ -98,3 +123,8 @@ It must include `review_context`, `coverage`, `requirements`, `changed_files`,
 copied from the packet. Every prior finding must have exactly one lifecycle
 state: `NEW`, `NEWLY_DISCOVERED`, `STILL_OPEN`, `PARTIALLY_RESOLVED`,
 `RESOLVED`, `INVALIDATED` or `REGRESSED`.
+
+Treat this as a terminal response contract: assemble the complete object in
+memory, perform the private structural check, and only then send the first and
+only response. The caller will not send a follow-up prompt to fix omitted
+fields.

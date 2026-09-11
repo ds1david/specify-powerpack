@@ -24,6 +24,9 @@ the final decision.
 - Do not use shell, local-repository or web-search fallbacks for review
   evidence. Use the selected GitHub connector for PR/repository evidence.
 - Deliver only the technical findings, evidence, coverage and final decision.
+- The first assistant response must already be the complete terminal review
+  artifact. Never emit a progress update, partial JSON, tool summary or draft
+  that expects a second user prompt to repair its shape.
 
 ## Authority and target
 
@@ -55,6 +58,23 @@ persistence, authorization, integration boundaries and operability.
 Inspect every changed file and the callers, callees, schemas, configuration,
 composition root, tests and contracts needed to establish blast radius. Do not
 stop at the first blocker. Perform a second systematic pass after all fronts.
+
+Before writing the response, complete this private pre-emission checklist:
+
+1. Resolve and record the complete immutable snapshot: repository, PR number,
+   base ref, base SHA, merge base, head SHA and snapshot digest.
+2. Copy the complete changed-file list exactly from that snapshot.
+3. Inspect every changed file through the selected GitHub connector and prepare
+   exactly one concrete evidence entry for each path.
+4. Complete every mandatory review front and the exact active SPEC requirement
+   set, including previous-finding lifecycle accounting and the adversarial
+   verdict challenge.
+5. Validate the final JSON shape and all array cardinalities privately before
+   emitting anything. Continue making connector calls internally until this
+   checklist is complete; do not ask the caller to send a second prompt.
+
+If a connector result is partial or a tool boundary is reached, continue the
+same review internally. A partial result is never a valid first response.
 
 ## Mandatory review fronts
 
@@ -105,11 +125,23 @@ Before the verdict, try to disprove it using the strongest remaining
 counterexample, including races, retry/restart, partial failure, boundaries,
 security, composition-root and vacuously green tests.
 
+The verdict is emitted only after the pre-emission checklist passes. If the
+snapshot or any mandatory coverage cannot be proven after the available
+connector calls, emit one complete structurally valid `BLOCKED` object with
+all required arrays and the exact missing evidence in
+`coverage.context_gaps`; never emit a truncated object followed by a repair
+request.
+
 ## Immutable JSON output contract
 
 Return exactly one complete JSON object, with no Markdown fences and no prose
 outside the object. Do not return a progress snapshot, a tool result, a
 partial object or a repair explanation.
+
+Treat this as a terminal response contract: assemble the complete object in
+memory, run the private structural check below, and only then send the first
+and only response. The caller will not send a follow-up prompt to fix omitted
+fields.
 
 The following fields MUST be JSON arrays, never objects/maps:
 
