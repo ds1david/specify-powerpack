@@ -146,7 +146,28 @@ def _external_blocked_reasons(review: dict[str, Any]) -> list[str]:
         if isinstance(container, dict):
             value = container.get("blocked_reason")
             values.extend(value if isinstance(value, list) else [value] if value else [])
-    return sorted({str(value).strip().upper() for value in values if str(value).strip().upper() in EXTERNAL_BLOCKED_REASONS})
+    reasons = {str(value).strip().upper() for value in values if str(value).strip().upper() in EXTERNAL_BLOCKED_REASONS}
+    if reasons:
+        return sorted(reasons)
+    if str(review.get("verdict") or "").upper() == "BLOCKED":
+        coverage = review.get("coverage") if isinstance(review.get("coverage"), dict) else None
+        if coverage is None:
+            return sorted(reasons)
+        changed_files = coverage.get("changed_files")
+        inspection = coverage.get("inspection_evidence")
+        gaps = coverage.get("context_gaps") if isinstance(coverage.get("context_gaps"), list) else []
+        gap_text = " ".join(str(item).lower() for item in gaps)
+        if not isinstance(changed_files, list) or not changed_files:
+            reasons.add("MISSING_CHANGED_FILES")
+        if "immutable" in gap_text and ("snapshot" in gap_text or "inventory" in gap_text):
+            reasons.add("MISSING_GITHUB_SNAPSHOT")
+        if isinstance(changed_files, list) and changed_files and (
+            not isinstance(inspection, list) or len(inspection) < len(changed_files)
+        ):
+            reasons.add("MISSING_CHANGED_FILE_CONTENTS")
+        if "spec requirement" in gap_text or "active spec" in gap_text:
+            reasons.add("MISSING_SPEC")
+    return sorted(reasons)
 
 
 def _abort_external_review(

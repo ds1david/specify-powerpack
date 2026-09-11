@@ -630,6 +630,15 @@ def test_external_blocked_review_is_classified_as_pending():
         "MISSING_TOOL"
     ]
     assert _external_blocked_reasons({"verdict": "BLOCKED", "blocked_reason": ["IMPLEMENTATION_DEFECT"]}) == []
+    inferred = _external_blocked_reasons({
+        "verdict": "BLOCKED",
+        "coverage": {
+            "changed_files": [],
+            "inspection_evidence": [],
+            "context_gaps": ["The immutable changed-file inventory was unavailable."],
+        },
+    })
+    assert inferred == ["MISSING_CHANGED_FILES", "MISSING_GITHUB_SNAPSHOT"]
 
 
 def test_snapshot_contract_requires_exact_changed_files():
