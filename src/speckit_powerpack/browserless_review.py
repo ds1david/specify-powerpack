@@ -621,6 +621,8 @@ def run_browserless_code_review(
         if not context.get(field)
         or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
+    if str(context.get("spec_id") or "").strip().casefold() != spec.spec_id.casefold():
+        missing_snapshot_fields.append("spec_id")
     changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
     prior_changed_files: list[Any] | None = None
     if normalized_changed_files:
@@ -647,7 +649,7 @@ def run_browserless_code_review(
             + "; requesting evidence-complete JSON in the same segment…",
         )
         continuation = web.ask(
-            "The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include base_ref and full 40-character hexadecimal base_sha, merge_base, and head_sha values, plus the complete changed_files list under coverage.changed_files. Never abbreviate a SHA. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
+            f"The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include spec_id exactly {spec.spec_id!r}, base_ref and full 40-character hexadecimal base_sha, merge_base, and head_sha values, plus the complete changed_files list under coverage.changed_files. Never abbreviate a SHA or rename the SPEC. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
             project_id=binding.project_id,
             connector_id=github.connector_id,
             repository=target.repository,
