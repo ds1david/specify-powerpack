@@ -377,6 +377,7 @@ def _review_packet(
         "repository": target.repository,
         "pull_request": target.url,
         "active_spec": f"specs/{spec.spec_id}/",
+        "expected_requirement_ids": list(_requirement_ids(getattr(spec, "serialized", ""))),
         "current_head_sha": snapshot.head_sha if snapshot else current_head_sha,
         "current_snapshot_sha256": snapshot.snapshot_sha256 if snapshot else None,
         "previous_snapshot_sha256": previous_context.get("snapshot_sha256") or None,
@@ -422,6 +423,14 @@ changed filenames as standalone tasks. First resolve the immutable PR evidence,
 then read the active SPEC and perform the complete Master Code Review. Continue
 after the first blocker and return one final JSON object only. Do not return a
 tool call, progress note or partial answer as the final result.
+
+The packet contains deterministic execution data, including the exact active
+SPEC requirement IDs under `expected_requirement_ids`. Use that list literally
+for `coverage.requirements`; do not rediscover, abbreviate or defer it to a
+follow-up prompt. The initial review turn must perform the GitHub calls,
+complete all required coverage and emit the final JSON object in one response.
+Connector authorization continuations are transport-level actions, not a
+request for the caller to send another review prompt.
 """
 
 
@@ -883,27 +892,10 @@ def run_browserless_code_review(
         if isinstance(item, dict) and str(item.get("id") or "").strip()
     }
     if expected_requirement_ids and actual_requirement_ids != expected_requirement_ids:
-        _log("browserless", "review requirement coverage differs from active SPEC; requesting exact requirement set in the same segment…")
-        continuation = web.ask(
-            "Return the same final review JSON again. Preserve the immutable review_context, findings and changed-file evidence. Set coverage.requirements to an array containing exactly these requirement IDs, with one evidence-backed status object for each: "
-            + json.dumps(sorted(expected_requirement_ids), ensure_ascii=False),
-            project_id=binding.project_id,
-            connector_id=github.connector_id,
-            repository=target.repository,
-            model=model,
-            effort=effort,
-            require_connector_evidence=False,
+        _log(
+            "browserless",
+            "review response omitted or changed active SPEC requirements; preserving the one-turn contract and failing validation",
         )
-        review_tools.extend(web.last_tool_invocations)
-        repaired_review = _extract_json(continuation)
-        review = _merge_requirement_repair(
-            review,
-            repaired_review,
-            expected_requirement_ids,
-        )
-        requirement_files, _ = _changed_files_for_snapshot(review)
-        if not requirement_files:
-            review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
 
     missing_inspection_files = _missing_inspection_files(review, snapshot)
     if missing_inspection_files and web.conversation_id and review_tools:

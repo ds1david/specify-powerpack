@@ -452,7 +452,7 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     snapshot = _snapshot()
     packet = _review_packet(
         target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"),
-        spec=type("Spec", (), {"spec_id": "SPEC-12"})(),
+        spec=type("Spec", (), {"spec_id": "SPEC-12", "serialized": "FR-001"})(),
         snapshot=snapshot,
         project=ProjectBinding("g-p-test", "Example", None),
         protocol="protocol-v3",
@@ -468,6 +468,7 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     assert "POWERPACK_REVIEW_PACKET" in prompt
     assert packet["review_id"] == "owner/repo#12:SPEC-12:implement-review"
     assert packet["master_prompt"]["sha256"]
+    assert packet["expected_requirement_ids"] == ["FR-001"]
     assert packet["project"] == {
         "project_id": "g-p-test",
         "project_name": "Example",
@@ -475,6 +476,8 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     }
     assert "project_context" not in packet
     assert "not a homologation probe" in prompt
+    assert "expected_requirement_ids" in prompt
+    assert "one response" in prompt
     assert "Name the bound Project and summarize its mission" not in prompt
 
 
