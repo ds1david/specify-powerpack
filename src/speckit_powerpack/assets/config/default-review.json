@@ -3,10 +3,10 @@
   "provider": "unconfigured",
   "review_backend": "codex-apps-github",
   "mode": "browserless",
-  "conversation_strategy": "master-prompt-plus-packet-per-segment",
+  "conversation_strategy": "one-message-with-structured-artifacts",
   "master_prompt": {
     "path": ".specify/powerpack/master-review-prompt.md",
-    "version": "1.0",
+    "version": "1.1",
     "sha256_required": true
   },
   "lineage": {

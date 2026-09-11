@@ -405,34 +405,90 @@ def _review_packet(
 
 
 def _master_review_prompt(master_prompt: str, packet: dict[str, Any], *, target: PullRequestTarget) -> str:
-    return f"""{master_prompt}
+    return f"""@Github
 
-======================================================================
-POWERPACK REVIEW PACKET — VARIABLE EXECUTION STATE
-======================================================================
+Execute POWERPACK MASTER CODE REVIEW v1.1 for {target.repository} PR #{target.number};
+this is the implementation review, not a homologation probe.
+
+Use the attached structured review artifacts as the execution contract:
+- ReviewProtocol: immutable authority, evidence, findings and verdict rules;
+- ReviewPacket: target, snapshot, requirements and lineage;
+- SpecArtifacts: active SPEC material;
+- PreviousFindings: prior lifecycle state;
+- OutputSchema: terminal JSON shape.
+
+Use @GitHub exclusively for PR/repository evidence. Complete the review in
+one turn and one response, invoking the connector before reading or judging
+repository content.
+Return exactly one final JSON object following OutputSchema. If evidence is
+insufficient, return BLOCKED. Do not explain, summarize, emit partial output,
+request bootstrap/confirmation or ask for a second review prompt.
 
 <POWERPACK_REVIEW_PACKET>
 {json.dumps(packet, ensure_ascii=False, indent=2)}
 </POWERPACK_REVIEW_PACKET>
-
-## EXECUTION COMMAND
-
-Use @GitHub exclusively for evidence from {target.repository} PR #{target.number}.
-This is the implementation code review itself, not a homologation probe. Do
-not answer the old probe questions about Project mission, repository lists or
-changed filenames as standalone tasks. First resolve the immutable PR evidence,
-then read the active SPEC and perform the complete Master Code Review. Continue
-after the first blocker and return one final JSON object only. Do not return a
-tool call, progress note or partial answer as the final result.
-
-The packet contains deterministic execution data, including the exact active
-SPEC requirement IDs under `expected_requirement_ids`. Use that list literally
-for `coverage.requirements`; do not rediscover, abbreviate or defer it to a
-follow-up prompt. The initial review turn must perform the GitHub calls,
-complete all required coverage and emit the final JSON object in one response.
-Connector authorization continuations are transport-level actions, not a
-request for the caller to send another review prompt.
 """
+
+
+def _write_review_bundle(
+    *,
+    bundle_dir: Path,
+    master_prompt: str,
+    protocol: str,
+    packet: dict[str, Any],
+    spec_context: str,
+    previous_review: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Persist the structured inputs used by one review execution.
+
+    ChatGPT Web's current conversation endpoint has no verified file-upload
+    contract, so the transport keeps the packet inline and records the other
+    logical attachments here for homologation and reproducibility.
+    """
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    artifacts: dict[str, str] = {
+        "instructions.md": (
+            "Execute review according to ReviewProtocol and ReviewPacket.\n"
+            "Return only the terminal JSON artifact described by OutputSchema.\n"
+        ),
+        "protocol.md": protocol,
+        "packet.json": json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
+        "spec-artifacts.md": spec_context,
+        "output-schema.json": json.dumps({
+            "type": "object",
+            "required": ["review_context", "coverage", "findings", "review_divergences", "verdict_challenge", "lineage", "verdict"],
+            "properties": {
+                "coverage": {"type": "object"},
+                "findings": {"type": "array"},
+                "review_divergences": {"type": "array"},
+                "verdict": {"enum": ["APPROVED", "CHANGES_REQUIRED", "BLOCKED"]},
+            },
+        }, ensure_ascii=False, indent=2) + "\n",
+    }
+    if previous_review is not None:
+        artifacts["previous-review.json"] = json.dumps(previous_review, ensure_ascii=False, indent=2) + "\n"
+    manifest_entries = []
+    for name, content in artifacts.items():
+        path = bundle_dir / name
+        path.write_text(content, encoding="utf-8")
+        manifest_entries.append({
+            "name": name,
+            "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "bytes": len(content.encode("utf-8")),
+        })
+    manifest = {
+        "schema_version": 1,
+        "execution_model": "one-message-with-structured-artifacts",
+        "master_prompt": {
+            "version": MASTER_PROMPT_VERSION,
+            "sha256": hashlib.sha256(master_prompt.encode("utf-8")).hexdigest(),
+        },
+        "artifacts": manifest_entries,
+    }
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return manifest
 
 
 def _review_prompt(
@@ -713,10 +769,22 @@ def run_browserless_code_review(
     packet_path = output_path_hint.with_name(output_path_hint.stem + "-packet.json")
     packet_path.parent.mkdir(parents=True, exist_ok=True)
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    bundle_path = output_path_hint.with_name(output_path_hint.stem + "-bundle")
+    bundle_manifest = _write_review_bundle(
+        bundle_dir=bundle_path,
+        master_prompt=master_prompt,
+        protocol=protocol,
+        packet=packet,
+        spec_context=spec.serialized,
+        previous_review=previous_review,
+    )
 
     _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
     review_prompt = (
         _master_review_prompt(master_prompt, packet, target=target)
+        + "\n<REVIEW_ARTIFACT_MANIFEST>\n"
+        + json.dumps(bundle_manifest, ensure_ascii=False, indent=2)
+        + "\n</REVIEW_ARTIFACT_MANIFEST>"
         + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
         + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot.")
     )

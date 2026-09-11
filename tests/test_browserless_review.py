@@ -18,6 +18,7 @@ from speckit_powerpack.browserless_review import (
     _missing_inspection_files,
     _canonical_requirement_id,
     _merge_requirement_repair,
+    _write_review_bundle,
     _requirement_ids,
     _snapshot_prompt,
     _validate_hardened_review_contract,
@@ -472,7 +473,8 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
         current_head_sha="3" * 40,
     )
     prompt = _master_review_prompt("MASTER CONTRACT", packet, target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"))
-    assert "MASTER CONTRACT" in prompt
+    assert "POWERPACK MASTER CODE REVIEW v1.1" in prompt
+    assert "attached structured review artifacts" in prompt
     assert "POWERPACK_REVIEW_PACKET" in prompt
     assert packet["review_id"] == "owner/repo#12:SPEC-12:implement-review"
     assert packet["master_prompt"]["sha256"]
@@ -487,6 +489,25 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     assert "expected_requirement_ids" in prompt
     assert "one response" in prompt
     assert "Name the bound Project and summarize its mission" not in prompt
+
+
+def test_review_bundle_persists_structured_inputs_and_hash_manifest(tmp_path: Path):
+    packet = {"repository": "owner/repo", "expected_requirement_ids": ["FR-001"]}
+    manifest = _write_review_bundle(
+        bundle_dir=tmp_path / "review-bundle",
+        master_prompt="master",
+        protocol="protocol",
+        packet=packet,
+        spec_context="FR-001 requirement",
+        previous_review=None,
+    )
+    assert manifest["execution_model"] == "one-message-with-structured-artifacts"
+    assert (tmp_path / "review-bundle" / "instructions.md").is_file()
+    assert json.loads((tmp_path / "review-bundle" / "packet.json").read_text()) == packet
+    assert {item["name"] for item in manifest["artifacts"]} == {
+        "instructions.md", "protocol.md", "packet.json", "spec-artifacts.md", "output-schema.json"
+    }
+    assert (tmp_path / "review-bundle" / "manifest.json").is_file()
 
 
 def test_snapshot_contract_requires_exact_changed_files():
