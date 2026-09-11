@@ -621,6 +621,7 @@ def run_browserless_code_review(
         or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
     changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+    prior_changed_files: list[Any] | None = None
     if normalized_changed_files:
         _log("browserless", "review evidence shape: normalized changed_files mapping keys to snapshot paths")
     invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
@@ -654,7 +655,12 @@ def run_browserless_code_review(
             require_connector_evidence=False,
         )
         review_tools.extend(web.last_tool_invocations)
+        prior_changed_files, _ = _changed_files_for_snapshot(review)
         review = _extract_json(continuation)
+        completed_changed_files, _ = _changed_files_for_snapshot(review)
+        if (not completed_changed_files) and prior_changed_files:
+            review.setdefault("coverage", {})["changed_files"] = prior_changed_files
+            _log("browserless", "review evidence shape: retained prior non-empty changed_files evidence")
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
     snapshot_payload = {
