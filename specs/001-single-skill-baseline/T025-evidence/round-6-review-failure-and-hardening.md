@@ -32,6 +32,10 @@ This was a transport/result-selection failure, not a code-review finding.
 - Connector continuation supports multiple explicit authorization gates,
   refreshing Sentinel credentials for each allow and stopping immediately when
   no `confirm_action` is present.
+- If an already-authorized connector stream ends at a tool boundary without a
+  final object, the client requests one bounded finalization continuation in
+  the same conversation segment, without replaying discovery or creating a
+  new review round.
 
 ## Verification
 

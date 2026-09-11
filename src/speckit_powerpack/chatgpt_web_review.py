@@ -69,6 +69,7 @@ class ChatGPTWebReviewClient:
         repository: str,
         model: str,
         effort: str = "xhigh",
+        require_connector_evidence: bool = True,
     ) -> str:
         """Send one review turn, including dynamic Project and GitHub binding."""
         try:
@@ -96,7 +97,7 @@ class ChatGPTWebReviewClient:
             self.last_allow_sent = bool(self.transport.LAST_ALLOW_SENT)
             self.conversation_id = self.transport.LAST_CONVERSATION_ID or self.conversation_id
             self.parent_message_id = self.transport.LAST_PARENT_MESSAGE_ID or self.parent_message_id
-            if not self.last_tool_invocations:
+            if require_connector_evidence and not self.last_tool_invocations:
                 raise ChatGPTWebReviewError("ChatGPT Web response contained no connector/tool invocation evidence.")
             return reply
         except Exception as exc:

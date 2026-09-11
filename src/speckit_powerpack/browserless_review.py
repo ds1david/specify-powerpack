@@ -546,18 +546,44 @@ def run_browserless_code_review(
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
-    review_text = web.ask(
+    review_prompt = (
         _master_review_prompt(master_prompt, packet, target=target)
         + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
-        + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot."),
+        + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot.")
+    )
+    review_text = web.ask(
+        review_prompt,
         project_id=binding.project_id,
         connector_id=github.connector_id,
         repository=target.repository,
         model=model,
         effort=effort,
     )
-    review_tools = web.last_tool_invocations
-    review = _extract_json(review_text)
+    review_tools = list(web.last_tool_invocations)
+    try:
+        review = _extract_json(review_text)
+    except BrowserlessReviewError as first_error:
+        # A connector may complete without an authorization gate but leave the
+        # model at a tool boundary. Continue the same attempt/conversation only
+        # to request the mandated final review object; this is not a new round
+        # and does not replay any homologation probe.
+        if not web.conversation_id or not web.last_tool_invocations:
+            raise
+        _log("browserless", "review stream ended at a tool boundary; requesting final JSON in the same segment…")
+        continuation = web.ask(
+            "Continue the same Master Code Review from the completed connector result. Do not repeat repository discovery. Return only the final structured JSON object required by the Master Prompt, including review_context and verdict.",
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        try:
+            review = _extract_json(continuation)
+        except BrowserlessReviewError:
+            raise first_error
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
     snapshot_payload = {
