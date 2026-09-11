@@ -70,7 +70,6 @@ def normalize_review_response(review: dict[str, Any], snapshot: ReviewSnapshot) 
         if coverage_field not in coverage and field in normalized:
             coverage[coverage_field] = normalized[field]
 
-    changed_files = coverage.get("changed_files", normalized.get("changed_files"))
     # The immutable snapshot is authoritative; this also removes abbreviated or
     # map-shaped changed-file representations without inventing paths.
     coverage["changed_files"] = list(snapshot.changed_files)

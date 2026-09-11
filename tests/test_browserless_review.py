@@ -25,7 +25,11 @@ from speckit_powerpack.browserless_review import (
     load_project_binding,
     ProjectBinding,
 )
-from speckit_powerpack.chatgpt_pow_probe import build_conversation_body, parse_sse_assistant
+from speckit_powerpack.chatgpt_pow_probe import (
+    build_conversation_body,
+    parse_sse_assistant,
+    send_connector_allow,
+)
 from speckit_powerpack.review_context import PullRequestTarget
 from speckit_powerpack.review_context import ReviewSnapshot
 from speckit_powerpack.review_response_normalizer import normalize_review_response
@@ -361,6 +365,49 @@ def test_web_transport_parser_detects_confirmation_on_nonstandard_message_envelo
         "parent_message_id": "tool-2",
     }
     assert pending["authorization_required"] is True
+
+
+def test_connector_allow_falls_back_to_legacy_conversation_route(monkeypatch):
+    class Response:
+        def __init__(self, status_code):
+            self.status_code = status_code
+            self.text = "not found" if status_code >= 400 else ""
+
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"assistant-allow","author":{"role":"assistant"},"content":{"parts":["{\\"verdict\\":\\"BLOCKED\\"}"]}}}}'
+            yield b'data: [DONE]'
+
+    class Session:
+        def __init__(self):
+            self.paths = []
+
+        def post(self, url, **kwargs):
+            self.paths.append(url)
+            return Response(404 if url.endswith("/f/conversation") else 200)
+
+    session = Session()
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.get_chat_requirements", lambda *_: {
+        "token": "sentinel",
+        "proof_token": "proof",
+        "turnstile_token": "turnstile",
+    })
+
+    text, _ = send_connector_allow(
+        session,
+        {"token": "sentinel", "proof_token": "proof", "turnstile_token": "turnstile"},
+        conversation_id="conversation",
+        parent_message_id="parent",
+        target_message_id="target",
+        project_id="g-p-project",
+        model="gpt-5-6-thinking",
+        account_id="account",
+    )
+
+    assert session.paths == [
+        "https://chatgpt.com/backend-api/f/conversation",
+        "https://chatgpt.com/backend-api/conversation",
+    ]
+    assert text
 
 
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():

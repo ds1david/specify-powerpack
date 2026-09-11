@@ -1068,22 +1068,26 @@ def send_connector_allow(
         f"[allow] tokens proof={'sim' if requirements.get('proof_token') else 'nao'} "
         f"turnstile={'sim' if requirements.get('turnstile_token') else 'nao'}"
     )
-    path = "/backend-api/f/conversation"
-    # Usar as mesmas chaves/headers do 1o turno (proof_token / turnstile_token)
-    headers = conversation_headers(path, requirements, account_id, conduit=None)
-    # Referer no contexto da conversa/project (como no HAR)
-    if project_id:
-        headers["Referer"] = f"{BASE}/g/{project_id}/c/{conversation_id}"
-    else:
-        headers["Referer"] = f"{BASE}/c/{conversation_id}"
+    last_error = ""
+    # ChatGPT Web has used both conversation routes for JIT continuations.
+    # Retry the alternate route only when the first route is unavailable; the
+    # explicit server confirm_action remains the sole authorization trigger.
+    for path in ("/backend-api/f/conversation", "/backend-api/conversation"):
+        # Usar as mesmas chaves/headers do 1o turno (proof_token / turnstile_token)
+        headers = conversation_headers(path, requirements, account_id, conduit=None)
+        if project_id:
+            headers["Referer"] = f"{BASE}/g/{project_id}/c/{conversation_id}"
+        else:
+            headers["Referer"] = f"{BASE}/c/{conversation_id}"
 
-    r = session.post(BASE + path, headers=headers, json=body, stream=True, timeout=180)
-    print(f"[allow] POST HTTP {r.status_code}")
-    if r.status_code >= 400:
+        r = session.post(BASE + path, headers=headers, json=body, stream=True, timeout=180)
+        print(f"[allow] POST {path} HTTP {r.status_code}")
+        if r.status_code < 400:
+            return parse_sse_assistant(r)
         body_txt = r.text[:800]
+        last_error = f"allow failed {path} HTTP {r.status_code}: {body_txt[:200]}"
         print(f"[allow] error body: {body_txt}", file=sys.stderr)
-        raise RuntimeError(f"allow failed HTTP {r.status_code}: {body_txt[:200]}")
-    return parse_sse_assistant(r)
+    raise RuntimeError(last_error or "allow failed on all conversation endpoints")
 
 
 
