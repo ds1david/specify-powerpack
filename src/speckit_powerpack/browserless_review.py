@@ -93,7 +93,7 @@ def load_project_binding(project: Path) -> ProjectBinding:
     return ProjectBinding(project_id, project_name, str(binding.get("project_url") or "").strip() or None)
 
 
-def _extract_json(text: str) -> dict[str, Any]:
+def _extract_json(text: str, *, allow_partial: bool = False) -> dict[str, Any]:
     raw = (text or "").strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
@@ -117,6 +117,12 @@ def _extract_json(text: str) -> dict[str, Any]:
         # the evidence-complete final object. The last matching object is the
         # final protocol result, not the first progress snapshot.
         return review_candidates[-1]
+    if allow_partial and candidates:
+        # Targeted repair continuations may intentionally return only the
+        # requested coverage fragment. The caller merges that fragment into
+        # the authoritative review before full protocol validation.
+        partial_candidates = [candidate for candidate in candidates if isinstance(candidate.get("coverage"), dict)]
+        return partial_candidates[-1] if partial_candidates else candidates[-1]
     if candidates:
         raise BrowserlessReviewError("Reviewer returned JSON, but not the required final code-review object.")
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
@@ -922,7 +928,7 @@ def run_browserless_code_review(
             require_connector_evidence=False,
         )
         review_tools.extend(web.last_tool_invocations)
-        repaired_evidence = _extract_json(continuation)
+        repaired_evidence = _extract_json(continuation, allow_partial=True)
         existing_coverage = review.setdefault("coverage", {})
         existing_entries = existing_coverage.get("inspection_evidence")
         existing_entries = existing_entries if isinstance(existing_entries, list) else []

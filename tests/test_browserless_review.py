@@ -117,6 +117,15 @@ def test_normalizer_binds_immutable_snapshot_and_converts_shape_only():
     assert normalized["verdict"] == "CHANGES_REQUIRED"
 
 
+def test_extract_json_allows_only_explicit_partial_repair_objects():
+    partial = '{"coverage":{"inspection_evidence":[{"file":"a.py","evidence":"inspected"}]}}'
+
+    with pytest.raises(BrowserlessReviewError):
+        _extract_json(partial)
+
+    assert _extract_json(partial, allow_partial=True)["coverage"]["inspection_evidence"]
+
+
 def test_every_turn_uses_project_binding_and_the_github_connector():
     """The Web Project supplies context; the prompt only binds the connector."""
     target = PullRequestTarget("owner/repo", 15, "https://github.com/owner/repo/pull/15")
