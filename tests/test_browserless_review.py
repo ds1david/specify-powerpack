@@ -420,10 +420,16 @@ def test_requirement_ids_keep_numeric_and_suffixed_ids_distinct_and_canonical():
     )
 
 
-def test_spec_requirement_inventory_contains_all_30_ids_including_fr_018a():
+def test_spec_requirement_inventory_contains_all_active_ids_including_fr_018a():
     spec = Path(__file__).parents[1] / "specs" / "001-single-skill-baseline" / "spec.md"
     ids = _requirement_ids(spec.read_text(encoding="utf-8"))
-    assert len(ids) == 30
+    expected = tuple(
+        [f"FR-{index:03d}" for index in range(1, 31) if index != 18]
+        + ["FR-018", "FR-018A"]
+        + [f"SC-{index:03d}" for index in range(1, 13)]
+    )
+    assert ids == tuple(sorted(expected))
+    assert len(ids) == 43
     assert "FR-018" in ids
     assert "FR-018A" in ids
 

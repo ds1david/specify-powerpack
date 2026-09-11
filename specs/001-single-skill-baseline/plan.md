@@ -204,6 +204,8 @@ See [research.md](./research.md). Decisions resolved:
   the equality assertion for both registration-time and install-time.
 - [contracts/implement-review-prereq.md](./contracts/implement-review-prereq.md) — inputs,
   pass/fail conditions, and JSON output shape of the re-based gate.
+- [contracts/browserless-review-evidence.md](./contracts/browserless-review-evidence.md) —
+  structured attachments, connector binding, pacing, evidence retention and external blocks.
 - [contracts/installer-parity.md](./contracts/installer-parity.md) — the post-install file
   and command-set state every entrypoint must produce.
 - [quickstart.md](./quickstart.md) — runnable validation scenarios.
@@ -257,3 +259,24 @@ check against the merged tree.
 
 Reviewer gate `checklists/cleanup.md`: 40/40 evaluated and `[x]` (reviewer-directed pass,
 2026-09-09). CHK007 and CHK036 accepted with recorded rationale.
+
+## Review Execution Package Addendum (2026-09-11)
+
+The preserved browserless review is an evidence-first workflow, not a large prompt containing
+all state. It uses one compact execution command and an attached Review Evidence Package with
+the output schema, master orchestrator, packet, protocol, GitHub evidence contract, SPEC
+artifacts, previous findings and instructions. The package manifest is the traceability
+boundary; its files are copied into `T025-evidence/<run>-attachments/` and uploaded as native
+conversation attachments.
+
+Execution phases are input validation, immutable snapshot resolution, evidence acquisition,
+SPEC review, adversarial challenge and final serialization. A GitHub connector call is
+mandatory before repository interpretation. Connector identity is resolved for the active
+ChatGPT account and authorization is JIT; no GitHub token or stale connector id is part of the
+contract. If required evidence is unavailable, the state is `PENDING_EXTERNAL_REVIEW` and
+implementation acceptance tasks remain open.
+
+All attachment, processing, authorization, retry and submission boundaries use one injectable
+random 1.5–4.0 second wait policy. There is no fixed two-second polling loop. These decisions
+are captured by FR-023–FR-030 and SC-008–SC-012; live external validation remains separate from
+the FR-018a implementation gate.

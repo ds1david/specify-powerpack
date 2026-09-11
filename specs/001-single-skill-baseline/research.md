@@ -130,6 +130,32 @@ command dir), and asserts equality with `{"speckit.implement-review"}`.
 **Rationale.** Filenames and substring matches let a stale command survive silently
 (FR-004, FR-011). One canonical parsed list makes the equality assertion unambiguous.
 
+## D8 — Browserless review evidence package and external boundary
+
+**Decision.** Keep the master execution prompt short and move variable review state and
+normative content into a structured attachment package. The package authority order is
+OutputSchema, ReviewPacket, GitHubEvidenceContract, ReviewProtocol, SpecArtifacts,
+PreviousFindings and Instructions. The prompt only binds that package to the target execution
+and requires one terminal JSON response.
+
+**Evidence.** HAR homologation captured the native file lifecycle: create/upload, upload to the
+returned URL, process each upload, wait for processing completion, then submit conversation
+metadata containing attachment references. Multiple attachments are therefore part of the
+contract. The generated prompt and all attachments are retained under `T025-evidence/`.
+
+**Decision.** GitHub evidence remains connector-only. The active connector is discovered from
+the current ChatGPT account because account rollover changes connector ids. Authorization is a
+conversation/JIT step; a GitHub token is not an input.
+
+**Decision.** A first-response `BLOCKED` caused by missing snapshot, changed files, file
+contents, tool or complete context is an external boundary. The executor persists the
+response, marks `PENDING_EXTERNAL_REVIEW`, records the reason and gaps, and stops. It does not
+repair JSON, send a second prompt, create findings or close implementation tasks.
+
+**Decision.** All browserless operations use one injectable random 1.5–4.0 second wait policy
+for upload, processing, authorization, retry and submission; fixed `wait 2s` behavior is
+forbidden.
+
 **Config-key classification rule (for T004 / CHK007).** A key in
 `config/default-model-routing.json` (`stages`, `stage_reasons`, and any per-stage override)
 is *removed-command-specific* — and MUST be deleted — **iff** its stage name is a removed

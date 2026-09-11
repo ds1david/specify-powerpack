@@ -122,3 +122,32 @@ Open `README.md` and `docs/PROCESS_ARCHITECTURE.md`.
 **Expect:** `implement-review` is the only current `powerpack-core` command described;
 `FULL_CYCLE.md`, `TECHNICAL_DEBT.md`, `WEB_GITHUB_HEADLESS_PROBE.md` are gone (or clearly
 dated history); no repo-root `*.har`.
+
+## 9. Evidence-package browserless review
+
+```bash
+.devcontainer/homologate.sh 15
+find specs/001-single-skill-baseline/T025-evidence -path '*attachments/*' -type f | sort
+```
+
+The attachment directory MUST contain the manifest, output schema, master prompt, packet,
+protocol, GitHub evidence contract, SPEC artifacts, instructions and previous review when
+applicable. The prompt file contains only the compact execution command. The manifest shows
+every upload and processing operation completed before submission.
+
+## 10. External-blocker acceptance
+
+If the connector cannot provide immutable snapshot, changed-file or file-level evidence, the
+run stops after the first response. Verify `review.json` contains
+`execution_status: PENDING_EXTERNAL_REVIEW`, an external `blocked_reason` and explicit
+`coverage.context_gaps`. The wrapper reports the implementation review as pending, skips the
+final gate/closure step and leaves `[ACCEPTANCE]` tasks open. Do not send a repair prompt.
+
+## 11. Transport policy acceptance
+
+```bash
+python -m pytest -q tests/test_browserless_review.py tests/test_review_*.py
+```
+
+Every attachment, processing, authorization, retry and submit boundary uses the shared random
+1.5–4.0 second wait policy. A fixed `sleep(2)` or equivalent polling loop is a failure.

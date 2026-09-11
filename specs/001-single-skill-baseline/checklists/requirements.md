@@ -51,3 +51,21 @@
   not a chosen implementation.
 - **Reviewed 2026-09-09**: 16/16 items `[x]`. All four clarifications resolved; all
   `/speckit-analyze` findings remediated. Spec is ready for `/speckit-implement`.
+
+The original 16-item readiness review remains closed. The 2026-09-11 review-flow addendum
+adds REQCHK001–REQCHK005; these are intentionally unchecked until the next requirements-quality
+review and do not represent implementation-task completion.
+
+## Review-flow quality gates (2026-09-11)
+
+- [ ] REQCHK001 The compact execution prompt and attached Review Evidence Package have
+  separate responsibilities and an explicit authority order. [Consistency, FR-023/FR-030]
+- [ ] REQCHK002 The multi-attachment upload, processing-completion barrier, native metadata
+  reference and manifest evidence are specified without relying on a second prompt. [Clarity,
+  FR-024]
+- [ ] REQCHK003 Dynamic account-scoped connector discovery, JIT authorization and the
+  no-token boundary are stated as testable requirements. [Security, FR-025]
+- [ ] REQCHK004 The 1.5–4.0 second randomized wait policy is shared, injectable and covers
+  every transport operation; fixed two-second waits are excluded. [Operability, FR-026]
+- [ ] REQCHK005 External evidence gaps produce a pending review state and preserve open
+  acceptance work instead of creating implementation findings. [Failure handling, FR-028]

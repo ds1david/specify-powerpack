@@ -230,6 +230,35 @@ Independent review of the current PR #15 snapshot identified two HIGH findings
 in the hardened browserless review gate. The live acceptance re-run remains
 separate and is still tracked by T062.
 
-- [X] T064 HIGH: requirement coverage extraction now recognizes the complete normative ID form `PREFIX-NUMBER[SUFFIX]`, canonicalizes IDs consistently, keeps `FR-018` distinct from `FR-018a`, and proves the SPEC-001 inventory contains exactly 30 IDs.
+- [X] T064 HIGH: requirement coverage extraction now recognizes the complete normative ID form `PREFIX-NUMBER[SUFFIX]`, canonicalizes IDs consistently, keeps `FR-018` distinct from `FR-018a`, and proves the SPEC-001 inventory contains the exact active ID set (currently 43 IDs after the review-flow addendum).
 - [X] T065 HIGH: coverage-repair continuations now merge only the repaired `coverage.requirements` into the original review; verdict, findings, review context, changed-file list, and inspection evidence remain programmatically immutable. Added an adversarial regression test for the merge boundary.
 - [ ] T066 [ACCEPTANCE] Re-run T062 against the new immutable HEAD; require `APPROVED` and clean `review_protocol.py validate` evidence before closing T025/T051/T057/T062/T066.
+
+## Phase 13: Review Evidence Package and external-blocker hardening
+
+The implementation below is already present in the current runtime and is recorded here so
+the SPEC, plan, contracts and tests share one traceable contract. `[ACCEPTANCE]` tasks remain
+open until a real external homologation run proves the behavior.
+
+- [X] T067 [P] Document FR-023/FR-030 and SC-008/SC-012 across `spec.md`, `plan.md`,
+  `research.md`, `data-model.md`, `quickstart.md` and the browserless evidence contract.
+- [X] T068 [P] Record the native multi-attachment lifecycle: upload, process, completion
+  barrier, native metadata references, manifest digests and evidence copies.
+- [X] T069 [P] Record account-scoped dynamic GitHub connector discovery and JIT authorization;
+  no GitHub token or stale connector id is part of the supported flow.
+- [X] T070 [P] Record the shared injectable random 1.5–4.0 second wait policy for every
+  attachment, processing, authorization, retry and submission boundary.
+- [X] T071 [P] Record the external-blocker state machine: first-response abort,
+  `PENDING_EXTERNAL_REVIEW`, explicit reason/gaps, no repair prompt and no task closure.
+- [X] T072 Update the requirements and cleanup checklists with the package, connector,
+  pacing, evidence-retention and external-blocker quality gates.
+- [ ] T073 [ACCEPTANCE] Execute a successful multi-attachment homologation run and prove the
+  prompt, every package attachment, manifest and processing records are present in
+  `T025-evidence/*-attachments/` before submission.
+- [ ] T074 [ACCEPTANCE] Inject or reproduce an unavailable/incomplete GitHub snapshot and
+  prove the wrapper exits with `PENDING_EXTERNAL_REVIEW`, skips closure and leaves all
+  implementation review acceptance tasks open.
+- [ ] T075 [ACCEPTANCE] Validate account rollover: discover the current connector id, complete
+  JIT authorization and prove no GitHub token or stale id is used.
+- [ ] T076 [ACCEPTANCE] Run focused transport tests and prove all wait samples are within
+  1.5–4.0 seconds with no fixed two-second wait path.

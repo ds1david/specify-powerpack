@@ -300,5 +300,29 @@ T025-evidence/
 - [ ] S7 protocol validator ran (exit 0 or a schema error — not an import error)
 - [ ] §4 cross-cutting grep is `clean`
 - [ ] `T025-evidence/RESULT.md` filled and committed
-- [ ] `tasks.md` **T025** and **T051** flipped to `[X]` with `→ T025-evidence/RESULT.md`
-- [ ] PR #15 description "T025 / T051" item ticked with the verdict
+- [ ] After an `APPROVED` review only: `tasks.md` **T025** and **T051** flipped to `[X]`
+      with `→ T025-evidence/RESULT.md`; an external blocker leaves them open.
+- [ ] After an `APPROVED` review only: PR #15 description "T025 / T051" item ticked with
+      the verdict; `PENDING_EXTERNAL_REVIEW` must not close the implementation review.
+
+## 9. Review Evidence Package and external blockers
+
+The browserless run creates one compact `review-prompt.txt` and a sibling attachment bundle
+under `T025-evidence/<run>-attachments/`. The bundle retains `output-schema.json`,
+`master-prompt.md`, `packet.json`, `protocol.md`, `github-evidence-contract.md`,
+`spec-artifacts.md`, `instructions.md`, optional `previous-review.json` and `manifest.json`.
+The same files are uploaded as native conversation attachments. Every upload must finish its
+processing step before S6 submits the prompt.
+
+The active ChatGPT account determines the current GitHub connector id. The flow uses connector
+authorization/JIT and never requires a GitHub token. All inter-operation waits use the shared
+injectable random 1.5–4.0 second policy; fixed two-second waits are invalid.
+
+If the first response is `MISSING_GITHUB_SNAPSHOT`, `MISSING_CHANGED_FILES`,
+`MISSING_CHANGED_FILE_CONTENTS`, `MISSING_SPEC`, `MISSING_TOOL`, `INCOMPLETE_CONTEXT` or an
+equivalent incomplete immutable evidence response, record the response and bundle, set
+`execution_status: PENDING_EXTERNAL_REVIEW`, preserve `blocked_reason` and
+`coverage.context_gaps`, then abort S6. Do not send a repair prompt, create implementation
+findings, run closure, or mark T025/T051/T057/T062/T066/T073–T076 complete. This is an
+external prerequisite failure and must be retried only after the connector/evidence boundary
+is fixed.

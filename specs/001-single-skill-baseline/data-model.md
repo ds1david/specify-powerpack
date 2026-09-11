@@ -84,3 +84,27 @@ delta. Encoded by `test_implement_evidence_rejects_other_specs_code_delta`.
 None. The feature is a one-way scope reduction. The only lifecycle note: a future
 `powerpack-core` command may be re-added **only** by an explicit new spec that changes the
 Exact-Set Baseline Contract (FR-017).
+
+## Review Evidence Package
+
+An immutable-at-run package used by the preserved browserless review and uploaded as native
+attachments.
+
+| Entity | Required fields | Invariant |
+|---|---|---|
+| `ReviewEvidencePackage` | `manifest`, `artifacts[]`, `authority_order` | every artifact has path, digest and upload reference |
+| `ReviewArtifact` | `name`, `path`, `sha256`, `bytes`, `upload_status`, `processing_status` | processing is `COMPLETED` before submit |
+| `ReviewExecutionPrompt` | `version`, `target`, `package_reference`, `text` | text orchestrates and does not duplicate package bodies |
+| `ConnectorBinding` | `account_scope`, `connector_id`, `authorization_state` | current account connector is discovered; no token persists |
+| `ExternalReviewBlock` | `blocked_reason`, `context_gaps`, `execution_status`, `lineage` | external block ends the attempt as `PENDING_EXTERNAL_REVIEW` |
+| `HumanizedWaitPolicy` | `min_seconds=1.5`, `max_seconds=4.0`, `random_source` | every transport wait is sampled from the policy |
+
+## Review state transitions
+
+```text
+PACKAGE_BUILT → ATTACHMENTS_PROCESSING → READY_TO_SUBMIT → SUBMITTED
+                                                   └→ PENDING_EXTERNAL_REVIEW
+```
+
+`PENDING_EXTERNAL_REVIEW` is terminal for the current attempt. It is not an implementation
+finding, does not close `[ACCEPTANCE]` tasks, and cannot trigger a repair continuation.

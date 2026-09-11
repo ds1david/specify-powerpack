@@ -94,3 +94,24 @@ judged the requirement-quality criterion satisfied — it does NOT mean implemen
   verification. Depth: standard. Audience: PR reviewer.
 - `/speckit-implement` reads checkbox state as a gate: all items `[x]` ⇒ PASS, no prompt.
   `[x]` here means "requirements quality approved", NOT "implementation complete".
+
+## Review Evidence Package Addendum
+
+- [ ] CHK041 Is the compact execution prompt separated from the attached Review Evidence
+  Package, with explicit authority for schema, packet, evidence contract, protocol, SPEC and
+  lifecycle artifacts? [Consistency, Spec §FR-023/FR-030]
+- [ ] CHK042 Does the package contract require every attachment to finish processing before
+  native attachment metadata is submitted, including a manifest with digests? [Completeness,
+  Spec §FR-024]
+- [ ] CHK043 Is the current account-scoped GitHub connector discovered dynamically and JIT
+  authorized, with no GitHub token or stale connector id? [Security, Spec §FR-025]
+- [ ] CHK044 Is one injectable random wait policy of 1.5–4.0 seconds applied to every transport
+  boundary, with fixed two-second loops forbidden? [Operability, Spec §FR-026]
+- [ ] CHK045 Does homologation retain the exact prompt, all package files and upload status in
+  the evidence directory even when external review is blocked? [Traceability, Spec §FR-027]
+- [ ] CHK046 Does an incomplete GitHub response abort the attempt as
+  `PENDING_EXTERNAL_REVIEW` without repair, second prompt, findings or task closure? [Failure
+  handling, Spec §FR-028]
+- [ ] CHK047 Are successful terminal JSON shape validation and external blocker serialization
+  distinct, so an incomplete artifact is blocked rather than conversationally repaired?
+  [Clarity, Spec §FR-029]

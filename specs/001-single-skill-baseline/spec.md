@@ -530,3 +530,86 @@ PowerPack command inventory of exactly `{"speckit.implement-review"}`, with the
 implementation, preset registration,
 installation, current-state documentation, and smoke-test expectations all describe that
 same state.
+
+## Review Execution Flow Addendum (2026-09-11)
+
+The preserved browserless review is evidence-first and externally recoverable. A maintainer
+submits one compact execution prompt together with a structured Review Evidence Package.
+GitHub remains the only source for PR and repository evidence. If the connector cannot provide
+the required snapshot, the attempt stops and remains pending instead of being misreported as
+an implementation failure or repaired through another conversational prompt.
+
+### Additional acceptance scenarios
+
+1. **Given** a Review Evidence Package, **when** the execution prompt is submitted, **then**
+   the prompt references the package and state machine without duplicating packet, protocol,
+   SPEC or output-schema contents.
+2. **Given** multiple package artifacts, **when** they are uploaded, **then** every file is
+   processed to completion before the single review prompt is submitted and native attachment
+   references are preserved in the conversation request.
+3. **Given** an unavailable, unauthorized, stale or incomplete GitHub response, **when** the
+   first review response is classified, **then** the review aborts as an external blocker,
+   remains pending, and does not request a second prompt or close implementation tasks.
+
+### Functional Requirements Addendum
+
+- **FR-023** *(structured review package)*: The browserless `implement-review` execution MUST
+  consume one attached Review Evidence Package containing, when applicable, the OutputSchema,
+  MasterPrompt, ReviewPacket, ReviewProtocol, GitHubEvidenceContract, SpecArtifacts,
+  PreviousFindings and Instructions. The execution prompt MUST be compact and MUST NOT inline
+  or repeat those artifact bodies.
+- **FR-024** *(attachment lifecycle)*: Every package artifact MUST be uploaded as an actual
+  conversation attachment, processed to completion, and referenced by native attachment
+  metadata. Multiple attachments MUST be supported; submission MUST not occur while any
+  required upload is pending or failed. The manifest MUST identify artifacts and digests.
+- **FR-025** *(account-scoped GitHub connector)*: PR and repository evidence MUST be obtained
+  exclusively through the GitHub connector selected for the active ChatGPT account. The flow
+  MUST resolve the current connector identity after account changes, use connector/JIT
+  authorization when required, and MUST NOT require or embed a GitHub API token or stale id.
+- **FR-026** *(humanized transport pacing)*: Attachment, processing, authorization, retry and
+  prompt-submission operations MUST use one injectable random wait policy between 1.5 and 4.0
+  seconds for each inter-operation wait. No fixed `wait 2s` loop is permitted.
+- **FR-027** *(homologation evidence)*: Before submission, the flow MUST copy the exact prompt
+  and every generated review attachment into the run evidence directory, together with the
+  manifest and upload/processing status. Copies MUST remain when the review blocks externally.
+- **FR-028** *(external blocker boundary)*: A missing GitHub snapshot, incomplete changed-file
+  inventory, unavailable connector/tool, authorization failure or equivalent evidence gap MUST
+  abort the current attempt after the first terminal response. The result MUST be marked
+  `PENDING_EXTERNAL_REVIEW` with `blocked_reason` and `coverage.context_gaps`; no repair
+  continuation, second prompt, implementation finding, merge decision or task closure may be
+  emitted for that attempt.
+- **FR-029** *(terminal serialization)*: A review reaching technical analysis MUST emit exactly
+  one structurally valid JSON object conforming to the attached OutputSchema. Required arrays,
+  immutable snapshot fields, changed-file coverage, requirement coverage, inspection evidence,
+  lifecycle accounting and verdict challenge MUST be validated before emission. An incomplete
+  artifact MUST be `BLOCKED`, never silently repaired by a second prompt.
+- **FR-030** *(evidence-source precedence)*: Review reasoning MUST follow the package authority
+  order: OutputSchema for shape; ReviewPacket for target and lineage; GitHubEvidenceContract
+  for prerequisites; ReviewProtocol for method and verdict; SpecArtifacts for expected
+  behavior; PreviousFindings for lifecycle only; Instructions for operational constraints.
+  Project memory, PR prose, commit messages and CI status MUST NOT replace GitHub evidence.
+
+### Additional measurable outcomes
+
+- **SC-008**: A browserless review submission contains one compact execution prompt and a
+  manifest-backed attachment set; the prompt has no duplicated package body.
+- **SC-009**: Every submitted run retains the exact prompt, every attached artifact, manifest
+  and upload/processing records; all required attachments completed before submission.
+- **SC-010**: When GitHub cannot prove immutable snapshot evidence, the run ends after the
+  first response with `execution_status == PENDING_EXTERNAL_REVIEW`, an external reason and
+  open implementation acceptance tasks.
+- **SC-011**: Transport tests prove every inter-operation wait uses the random 1.5–4.0 second
+  policy range and no fixed two-second wait remains.
+- **SC-012**: Account-rollover tests prove the active connector is discovered and authorized
+  dynamically, without a GitHub token or stale connector id.
+
+### Additional risks and mitigations
+
+- **R-007 — Attachment race**: submit occurs before processing completes. Mitigation: a
+  processing barrier plus manifest and evidence assertions.
+- **R-008 — Connector drift**: an id from another ChatGPT account is reused. Mitigation:
+  dynamic discovery and JIT authorization.
+- **R-009 — Blocker misclassification**: missing GitHub evidence becomes a code finding or
+  repair loop. Mitigation: immediate pending state and explicit external classification.
+- **R-010 — Automation-like pacing**: fixed short waits cause rapid retries. Mitigation: one
+  injectable random 1.5–4.0 second policy for all transport operations.
