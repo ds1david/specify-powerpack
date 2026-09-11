@@ -590,6 +590,7 @@ def run_browserless_code_review(
         field
         for field in ("base_ref", "base_sha", "merge_base", "head_sha")
         if not context.get(field)
+        or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
     if missing_snapshot_fields and web.conversation_id and review_tools:
         _log(
@@ -599,7 +600,7 @@ def run_browserless_code_review(
             + "; requesting evidence-complete JSON in the same segment…",
         )
         continuation = web.ask(
-            "The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include base_ref, base_sha, merge_base, head_sha, and the complete changed_files list under coverage.changed_files. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
+            "The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include base_ref and full 40-character hexadecimal base_sha, merge_base, and head_sha values, plus the complete changed_files list under coverage.changed_files. Never abbreviate a SHA. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
             project_id=binding.project_id,
             connector_id=github.connector_id,
             repository=target.repository,
