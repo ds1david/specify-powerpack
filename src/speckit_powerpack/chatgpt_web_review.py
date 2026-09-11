@@ -70,6 +70,7 @@ class ChatGPTWebReviewClient:
         model: str,
         effort: str = "xhigh",
         require_connector_evidence: bool = True,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> str:
         """Send one review turn, including dynamic Project and GitHub binding."""
         try:
@@ -91,6 +92,7 @@ class ChatGPTWebReviewClient:
                 conversation_id=self.conversation_id,
                 parent_message_id=self.parent_message_id,
                 thinking_effort=self._web_effort(effort),
+                attachments=attachments,
             )
             self.last_tool_invocations = tuple(self.transport.LAST_TOOL_INVOCATIONS)
             self.last_authorization_required = bool(self.transport.LAST_AUTHORIZATION_REQUIRED)

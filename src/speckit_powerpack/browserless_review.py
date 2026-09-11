@@ -491,6 +491,20 @@ def _write_review_bundle(
     return manifest
 
 
+def _review_bundle_attachments(bundle_dir: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Load the exact bundle files as explicit one-message attachments."""
+    attachments: list[dict[str, Any]] = []
+    for item in manifest.get("artifacts", []):
+        name = str(item.get("name") or "").strip()
+        path = bundle_dir / name
+        if not name or not path.is_file():
+            raise BrowserlessReviewError(f"Review attachment is missing: {path}")
+        content = path.read_text(encoding="utf-8")
+        mime_type = "application/json" if path.suffix == ".json" else "text/markdown"
+        attachments.append({"name": name, "mime_type": mime_type, "content": content})
+    return attachments
+
+
 def _review_prompt(
     *,
     connector_id: str,
@@ -778,6 +792,7 @@ def run_browserless_code_review(
         spec_context=spec.serialized,
         previous_review=previous_review,
     )
+    review_attachments = _review_bundle_attachments(bundle_path, bundle_manifest)
 
     _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
     review_prompt = (
@@ -809,6 +824,7 @@ def run_browserless_code_review(
         repository=target.repository,
         model=model,
         effort=effort,
+        attachments=review_attachments,
     )
     review_tools = list(web.last_tool_invocations)
     try:

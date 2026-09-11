@@ -646,6 +646,7 @@ def build_conversation_body(
     prompt: str,
     model: str,
     *,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     project_id: Optional[str] = None,
     github_repos: Optional[List[str]] = None,
     connector_id: Optional[str] = None,
@@ -692,10 +693,31 @@ def build_conversation_body(
             }
         ]
 
+    normalized_attachments = []
+    for attachment in attachments or []:
+        if not isinstance(attachment, dict):
+            raise ValueError("review attachment must be an object")
+        name = str(attachment.get("name") or "").strip()
+        content = str(attachment.get("content") or "")
+        if not name:
+            raise ValueError("review attachment name is required")
+        normalized_attachments.append({
+            "name": name,
+            "mime_type": str(attachment.get("mime_type") or "text/plain"),
+            "content": content,
+            "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "bytes": len(content.encode("utf-8")),
+        })
+
     msg_meta: Dict[str, Any] = {
         "serialization_metadata": {"custom_symbol_offsets": custom_offsets},
         "submission_mode": "manual_send",
     }
+    if normalized_attachments:
+        # The conversation endpoint has no verified native upload route in
+        # this transport. Keep attachments explicit and self-describing in
+        # message metadata so the request remains one prompt plus files.
+        msg_meta["powerpack_review_attachments"] = normalized_attachments
     if system_hints:
         msg_meta["system_hints"] = list(system_hints)
         msg_meta["selected_github_repos"] = list(github_repos)
@@ -1142,6 +1164,7 @@ def send_prompt(
     conversation_id: Optional[str] = None,
     parent_message_id: str = "client-created-root",
     thinking_effort: Optional[str] = "extended",
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     global LAST_ALLOW_SENT, LAST_TOOL_INVOCATIONS
     LAST_ALLOW_SENT = False
@@ -1154,6 +1177,7 @@ def send_prompt(
         conversation_id=conversation_id,
         parent_message_id=parent_message_id,
         thinking_effort=thinking_effort,
+        attachments=attachments,
     )
     print(
         f"[chat] project={project_id or '-'} github={github_repos or []} "

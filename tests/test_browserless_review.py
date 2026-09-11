@@ -171,6 +171,22 @@ def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
     assert metadata["serialization_metadata"]["custom_symbol_offsets"][0]["id"] == "plugin:connector_dynamic"
 
 
+def test_web_transport_payload_carries_structured_review_attachments():
+    body = build_conversation_body(
+        "Execute review.",
+        "gpt-5-6-thinking",
+        project_id="g-p-dynamic-project",
+        github_repos=["owner/repo"],
+        connector_id="connector_dynamic",
+        attachments=[{"name": "protocol.md", "mime_type": "text/markdown", "content": "RULES"}],
+    )
+    attachments = body["messages"][0]["metadata"]["powerpack_review_attachments"]
+    assert attachments[0]["name"] == "protocol.md"
+    assert attachments[0]["content"] == "RULES"
+    assert attachments[0]["bytes"] == 5
+    assert len(attachments[0]["sha256"]) == 64
+
+
 def test_web_transport_rejects_missing_connector_for_github():
     with pytest.raises(ValueError, match="current ChatGPT account"):
         build_conversation_body(
