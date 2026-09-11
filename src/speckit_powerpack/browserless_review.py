@@ -816,7 +816,9 @@ def run_browserless_code_review(
     packet_path = output_path_hint.with_name(output_path_hint.stem + "-packet.json")
     packet_path.parent.mkdir(parents=True, exist_ok=True)
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    bundle_path = output_path_hint.with_name(output_path_hint.stem + "-bundle")
+    # Keep a human-auditable copy beside review.json. This directory is created
+    # before the Web submit, so failed runs still retain every produced input.
+    bundle_path = output_path_hint.with_name(output_path_hint.stem + "-attachments")
     bundle_manifest = _write_review_bundle(
         bundle_dir=bundle_path,
         master_prompt=master_prompt,
@@ -827,6 +829,7 @@ def run_browserless_code_review(
         previous_review=previous_review,
     )
     review_attachments = _review_bundle_attachments(bundle_path, bundle_manifest)
+    _log("browserless", f"review attachments evidence written: {bundle_path}")
 
     _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
     review_prompt = (
