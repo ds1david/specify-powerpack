@@ -864,6 +864,7 @@ def upload_prompt_attachments(
 ) -> List[Dict[str, Any]]:
     """Upload prompt files using the ChatGPT Web file-picker sequence."""
     uploaded: List[Dict[str, Any]] = []
+    use_case = "ace_upload" if len(attachments) > 1 else "agent"
     for attachment in attachments:
         name = str(attachment.get("name") or "").strip()
         content = str(attachment.get("content") or "")
@@ -873,8 +874,7 @@ def upload_prompt_attachments(
         payload = {
             "file_name": name,
             "file_size": len(content.encode("utf-8")),
-            "use_case": "agent",
-            "gizmo_id": project_id,
+            "use_case": use_case,
             "timezone_offset_min": 180,
             "reset_rate_limits": False,
             "supports_direct_azure_multipart": True,
@@ -906,8 +906,7 @@ def upload_prompt_attachments(
         human_wait()
         process_payload = {
             "file_id": file_id,
-            "use_case": "agent",
-            "gizmo_id": project_id,
+            "use_case": use_case,
             "index_for_retrieval": True,
             "file_name": name,
             "library_persistence_mode": "opportunistic",
@@ -916,13 +915,17 @@ def upload_prompt_attachments(
                 "store_in_library": True,
                 "is_temporary_chat": False,
                 "library_eligibility_reason": "eligible",
-                "is_project_thread": bool(project_id),
+                "is_project_thread": bool(project_id) and use_case == "agent",
                 "library_file_info": {
                     "origination_message_id": origination_message_id,
                     "origination_thread_id": conversation_id or "",
-                    "gizmo_id": project_id,
-                    "is_project": bool(project_id),
-                    "should_upload_to_project": bool(project_id),
+                    **({
+                        "gizmo_id": project_id,
+                        "is_project": True,
+                        "should_upload_to_project": True,
+                    } if project_id and use_case == "agent" else {
+                        "is_project": False,
+                    }),
                 },
             },
         }
@@ -931,6 +934,10 @@ def upload_prompt_attachments(
             raise RuntimeError(f"file processing HTTP {processed.status_code}: {processed.text[:300]}")
         human_wait()
         uploaded.append({"id": file_id, "size": len(content.encode("utf-8")), "name": name, "mime_type": mime_type})
+    # Every process_upload_stream response is the completion barrier for one
+    # file. Do not submit the prompt until the complete batch has crossed it.
+    if uploaded:
+        print(f"[files] upload batch complete: {len(uploaded)} attachment(s)")
     return uploaded
 
 

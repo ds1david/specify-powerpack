@@ -228,6 +228,50 @@ def test_upload_prompt_attachment_follows_file_picker_sequence(monkeypatch):
     assert len(waits) == 3
 
 
+def test_multiple_uploads_use_ace_upload_and_finish_before_return(monkeypatch):
+    class Response:
+        status_code = 200
+        text = ""
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            if url.endswith("/files"):
+                number = len([call for call in self.calls if call[1].endswith("/files")])
+                return Response({"file_id": f"file_{number}", "upload_url": f"https://upload.test/{number}"})
+            return Response({})
+
+        def put(self, url, **kwargs):
+            self.calls.append(("PUT", url, kwargs))
+            return Response({})
+
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.human_wait", lambda: None)
+    session = Session()
+    attachments = [
+        {"name": "a.md", "mime_type": "text/markdown", "content": "A"},
+        {"name": "b.json", "mime_type": "application/json", "content": "{}"},
+    ]
+    uploaded = upload_prompt_attachments(
+        session, attachments, project_id="g-p-test", conversation_id="c-test", origination_message_id="m-test"
+    )
+    file_calls = [call for call in session.calls if call[1].endswith("/files")]
+    process_calls = [call for call in session.calls if call[1].endswith("process_upload_stream")]
+    assert len(uploaded) == 2
+    assert all(call[2]["json"]["use_case"] == "ace_upload" for call in file_calls)
+    assert len(process_calls) == 2
+    assert all(call[2]["json"]["use_case"] == "ace_upload" for call in process_calls)
+    assert session.calls[-1][1].endswith("process_upload_stream")
+
+
 def test_web_transport_rejects_missing_connector_for_github():
     with pytest.raises(ValueError, match="current ChatGPT account"):
         build_conversation_body(
