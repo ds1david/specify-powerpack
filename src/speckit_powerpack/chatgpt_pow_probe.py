@@ -809,6 +809,7 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
     last_assistant_id = ""
     last_tool_call_id = ""
     tool_invocations: List[str] = []
+    text_candidates: List[str] = []
 
     for line in response.iter_lines():
         if not line:
@@ -875,13 +876,13 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
                     if recipient and not recipient.startswith("api_tool."):
                         candidate = content.get("text")
                         if isinstance(candidate, str) and candidate.strip():
-                            last_text = candidate
+                            text_candidates.append(candidate)
                 if parts:
                     chunk = parts[-1]
                     if isinstance(chunk, str) and chunk.strip():
-                        last_text = chunk
+                        text_candidates.append(chunk)
                     elif isinstance(chunk, dict) and "text" in chunk:
-                        last_text = chunk["text"]
+                        text_candidates.append(str(chunk["text"]))
                 # deltas in v
             if role == "tool" and name == "api_tool.call_tool":
                 last_tool_call_id = mid or last_tool_call_id
@@ -912,7 +913,7 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
 
         # v2 style content append
         if obj.get("v") and isinstance(obj["v"], str):
-            last_text += obj["v"]
+            text_candidates.append(obj["v"])
 
         if obj.get("type") == "server_ste_metadata":
             md = obj.get("metadata") or {}
@@ -921,6 +922,8 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
                 tool_invocations.append(tool_name)
                 print(f"[sse] tool_invoked={tool_name}")
 
+    if text_candidates:
+        last_text = text_candidates[-1]
     if conversation_id:
         print(f"[info] conversation_id={conversation_id}")
     print(f"[sse] events={len(events)} lines={len(raw_lines)}")
@@ -1135,11 +1138,19 @@ def send_prompt(
         if LAST_CONVERSATION_ID and project_id:
             attach_conversation_to_project(session, LAST_CONVERSATION_ID, project_id)
 
-        # Auto-allow GitHub JIT permission if requested
-        pending = meta.get("pending_allow") or {}
-        if pending.get("target_message_id") and pending.get("parent_message_id") and meta.get("conversation_id"):
+        # Auto-allow only explicit JIT confirmations. A deep review can make
+        # several connector calls; each continuation is conditional and gets
+        # fresh Sentinel credentials.
+        for _ in range(8):
+            pending = meta.get("pending_allow") or {}
+            if not (
+                pending.get("target_message_id")
+                and pending.get("parent_message_id")
+                and meta.get("conversation_id")
+            ):
+                break
             try:
-                text2, meta2 = send_connector_allow(
+                text2, meta = send_connector_allow(
                     session,
                     requirements,
                     conversation_id=meta["conversation_id"],
@@ -1152,11 +1163,10 @@ def send_prompt(
                     script=LAST_SCRIPT,
                 )
                 LAST_ALLOW_SENT = True
-                if text2:
-                    return text2
                 text = text2 or text
             except Exception as e:
                 print(f"[allow] falhou: {e}", file=sys.stderr)
+                break
 
         if text:
             return text

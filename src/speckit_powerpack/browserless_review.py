@@ -94,6 +94,7 @@ def _extract_json(text: str) -> dict[str, Any]:
         raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
         raw = re.sub(r"\s*```$", "", raw, count=1)
     decoder = json.JSONDecoder()
+    candidates: list[dict[str, Any]] = []
     for index, char in enumerate(raw):
         if char != "{":
             continue
@@ -102,7 +103,12 @@ def _extract_json(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
         if isinstance(value, dict):
+            candidates.append(value)
+    for value in candidates:
+        if "verdict" in value and "review_context" in value:
             return value
+    if candidates:
+        raise BrowserlessReviewError("Reviewer returned JSON, but not the required final code-review object.")
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
 
 

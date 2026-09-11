@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from speckit_powerpack.browserless_review import (
     _review_prompt,
     _master_review_prompt,
     _review_packet,
+    _extract_json,
     _snapshot_prompt,
     _validate_hardened_review_contract,
     _validate_project_evidence,
@@ -130,6 +132,22 @@ def test_web_transport_parser_keeps_final_json_code_but_not_tool_code():
 
     text, _ = parse_sse_assistant(Response())
     assert text == '{"repository":"owner/repo"}'
+
+
+def test_extract_json_ignores_intermediate_tool_json_and_selects_review_object():
+    review = _hardened_review()
+    reply = (
+        'progress {"path":"/GitHub/get_pull_request"}\n'
+        + "```json\n"
+        + json.dumps(review)
+        + "\n```"
+    )
+    assert _extract_json(reply) == review
+
+
+def test_extract_json_rejects_json_without_review_contract():
+    with pytest.raises(BrowserlessReviewError, match="required final code-review object"):
+        _extract_json('{"path":"/GitHub/get_pull_request"}')
 
 
 def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
