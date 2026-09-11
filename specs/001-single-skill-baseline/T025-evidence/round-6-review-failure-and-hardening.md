@@ -21,6 +21,11 @@ ReviewContextError: PR snapshot did not include base_ref.
 
 This was a transport/result-selection failure, not a code-review finding.
 
+The next homologation showed the complementary SSE shape: the reviewer did
+produce the final JSON, but it was split across `o=patch` append operations and
+multiple `v` delta envelopes. Selecting only the last delta caused the adapter
+to see a truncated fragment and report that no JSON object was returned.
+
 ## Hardening implemented
 
 - SSE parsing retains candidate assistant text without allowing an earlier
@@ -36,6 +41,8 @@ This was a transport/result-selection failure, not a code-review finding.
   final object, the client requests one bounded finalization continuation in
   the same conversation segment, without replaying discovery or creating a
   new review round.
+- Patch append operations and string delta envelopes are accumulated before
+  extracting the final review JSON.
 
 ## Verification
 

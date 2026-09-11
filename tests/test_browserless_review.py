@@ -134,6 +134,19 @@ def test_web_transport_parser_keeps_final_json_code_but_not_tool_code():
     assert text == '{"repository":"owner/repo"}'
 
 
+def test_web_transport_parser_accumulates_json_patch_deltas():
+    class Response:
+        def iter_lines(self):
+            yield b'data: {"conversation_id":"conv-2"}'
+            yield b'data: {"o":"patch","v":[{"o":"append","p":"/message/content/parts/0","v":"{\\"verdict\\":\\"APPROVED\\","}]}'
+            yield b'data: {"v":"\\"review_context\\":{}}"}'
+            yield b'data: [DONE]'
+
+    text, meta = parse_sse_assistant(Response())
+    assert text == '{"verdict":"APPROVED","review_context":{}}'
+    assert meta["conversation_id"] == "conv-2"
+
+
 def test_extract_json_ignores_intermediate_tool_json_and_selects_review_object():
     review = _hardened_review()
     reply = (

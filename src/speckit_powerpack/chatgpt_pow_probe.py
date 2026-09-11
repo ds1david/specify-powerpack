@@ -810,6 +810,7 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
     last_tool_call_id = ""
     tool_invocations: List[str] = []
     text_candidates: List[str] = []
+    delta_text = ""
 
     for line in response.iter_lines():
         if not line:
@@ -835,6 +836,20 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
             continue
 
         events.append({k: obj.get(k) for k in list(obj.keys())[:8]})
+
+        # Final assistant text may arrive as JSON-patch append operations
+        # followed by compact ``{"v": "..."}`` delta envelopes. Accumulate
+        # the fragments; selecting only the last envelope would yield a
+        # truncated review packet.
+        if obj.get("o") == "patch" and isinstance(obj.get("v"), list):
+            for operation in obj["v"]:
+                if (
+                    isinstance(operation, dict)
+                    and operation.get("o") == "append"
+                    and operation.get("p") == "/message/content/parts/0"
+                    and isinstance(operation.get("v"), str)
+                ):
+                    delta_text += operation["v"]
 
         if obj.get("conversation_id"):
             conversation_id = obj["conversation_id"]
@@ -913,7 +928,7 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
 
         # v2 style content append
         if obj.get("v") and isinstance(obj["v"], str):
-            text_candidates.append(obj["v"])
+            delta_text += obj["v"]
 
         if obj.get("type") == "server_ste_metadata":
             md = obj.get("metadata") or {}
@@ -922,7 +937,9 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
                 tool_invocations.append(tool_name)
                 print(f"[sse] tool_invoked={tool_name}")
 
-    if text_candidates:
+    if delta_text:
+        last_text = delta_text
+    elif text_candidates:
         last_text = text_candidates[-1]
     if conversation_id:
         print(f"[info] conversation_id={conversation_id}")
