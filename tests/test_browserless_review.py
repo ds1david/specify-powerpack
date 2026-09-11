@@ -12,6 +12,9 @@ from speckit_powerpack.browserless_review import (
     _review_packet,
     _extract_json,
     _changed_files_for_snapshot,
+    _canonical_requirement_id,
+    _merge_requirement_repair,
+    _requirement_ids,
     _snapshot_prompt,
     _validate_hardened_review_contract,
     _validate_project_evidence,
@@ -176,6 +179,57 @@ def test_changed_files_mapping_is_normalized_only_when_keys_are_paths():
         True,
     )
     assert _changed_files_for_snapshot({"coverage": {"changed_files": {"count": 2}}}) == (None, False)
+
+
+def test_requirement_ids_keep_numeric_and_suffixed_ids_distinct_and_canonical():
+    assert _canonical_requirement_id("fr018") == "FR-018"
+    assert _canonical_requirement_id("FR-018a") == "FR-018A"
+    assert _requirement_ids("FR-018 is numeric; FR-018a is its predecessor contract") == (
+        "FR-018",
+        "FR-018A",
+    )
+
+
+def test_spec_requirement_inventory_contains_all_30_ids_including_fr_018a():
+    spec = Path(__file__).parents[1] / "specs" / "001-single-skill-baseline" / "spec.md"
+    ids = _requirement_ids(spec.read_text(encoding="utf-8"))
+    assert len(ids) == 30
+    assert "FR-018" in ids
+    assert "FR-018A" in ids
+
+
+def test_requirement_repair_merges_only_requirements_from_continuation():
+    original = _hardened_review()
+    original["verdict"] = "CHANGES_REQUIRED"
+    original["findings"] = [{
+        "id": "R001-001",
+        "authority_ref": "SPEC FR-018a",
+        "implementation_evidence": "original evidence",
+        "failure_scenario": "original failure",
+        "required_change": "original change",
+    }]
+    repaired = {
+        "verdict": "BLOCKED",
+        "findings": [{"id": "R999-999", "evidence": "rewritten"}],
+        "review_context": {"head_sha": "rewritten"},
+        "coverage": {
+            "changed_files": ["rewritten.py"],
+            "inspection_evidence": [{"file": "rewritten.py", "evidence": "rewritten"}],
+            "requirements": [
+                {"id": "fr-018", "status": "PASS", "evidence": ["numeric"]},
+                {"id": "fr-018a", "status": "PASS", "evidence": ["suffix"]},
+            ],
+        },
+    }
+
+    merged = _merge_requirement_repair(original, repaired, {"FR-018", "FR-018A"})
+
+    assert merged["verdict"] == "CHANGES_REQUIRED"
+    assert merged["findings"] == original["findings"]
+    assert merged["review_context"] == original["review_context"]
+    assert merged["coverage"]["changed_files"] == original["coverage"]["changed_files"]
+    assert merged["coverage"]["inspection_evidence"] == original["coverage"]["inspection_evidence"]
+    assert [item["id"] for item in merged["coverage"]["requirements"]] == ["FR-018", "FR-018A"]
 
 
 def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():

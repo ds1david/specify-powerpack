@@ -31,7 +31,10 @@ CANONICAL_CLI = "specify-powerpack"
 PROJECT_AUTHORIZATION = "codex-backend-api"
 PROJECT_PROVIDER = "chatgpt-project"
 REVIEW_BACKEND = "codex-apps-github"
-REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4})\b", re.IGNORECASE)
+REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4}[A-Za-z]?)\b", re.IGNORECASE)
+CANONICAL_REQUIREMENT_ID = re.compile(
+    r"^(FR|NFR|REQ|SC|AC|UC)-?(\d{1,4})([A-Za-z]?)$", re.IGNORECASE
+)
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
 MASTER_PROMPT_VERSION = "1.0"
 REVIEW_PROTOCOL_VERSION = "3.0"
@@ -118,8 +121,68 @@ def _extract_json(text: str) -> dict[str, Any]:
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
 
 
+def _canonical_requirement_id(value: object) -> str | None:
+    match = CANONICAL_REQUIREMENT_ID.fullmatch(str(value or "").strip())
+    if not match:
+        return None
+    return f"{match.group(1).upper()}-{match.group(2)}{match.group(3).upper()}"
+
+
 def _requirement_ids(spec_context: str) -> tuple[str, ...]:
-    return tuple(sorted({match.group(1).upper() for match in REQUIREMENT_ID.finditer(spec_context or "")}))
+    return tuple(
+        sorted(
+            {
+                canonical
+                for match in REQUIREMENT_ID.finditer(spec_context or "")
+                if (canonical := _canonical_requirement_id(match.group(1))) is not None
+            }
+        )
+    )
+
+
+def _merge_requirement_repair(
+    original: dict[str, Any],
+    repaired: dict[str, Any],
+    expected_requirement_ids: set[str],
+) -> dict[str, Any]:
+    """Accept only requirement coverage from a coverage-repair continuation.
+
+    The first review remains authoritative for every other field. This keeps a
+    continuation opened only to fill requirement coverage from rewriting the
+    verdict, findings, snapshot context, or changed-file evidence.
+    """
+    repaired_coverage = repaired.get("coverage")
+    repaired_requirements = (
+        repaired_coverage.get("requirements")
+        if isinstance(repaired_coverage, dict)
+        else None
+    )
+    if not isinstance(repaired_requirements, list):
+        raise BrowserlessReviewError("Coverage repair did not return coverage.requirements.")
+    canonical_requirements: list[dict[str, Any]] = []
+    repaired_ids: set[str] = set()
+    for item in repaired_requirements:
+        if not isinstance(item, dict):
+            continue
+        canonical = _canonical_requirement_id(item.get("id"))
+        if canonical is None:
+            continue
+        normalized_item = dict(item)
+        normalized_item["id"] = canonical
+        canonical_requirements.append(normalized_item)
+        repaired_ids.add(canonical)
+    if repaired_ids != expected_requirement_ids or len(canonical_requirements) != len(expected_requirement_ids):
+        missing = sorted(expected_requirement_ids - repaired_ids)
+        extra = sorted(repaired_ids - expected_requirement_ids)
+        raise BrowserlessReviewError(
+            "Coverage repair returned the wrong requirement IDs; "
+            f"missing={missing}, extra={extra}."
+        )
+    merged = dict(original)
+    merged_coverage = dict(original.get("coverage") or {})
+    merged_coverage["requirements"] = canonical_requirements
+    merged["coverage"] = merged_coverage
+    return merged
 
 
 def _changed_files_for_snapshot(review: dict[str, Any]) -> tuple[list[Any] | None, bool]:
@@ -378,9 +441,10 @@ def _validate_hardened_review_contract(
 
     expected_requirements = set(_requirement_ids(spec_context))
     actual_requirements = {
-        str(item.get("id") or "").upper()
+        canonical
         for item in coverage.get("requirements", [])
         if isinstance(item, dict) and str(item.get("id") or "").strip()
+        if (canonical := _canonical_requirement_id(item.get("id"))) is not None
     }
     if expected_requirements and actual_requirements != expected_requirements:
         missing = sorted(expected_requirements - actual_requirements)
@@ -735,7 +799,12 @@ def run_browserless_code_review(
             require_connector_evidence=False,
         )
         review_tools.extend(web.last_tool_invocations)
-        review = _extract_json(continuation)
+        repaired_review = _extract_json(continuation)
+        review = _merge_requirement_repair(
+            review,
+            repaired_review,
+            expected_requirement_ids,
+        )
         requirement_files, _ = _changed_files_for_snapshot(review)
         if not requirement_files:
             review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)

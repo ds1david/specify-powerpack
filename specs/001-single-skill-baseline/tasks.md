@@ -221,5 +221,15 @@ T059 → fix with a versioned prune.
 - [X] T059 R001-001 (HIGH) — **versioned prune on `update`.** `cli.py`: `OBSOLETE_POWERPACK_PATHS` + `_prune_removed_command_state(base)` unlinks retired runtimes/configs and strips removed-command keys from `model-routing.json` / `prerequisites.json` on every `install_support` (no `--reset-config` needed), preserving Project binding and non-removed-command settings. `spec.md` FR-003 / FR-012 clarified (dead-file removal, not a migration shim). Test: `test_update_prunes_retired_removed_command_state`.
 - [X] T060 R001-003 (MED) — `test_baseline_contract.py`: add `test_installed_powerpack_command_namespace_is_exactly_implement_review` exercising a real install composition (guarded to skip only when `specify` is absent); assert `installed == {speckit.implement-review}` (equality). `spec.md` FR-011 clarified.
 - [X] T061 R001-004 (MED) — `test_baseline_contract.py`: drive the real resolver over a materialised install for `speckit.implement` / `speckit.full-cycle` / a `speckit.debt-*`; assert unknown-command + no `implement-review` side effect (same `specify` guard). `spec.md` FR-014 clarified.
-- [ ] T062 [ACCEPTANCE] After T058–T061 land: user re-runs `T025-validation-runbook.md` S6 against the new HEAD (`.devcontainer/homologate.sh 15`); require `APPROVED` + `review_protocol.py validate` clean, then close T025/T051/T057/T058–T062.
+- [ ] T062 [ACCEPTANCE] After T058–T061 and T064–T065 land: user re-runs `T025-validation-runbook.md` S6 against the new HEAD (`.devcontainer/homologate.sh 15`); require `APPROVED` + `review_protocol.py validate` clean, then close T025/T051/T057/T058–T066.
 - [X] T063 `.devcontainer/` homologation env: `devcontainer.json` (bind-mounts `~/.codex` / `~/.claude` / `~/.config/gh`, symlinks the standalone `codex`), `homologate.sh <PR>` (worktree → install → bind → runbook S1/S6/S7 + offline collector → cleanup), `README.md`. Not credential-baked; mounts are opt-in.
+
+## Phase 12: PR #15 review remediation — round 4
+
+Independent review of the current PR #15 snapshot identified two HIGH findings
+in the hardened browserless review gate. The live acceptance re-run remains
+separate and is still tracked by T062.
+
+- [X] T064 HIGH: requirement coverage extraction now recognizes the complete normative ID form `PREFIX-NUMBER[SUFFIX]`, canonicalizes IDs consistently, keeps `FR-018` distinct from `FR-018a`, and proves the SPEC-001 inventory contains exactly 30 IDs.
+- [X] T065 HIGH: coverage-repair continuations now merge only the repaired `coverage.requirements` into the original review; verdict, findings, review context, changed-file list, and inspection evidence remain programmatically immutable. Added an adversarial regression test for the merge boundary.
+- [ ] T066 [ACCEPTANCE] Re-run T062 against the new immutable HEAD; require `APPROVED` and clean `review_protocol.py validate` evidence before closing T025/T051/T057/T062/T066.
