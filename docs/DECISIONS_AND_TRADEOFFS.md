@@ -52,7 +52,7 @@ Historical experimental branches may retain old probes as research evidence; the
 
 **Decision:** first materialize an immutable PR manifest, then perform the deep review.
 
-**Benefit:** the second turn is bound to repository, PR, base/head/merge-base, changed-file list, SPEC and snapshot digest; stale/ambiguous context is caught before verdict.
+**Benefit:** the Master Review turn is bound to repository, PR, base/head/merge-base, changed-file list, SPEC and snapshot digest; stale/ambiguous context is caught before verdict.
 
 **Cost:** one additional model turn increases latency and usage.
 

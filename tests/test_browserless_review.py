@@ -195,6 +195,7 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
         attempt=1,
         segment=1,
         master_prompt="MASTER CONTRACT",
+        current_head_sha="3" * 40,
     )
     prompt = _master_review_prompt("MASTER CONTRACT", packet, target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"))
     assert "MASTER CONTRACT" in prompt

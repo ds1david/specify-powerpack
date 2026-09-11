@@ -125,7 +125,7 @@ The review receives:
 
 Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
 
-Trade-off: two phases add latency, but avoid approving an ambiguous or stale snapshot.
+The Master Review turn resolves the immutable snapshot before returning its verdict; a connector authorization continuation is sent only when the SSE emits `confirm_action`.
 
 ## First installation
 

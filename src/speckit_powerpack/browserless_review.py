@@ -163,6 +163,7 @@ def _review_packet(
     attempt: int,
     segment: int,
     master_prompt: str,
+    current_head_sha: str,
 ) -> dict[str, Any]:
     previous_context = (previous_review or {}).get("review_context") or {}
     previous_findings = (previous_review or {}).get("findings") or []
@@ -176,7 +177,7 @@ def _review_packet(
         "repository": target.repository,
         "pull_request": target.url,
         "active_spec": f"specs/{spec.spec_id}/",
-        "current_head_sha": snapshot.head_sha if snapshot else current_head,
+        "current_head_sha": snapshot.head_sha if snapshot else current_head_sha,
         "current_snapshot_sha256": snapshot.snapshot_sha256 if snapshot else None,
         "previous_snapshot_sha256": previous_context.get("snapshot_sha256") or None,
         "master_prompt": {
@@ -531,6 +532,7 @@ def run_browserless_code_review(
         attempt=attempt,
         segment=segment,
         master_prompt=master_prompt,
+        current_head_sha=local_head,
     )
     output_path_hint = (output.resolve() if output else project_path / ".specify" / "powerpack" / "reviews" / f"round-{round_number}-pr{target.number}.json")
     packet_path = output_path_hint.with_name(output_path_hint.stem + "-packet.json")

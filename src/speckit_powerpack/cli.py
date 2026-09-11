@@ -552,7 +552,7 @@ def cmd_review_run(args: argparse.Namespace) -> None:
     verbose = not args.quiet
     if verbose:
         print(
-            f"Reviewing PR {args.pr} — this makes two Codex turns (snapshot + deep review) "
+            f"Reviewing PR {args.pr} — this makes one Master Review turn (plus conditional connector continuation) "
             "and can run for many minutes. Progress follows on stderr:",
             file=sys.stderr, flush=True,
         )
