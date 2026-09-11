@@ -26,6 +26,12 @@ produce the final JSON, but it was split across `o=patch` append operations and
 multiple `v` delta envelopes. Selecting only the last delta caused the adapter
 to see a truncated fragment and report that no JSON object was returned.
 
+After delta reconstruction was fixed, the reviewer returned a JSON object but
+omitted immutable snapshot fields such as `base_ref`. Snapshot validation
+correctly rejected that incomplete evidence. The runner now requests one
+evidence-completion continuation in the same segment; it remains blocked if
+the required PR identity cannot be proven.
+
 ## Hardening implemented
 
 - SSE parsing retains candidate assistant text without allowing an earlier

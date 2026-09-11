@@ -586,6 +586,31 @@ def run_browserless_code_review(
             raise first_error
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
+    missing_snapshot_fields = [
+        field
+        for field in ("base_ref", "base_sha", "merge_base", "head_sha")
+        if not context.get(field)
+    ]
+    if missing_snapshot_fields and web.conversation_id and review_tools:
+        _log(
+            "browserless",
+            "review object is missing immutable snapshot fields "
+            + ", ".join(missing_snapshot_fields)
+            + "; requesting evidence-complete JSON in the same segment…",
+        )
+        continuation = web.ask(
+            "The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include base_ref, base_sha, merge_base, head_sha, and the complete changed_files list under coverage.changed_files. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        review = _extract_json(continuation)
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
     snapshot_payload = {
         "repository": target.repository,
         "pull_request_number": target.number,
