@@ -863,10 +863,19 @@ def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
             if role == "assistant":
                 last_assistant_id = mid or last_assistant_id
                 # tool call often appears as code content with JSON path /GitHub
-                if content.get("content_type") == "code" or (
+                is_tool_call = content.get("content_type") == "code" or (
                     isinstance(content.get("text"), str) and "/GitHub" in content.get("text", "")
-                ):
+                )
+                if is_tool_call:
                     last_assistant_id = mid or last_assistant_id
+                    recipient = str(msg.get("recipient") or "")
+                    # The Web API can encode the final JSON response as
+                    # assistant.content.text. Tool-directed code is protocol
+                    # state and must not be returned as the reviewer answer.
+                    if recipient and not recipient.startswith("api_tool."):
+                        candidate = content.get("text")
+                        if isinstance(candidate, str) and candidate.strip():
+                            last_text = candidate
                 if parts:
                     chunk = parts[-1]
                     if isinstance(chunk, str) and chunk.strip():

@@ -117,6 +117,17 @@ def test_web_transport_parser_exposes_connector_tool_evidence():
     assert meta["tool_invocations"] == ("ApiToolWrapper",)
 
 
+def test_web_transport_parser_keeps_final_json_code_but_not_tool_code():
+    class Response:
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"tool-call","author":{"role":"assistant"},"recipient":"api_tool.call_tool","content":{"content_type":"code","text":"{\\"path\\":\\"/GitHub/get_pr_info\\"}"}}}}'
+            yield b'data: {"v":{"message":{"id":"final","author":{"role":"assistant"},"recipient":"all","content":{"content_type":"code","text":"{\\"repository\\":\\"owner/repo\\"}"}}}}'
+            yield b'data: [DONE]'
+
+    text, _ = parse_sse_assistant(Response())
+    assert text == '{"repository":"owner/repo"}'
+
+
 def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
     class Response:
         def __init__(self, confirmation: bool):
