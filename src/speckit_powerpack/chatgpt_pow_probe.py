@@ -1119,7 +1119,7 @@ def send_prompt(
     parent_message_id: str = "client-created-root",
     thinking_effort: Optional[str] = "extended",
 ) -> str:
-    global LAST_ALLOW_SENT
+    global LAST_ALLOW_SENT, LAST_TOOL_INVOCATIONS
     LAST_ALLOW_SENT = False
     body = build_conversation_body(
         prompt,
@@ -1152,6 +1152,7 @@ def send_prompt(
             print(f"[warn] {last_err}", file=sys.stderr)
             continue
         text, meta = parse_sse_assistant(r)
+        all_tool_invocations = list(LAST_TOOL_INVOCATIONS)
         if LAST_CONVERSATION_ID and project_id:
             attach_conversation_to_project(session, LAST_CONVERSATION_ID, project_id)
 
@@ -1180,12 +1181,14 @@ def send_prompt(
                     script=LAST_SCRIPT,
                 )
                 LAST_ALLOW_SENT = True
+                all_tool_invocations.extend(name for name in LAST_TOOL_INVOCATIONS if name not in all_tool_invocations)
                 text = text2 or text
             except Exception as e:
                 print(f"[allow] falhou: {e}", file=sys.stderr)
                 break
 
         if text:
+            LAST_TOOL_INVOCATIONS = all_tool_invocations
             return text
         print("[chat] stream sem texto — tentando GET conversation")
         return text
