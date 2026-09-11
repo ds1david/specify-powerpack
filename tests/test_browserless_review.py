@@ -13,6 +13,7 @@ from speckit_powerpack.browserless_review import (
     _extract_json,
     _changed_files_for_snapshot,
     _missing_snapshot_fields,
+    _retain_snapshot_repair_evidence,
     _canonical_requirement_id,
     _merge_requirement_repair,
     _requirement_ids,
@@ -133,6 +134,14 @@ def test_missing_snapshot_fields_requires_full_sha_values():
             }
         }
     ) == []
+
+
+def test_snapshot_repair_retains_non_empty_inspection_evidence():
+    previous = {"coverage": {"inspection_evidence": [{"file": "a.py"}]}}
+    repaired = {"review_context": {"merge_base": "2" * 40}, "coverage": {}}
+    assert _retain_snapshot_repair_evidence(previous, repaired)["coverage"]["inspection_evidence"] == [
+        {"file": "a.py"}
+    ]
 
 
 def test_web_transport_parser_exposes_connector_tool_evidence():

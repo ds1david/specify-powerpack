@@ -218,6 +218,24 @@ def _missing_snapshot_fields(review: dict[str, Any]) -> list[str]:
     ]
 
 
+def _retain_snapshot_repair_evidence(
+    previous: dict[str, Any],
+    repaired: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep review evidence when a snapshot-only continuation omits it."""
+    merged = dict(repaired)
+    previous_coverage = previous.get("coverage") or {}
+    repaired_coverage = dict(merged.get("coverage") or {})
+    for key in ("inspection_evidence", "fronts", "baseline_scenarios", "previous_findings"):
+        old_value = previous_coverage.get(key)
+        new_value = repaired_coverage.get(key)
+        if isinstance(old_value, list) and old_value and (not isinstance(new_value, list) or not new_value):
+            repaired_coverage[key] = old_value
+    if repaired_coverage:
+        merged["coverage"] = repaired_coverage
+    return merged
+
+
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
@@ -692,8 +710,12 @@ def run_browserless_code_review(
             require_connector_evidence=False,
         )
         review_tools.extend(web.last_tool_invocations)
-        prior_changed_files, _ = _changed_files_for_snapshot(review)
-        review = _extract_json(continuation)
+        previous_review = review
+        prior_changed_files, _ = _changed_files_for_snapshot(previous_review)
+        review = _retain_snapshot_repair_evidence(
+            previous_review,
+            _extract_json(continuation),
+        )
         completed_changed_files, _ = _changed_files_for_snapshot(review)
         if (not completed_changed_files) and prior_changed_files:
             review.setdefault("coverage", {})["changed_files"] = prior_changed_files
