@@ -121,6 +121,29 @@ def _requirement_ids(spec_context: str) -> tuple[str, ...]:
     return tuple(sorted({match.group(1).upper() for match in REQUIREMENT_ID.finditer(spec_context or "")}))
 
 
+def _changed_files_for_snapshot(review: dict[str, Any]) -> tuple[list[Any] | None, bool]:
+    """Extract the changed-file set without accepting ambiguous reviewer prose."""
+    coverage = review.get("coverage") or {}
+    raw = coverage.get("changed_files") if "changed_files" in coverage else review.get("changed_files")
+    if isinstance(raw, list):
+        return raw, False
+    if isinstance(raw, dict):
+        for key in ("files", "paths", "changed_files"):
+            value = raw.get(key)
+            if isinstance(value, list):
+                return value, True
+        keys = list(raw.keys())
+        if keys and all(
+            isinstance(key, str)
+            and key.strip()
+            and not key.startswith(("_", "total", "count", "status"))
+            and ("/" in key or "." in Path(key).name)
+            for key in keys
+        ):
+            return keys, True
+    return None, False
+
+
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str, *, project_context: str = "") -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
@@ -597,7 +620,9 @@ def run_browserless_code_review(
         if not context.get(field)
         or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
     ]
-    changed_files_value = coverage.get("changed_files") or review.get("changed_files")
+    changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+    if normalized_changed_files:
+        _log("browserless", "review evidence shape: normalized changed_files mapping keys to snapshot paths")
     invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
     if invalid_changed_files:
         _log(

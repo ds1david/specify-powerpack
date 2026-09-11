@@ -11,6 +11,7 @@ from speckit_powerpack.browserless_review import (
     _master_review_prompt,
     _review_packet,
     _extract_json,
+    _changed_files_for_snapshot,
     _snapshot_prompt,
     _validate_hardened_review_contract,
     _validate_project_evidence,
@@ -167,6 +168,14 @@ def test_extract_json_prefers_last_review_object_after_incomplete_progress():
     first = {"verdict": "BLOCKED", "review_context": {}}
     second = _hardened_review()
     assert _extract_json(json.dumps(first) + "\n" + json.dumps(second)) == second
+
+
+def test_changed_files_mapping_is_normalized_only_when_keys_are_paths():
+    assert _changed_files_for_snapshot({"coverage": {"changed_files": {"src/a.py": {}, "README.md": {}}}}) == (
+        ["src/a.py", "README.md"],
+        True,
+    )
+    assert _changed_files_for_snapshot({"coverage": {"changed_files": {"count": 2}}}) == (None, False)
 
 
 def test_web_transport_parser_requests_allow_only_for_explicit_confirmation():
