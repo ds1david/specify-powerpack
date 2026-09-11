@@ -15,6 +15,13 @@ that expects a second user prompt to repair its shape. If a connector result
 is partial or a tool boundary is reached, continue the same review internally.
 A partial result is never a valid first response.
 
+Before reading, interpreting or judging any repository content, invoke the
+selected GitHub connector. The connector call is mandatory, not advisory:
+use it to obtain the PR metadata, immutable snapshot and source evidence
+required for the review. Do not answer from Project context, memory or the
+review packet alone. If the connector cannot be invoked or returns no usable
+evidence, return one complete `BLOCKED` object explaining that gap.
+
 ## Authority and target
 
 The packet is the authoritative lifecycle checkpoint. Use this precedence:
@@ -32,6 +39,11 @@ Review exactly the repository, PR, SPEC, HEAD and snapshot in the packet. Use
 the selected GitHub connector only for PR/repository evidence. Resolve and
 confirm repository, PR number, base ref/SHA, merge base, head SHA and the
 complete changed-file set. If the snapshot cannot be proven, return BLOCKED.
+
+The first operational action in this review is a GitHub connector call for the
+requested PR. Continue using that connector for the SPEC artifacts, changed
+files and file-level inspection evidence. A response that contains no GitHub
+tool invocation is invalid, even if its JSON shape is otherwise correct.
 
 ## Normative model and complete inspection
 

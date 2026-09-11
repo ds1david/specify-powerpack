@@ -134,6 +134,14 @@ def test_every_turn_uses_project_binding_and_the_github_connector():
     assert "CHATGPT PROJECT CONTEXT" not in snap
 
 
+def test_master_prompt_requires_github_connector_before_review_evidence():
+    prompt = Path("src/speckit_powerpack/assets/review/master-review-prompt.md").read_text(encoding="utf-8")
+
+    assert "Before reading, interpreting or judging any repository content, invoke the" in prompt
+    assert "A response that contains no GitHub" in prompt
+    assert "tool invocation is invalid" in prompt
+
+
 def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
     body = build_conversation_body(
         "list the changed files",
