@@ -584,8 +584,9 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
     )
     prompt = _master_review_prompt("MASTER CONTRACT", packet, target=PullRequestTarget("owner/repo", 12, "https://github.com/owner/repo/pull/12"))
     assert "POWERPACK MASTER CODE REVIEW v1.2" in prompt
-    assert "attached structured review artifacts" in prompt
-    assert "POWERPACK_REVIEW_PACKET" in prompt
+    assert "Review Evidence Package" in prompt
+    assert "POWERPACK_REVIEW_PACKET" not in prompt
+    assert len(prompt) < 700
     assert packet["review_id"] == "owner/repo#12:SPEC-12:implement-review"
     assert packet["master_prompt"]["sha256"]
     assert packet["expected_requirement_ids"] == ["FR-001"]
@@ -595,9 +596,8 @@ def test_master_review_packet_is_distinct_from_homologation_prompts():
         "authority": "bound ChatGPT Project; context resolved by Web",
     }
     assert "project_context" not in packet
-    assert "not a homologation probe" in prompt
-    assert "expected_requirement_ids" in prompt
-    assert "one response" in prompt
+    assert "one final JSON object" in prompt
+    assert "blocked_reason" in prompt
     assert "Name the bound Project and summarize its mission" not in prompt
 
 
@@ -616,7 +616,7 @@ def test_review_bundle_persists_structured_inputs_and_hash_manifest(tmp_path: Pa
     assert (tmp_path / "review-bundle" / "instructions.md").is_file()
     assert json.loads((tmp_path / "review-bundle" / "packet.json").read_text()) == packet
     assert {item["name"] for item in manifest["artifacts"]} == {
-        "output-schema.json", "packet.json", "protocol.md", "github-evidence-contract.md", "spec-artifacts.md", "instructions.md"
+        "output-schema.json", "master-prompt.md", "packet.json", "protocol.md", "github-evidence-contract.md", "spec-artifacts.md", "instructions.md"
     }
     assert (tmp_path / "review-bundle" / "manifest.json").is_file()
 

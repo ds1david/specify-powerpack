@@ -428,32 +428,19 @@ def _review_packet(
 
 
 def _master_review_prompt(master_prompt: str, packet: dict[str, Any], *, target: PullRequestTarget) -> str:
-    return f"""@Github
+    return """@Github
 
-Execute POWERPACK MASTER CODE REVIEW v1.2 for {target.repository} PR #{target.number};
-this is the implementation review, not a homologation probe.
+Execute POWERPACK MASTER CODE REVIEW v1.2.
 
-Use the attached structured review artifacts as the Review Evidence Package
-and execution contract, in this
-authority order:
-- OutputSchema: terminal structure only;
-- ReviewPacket: immutable target, snapshot, requirements and lineage;
-- GitHubEvidenceContract: mandatory evidence prerequisites;
-- ReviewProtocol: review method, fronts, findings and verdict rules;
-- SpecArtifacts: expected behavior and acceptance criteria;
-- PreviousFindings: lifecycle comparison only;
-- Instructions: operational constraints only.
+Use the attached Review Evidence Package as the only execution contract.
+Follow its authority order and state machine. Use @GitHub exclusively for
+PR/repository evidence; begin with snapshot resolution and evidence
+acquisition, then perform the review and adversarial challenge.
 
-Use @GitHub exclusively for PR/repository evidence. Follow the state machine
-in the attached MasterPrompt and complete the review in one turn and one response,
-invoking the connector before reading or judging repository content.
-Return exactly one final JSON object following OutputSchema. If evidence is
-insufficient, return BLOCKED. Do not explain, summarize, emit partial output,
-request bootstrap/confirmation or ask for a second review prompt.
-
-<POWERPACK_REVIEW_PACKET>
-{json.dumps(packet, ensure_ascii=False, indent=2)}
-</POWERPACK_REVIEW_PACKET>
+Return exactly one final JSON object conforming to the attached OutputSchema.
+If any mandatory evidence is unavailable, return BLOCKED with explicit
+blocked_reason and coverage.context_gaps. Do not explain, repeat attachment
+content, emit progress or partial output, or request another prompt.
 """
 
 
@@ -486,14 +473,16 @@ def _write_review_bundle(
                 "verdict": {"enum": ["APPROVED", "CHANGES_REQUIRED", "BLOCKED"]},
             },
         }, ensure_ascii=False, indent=2) + "\n",
+        "master-prompt.md": master_prompt,
         "packet.json": json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
         "protocol.md": protocol,
         "github-evidence-contract.md": evidence_contract,
         "spec-artifacts.md": spec_context,
         "instructions.md": (
-            "Execute the Review Evidence Package in this authority order:\n"
-            "OutputSchema, ReviewPacket, GitHubEvidenceContract, ReviewProtocol, "
-            "SpecArtifacts, PreviousFindings, Instructions.\n"
+            "Execute the Review Evidence Package. MasterPrompt orchestrates the "
+            "state machine; authority order is OutputSchema, ReviewPacket, "
+            "GitHubEvidenceContract, ReviewProtocol, SpecArtifacts, "
+            "PreviousFindings, Instructions.\n"
             "Return only the terminal JSON artifact after identity, evidence, "
             "review, challenge and private schema validation.\n"
         ),
@@ -535,6 +524,13 @@ def _review_bundle_attachments(bundle_dir: Path, manifest: dict[str, Any]) -> li
         content = path.read_text(encoding="utf-8")
         mime_type = "application/json" if path.suffix == ".json" else "text/markdown"
         attachments.append({"name": name, "mime_type": mime_type, "content": content})
+    manifest_path = bundle_dir / "manifest.json"
+    if manifest_path.is_file():
+        attachments.append({
+            "name": "manifest.json",
+            "mime_type": "application/json",
+            "content": manifest_path.read_text(encoding="utf-8"),
+        })
     return attachments
 
 
@@ -835,9 +831,6 @@ def run_browserless_code_review(
     _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
     review_prompt = (
         _master_review_prompt(master_prompt, packet, target=target)
-        + "\n<REVIEW_ARTIFACT_MANIFEST>\n"
-        + json.dumps(bundle_manifest, ensure_ascii=False, indent=2)
-        + "\n</REVIEW_ARTIFACT_MANIFEST>"
         + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
         + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot.")
     )
