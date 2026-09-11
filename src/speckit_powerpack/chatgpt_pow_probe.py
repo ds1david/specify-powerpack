@@ -694,6 +694,7 @@ def build_conversation_body(
         ]
 
     normalized_attachments = []
+    native_attachments = []
     for attachment in attachments or []:
         if not isinstance(attachment, dict):
             raise ValueError("review attachment must be an object")
@@ -701,6 +702,17 @@ def build_conversation_body(
         content = str(attachment.get("content") or "")
         if not name:
             raise ValueError("review attachment name is required")
+        if attachment.get("id"):
+            native_attachments.append({
+                "id": str(attachment["id"]),
+                "size": int(attachment.get("size") or 0),
+                "name": name,
+                "mime_type": str(attachment.get("mime_type") or "text/plain"),
+                "source": "local",
+                "library_persistence_result": str(attachment.get("library_persistence_result") or "temporary"),
+                "is_big_paste": False,
+            })
+            continue
         normalized_attachments.append({
             "name": name,
             "mime_type": str(attachment.get("mime_type") or "text/plain"),
@@ -713,6 +725,9 @@ def build_conversation_body(
         "serialization_metadata": {"custom_symbol_offsets": custom_offsets},
         "submission_mode": "manual_send",
     }
+    if native_attachments:
+        msg_meta["attachments"] = native_attachments
+        msg_meta["selected_sources"] = []
     if normalized_attachments:
         # The conversation endpoint has no verified native upload route in
         # this transport. Keep attachments explicit and self-describing in
@@ -810,12 +825,20 @@ def conversation_headers(
 
 
 def try_conduit(session: Any, body: dict, account_id: Optional[str]) -> Optional[str]:
+    prepare_body = dict(body)
+    message_metadata = ((body.get("messages") or [{}])[0].get("metadata") or {})
+    native_attachments = message_metadata.get("attachments") or []
+    if native_attachments:
+        prepare_body["client_prepare_state"] = "success"
+        prepare_body["client_prepare_dispatch"] = "immediate"
+        prepare_body["client_prepare_source"] = "file_picker"
+        prepare_body["attachment_mime_types"] = [item.get("mime_type") for item in native_attachments]
     for path in ("/backend-api/f/conversation/prepare", "/backend-api/conversation/prepare"):
         try:
             r = session.post(
                 BASE + path,
                 headers=path_headers(path, {"Accept": "application/json"}),
-                json=body,
+                json=prepare_body,
                 timeout=30,
             )
             if r.status_code == 200:
@@ -829,6 +852,86 @@ def try_conduit(session: Any, body: dict, account_id: Optional[str]) -> Optional
         except Exception as e:
             print(f"[conduit] {path}: {e}", file=sys.stderr)
     return None
+
+
+def upload_prompt_attachments(
+    session: Any,
+    attachments: List[Dict[str, Any]],
+    *,
+    project_id: Optional[str],
+    conversation_id: Optional[str],
+    origination_message_id: str,
+) -> List[Dict[str, Any]]:
+    """Upload prompt files using the ChatGPT Web file-picker sequence."""
+    uploaded: List[Dict[str, Any]] = []
+    for attachment in attachments:
+        name = str(attachment.get("name") or "").strip()
+        content = str(attachment.get("content") or "")
+        mime_type = str(attachment.get("mime_type") or "text/plain")
+        if not name:
+            raise ValueError("review attachment name is required")
+        payload = {
+            "file_name": name,
+            "file_size": len(content.encode("utf-8")),
+            "use_case": "agent",
+            "gizmo_id": project_id,
+            "timezone_offset_min": 180,
+            "reset_rate_limits": False,
+            "supports_direct_azure_multipart": True,
+            "mime_type": mime_type,
+            "entry_surface": "chat_composer",
+            "selection_method": "file_picker",
+            "client_resolved_mime_type": mime_type,
+            "mime_resolution_source": "filename_extension",
+            "store_in_library": True,
+            "library_persistence_mode": "opportunistic",
+        }
+        response = session.post(BASE + "/backend-api/files", headers=path_headers("/backend-api/files"), json=payload, timeout=60)
+        if response.status_code >= 400:
+            raise RuntimeError(f"file metadata upload HTTP {response.status_code}: {response.text[:300]}")
+        data = response.json()
+        human_wait()
+        file_id = str(data.get("file_id") or "")
+        upload_url = str(data.get("upload_url") or "")
+        if not file_id or not upload_url:
+            raise RuntimeError("file metadata response did not contain file_id and upload_url")
+        put = session.put(
+            upload_url,
+            headers={"Content-Type": mime_type, "x-ms-blob-type": "BlockBlob", "x-ms-version": "2020-04-08"},
+            data=content.encode("utf-8"),
+            timeout=120,
+        )
+        if put.status_code >= 400:
+            raise RuntimeError(f"file content upload HTTP {put.status_code}: {put.text[:300]}")
+        human_wait()
+        process_payload = {
+            "file_id": file_id,
+            "use_case": "agent",
+            "gizmo_id": project_id,
+            "index_for_retrieval": True,
+            "file_name": name,
+            "library_persistence_mode": "opportunistic",
+            "entry_surface": "chat_composer",
+            "metadata": {
+                "store_in_library": True,
+                "is_temporary_chat": False,
+                "library_eligibility_reason": "eligible",
+                "is_project_thread": bool(project_id),
+                "library_file_info": {
+                    "origination_message_id": origination_message_id,
+                    "origination_thread_id": conversation_id or "",
+                    "gizmo_id": project_id,
+                    "is_project": bool(project_id),
+                    "should_upload_to_project": bool(project_id),
+                },
+            },
+        }
+        processed = session.post(BASE + "/backend-api/files/process_upload_stream", headers=path_headers("/backend-api/files/process_upload_stream"), json=process_payload, timeout=60)
+        if processed.status_code >= 400:
+            raise RuntimeError(f"file processing HTTP {processed.status_code}: {processed.text[:300]}")
+        human_wait()
+        uploaded.append({"id": file_id, "size": len(content.encode("utf-8")), "name": name, "mime_type": mime_type})
+    return uploaded
 
 
 def parse_sse_assistant(response: Any) -> Tuple[str, Dict[str, Any]]:
@@ -1168,6 +1271,15 @@ def send_prompt(
 ) -> str:
     global LAST_ALLOW_SENT, LAST_TOOL_INVOCATIONS
     LAST_ALLOW_SENT = False
+    uploaded_attachments = upload_prompt_attachments(
+        session,
+        attachments or [],
+        project_id=project_id,
+        conversation_id=conversation_id,
+        origination_message_id=parent_message_id,
+    ) if attachments else []
+    if uploaded_attachments:
+        human_wait()
     body = build_conversation_body(
         prompt,
         model,
@@ -1177,7 +1289,7 @@ def send_prompt(
         conversation_id=conversation_id,
         parent_message_id=parent_message_id,
         thinking_effort=thinking_effort,
-        attachments=attachments,
+        attachments=uploaded_attachments or attachments,
     )
     print(
         f"[chat] project={project_id or '-'} github={github_repos or []} "

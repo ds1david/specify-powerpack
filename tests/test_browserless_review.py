@@ -29,6 +29,7 @@ from speckit_powerpack.browserless_review import (
 from speckit_powerpack.chatgpt_pow_probe import (
     build_conversation_body,
     human_wait,
+    upload_prompt_attachments,
     parse_sse_assistant,
     send_connector_allow,
 )
@@ -185,6 +186,46 @@ def test_web_transport_payload_carries_structured_review_attachments():
     assert attachments[0]["content"] == "RULES"
     assert attachments[0]["bytes"] == 5
     assert len(attachments[0]["sha256"]) == 64
+
+
+def test_upload_prompt_attachment_follows_file_picker_sequence(monkeypatch):
+    class Response:
+        status_code = 200
+        text = ""
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            if url.endswith("/files"):
+                return Response({"file_id": "file_test", "upload_url": "https://upload.test/file"})
+            return Response({})
+
+        def put(self, url, **kwargs):
+            self.calls.append(("PUT", url, kwargs))
+            return Response({})
+
+    waits = []
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.human_wait", lambda: waits.append(True))
+    session = Session()
+    uploaded = upload_prompt_attachments(
+        session,
+        [{"name": "protocol.md", "mime_type": "text/markdown", "content": "RULES"}],
+        project_id="g-p-test",
+        conversation_id="conversation-test",
+        origination_message_id="message-test",
+    )
+    assert uploaded == [{"id": "file_test", "size": 5, "name": "protocol.md", "mime_type": "text/markdown"}]
+    assert [call[0] for call in session.calls] == ["POST", "PUT", "POST"]
+    assert len(waits) == 3
 
 
 def test_web_transport_rejects_missing_connector_for_github():
