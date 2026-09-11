@@ -18,6 +18,7 @@ from .review_context import (
     ReviewSnapshot,
     build_snapshot,
     current_head,
+    git,
     resolve_pull_request,
     resolve_spec_context,
 )
@@ -663,6 +664,23 @@ def run_browserless_code_review(
             _log("browserless", "review evidence shape: retained prior non-empty changed_files evidence")
     context = review.get("review_context") or {}
     coverage = review.get("coverage") or {}
+    changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+    if (not isinstance(changed_files_value, list) or not changed_files_value) and all(
+        re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field) or ""))
+        for field in ("merge_base", "head_sha")
+    ):
+        try:
+            local_files = [
+                item.strip()
+                for item in git(project_path, "diff", "--name-only", f"{context['merge_base']}..{context['head_sha']}").splitlines()
+                if item.strip()
+            ]
+        except Exception as exc:
+            local_files = []
+            _log("browserless", f"local changed-file fallback unavailable: {type(exc).__name__}")
+        if local_files:
+            changed_files_value = local_files
+            _log("browserless", "review evidence shape: used immutable local diff for missing changed_files")
     snapshot_payload = {
         "repository": target.repository,
         "pull_request_number": target.number,
