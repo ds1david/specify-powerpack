@@ -4,8 +4,9 @@ from speckit_powerpack.github_connector_discovery import discover_github_connect
 
 
 class FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, *, auth_status: str = "ACTIVE") -> None:
         self.calls: list[tuple[str, str, object | None]] = []
+        self.auth_status = auth_status
 
     def request_json(self, method: str, path: str, body=None):
         self.calls.append((method, path, body))
@@ -18,7 +19,7 @@ class FakeClient:
         if path.startswith("/apps/content"):
             return {"apps": [{"id": connector, "name": "GitHub", "status": "ENABLED", "connector_type": "SERVICE"}]}
         if path == "/aip/connectors/links/list_accessible":
-            return {"links": [{"id": "link_test", "connector_id": connector, "connector_name": "GitHub", "auth_type": "OAUTH", "auth_status": "ACTIVE", "visibility": "VISIBLE", "connector_status": "ENABLED", "apps_privacy_control": "full_access"}]}
+            return {"links": [{"id": "link_test", "connector_id": connector, "connector_name": "GitHub", "auth_type": "OAUTH", "auth_status": self.auth_status, "visibility": "VISIBLE", "connector_status": "ENABLED", "apps_privacy_control": "full_access"}]}
         if path.startswith("/apps/availability"):
             return {"apps": [{"id": connector, "installed": True, "available": True, "can_install": False, "status": "ENABLED"}]}
         raise AssertionError(path)
@@ -51,3 +52,10 @@ def test_safe_report_redacts_plugin_connector_and_link_ids() -> None:
     assert "connector_test" not in rendered
     assert "plugin_connector_1p_test" not in rendered
     assert "link_test" not in rendered
+
+
+def test_discovery_allows_conversation_authorization_before_oauth_is_active() -> None:
+    state = discover_github_connector(FakeClient(auth_status="PENDING"), locale="pt-BR")
+    assert state.ok is True
+    assert state.auth_status == "PENDING"
+    assert state.authorization_link_found is True

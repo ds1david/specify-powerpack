@@ -1,0 +1,4 @@
+MISSING_TASKS_CASE: {"ok": false, "step": "implement-review", "reason": "MISSING_TASKS", "feature": "specs/001-neg", "next_action": "speckit-implement"}
+TASKS_INCOMPLETE_CASE: {"ok": false, "step": "implement-review", "reason": "TASKS_INCOMPLETE", "unchecked": 1, "total": 2, "feature": "specs/001-neg", "next_action": "speckit-implement"}
+NO_IMPLEMENTATION_DELTA_CASE: {"ok": false, "step": "implement-review", "reason": "NO_IMPLEMENTATION_DELTA", "detail": "no non-documentation change committed for this SPEC since its plan/tasks", "feature": "specs/001-neg", "next_action": "speckit-implement"}
+NO_SPEC_BASELINE_CASE: {"ok": false, "step": "implement-review", "reason": "NO_SPEC_BASELINE", "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review", "feature": "specs/099-loose", "next_action": "speckit-implement"}

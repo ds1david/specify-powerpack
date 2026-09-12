@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "presets": {
+    "powerpack-core": {
+      "version": "0.1.0",
+      "source": "local",
+      "manifest_hash": "sha256:d58b52de5e188df8d88d820a00f754e87ffa7860f2cd6392e9cfc416ea8d85f5",
+      "enabled": true,
+      "priority": 5,
+      "registered_commands": {
+        "claude": [
+          "speckit.implement-review"
+        ]
+      },
+      "registered_skills": {
+        "claude": [
+          "speckit-implement-review"
+        ]
+      },
+      "installed_at": "2026-09-11T05:00:31.589846+00:00"
+    }
+  }
+}

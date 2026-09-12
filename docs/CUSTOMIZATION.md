@@ -43,9 +43,9 @@ Versionable configuration lives under `.specify/powerpack/`, including:
 
 - `model-routing.json`
 - `quality-gates.json`
-- `full-cycle.json`
-- `technical-debt.json`
+- `prerequisites.json`
 - `review.json`
+- `update.json`
 - project policy/docs added by the consuming repository
 
 Project-specific quality commands should be expressed through capability/custom-gate configuration rather than editing packaged Python runtime files.

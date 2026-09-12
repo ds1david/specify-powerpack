@@ -2,39 +2,33 @@
 
 > **Status: pre-release / evolving.** This is a personal project in continuous evolution. It is driven by the workflow, quality and safety criteria I consider useful, while being progressively generalized into a reusable PowerPack for projects of different contexts. Changes must distinguish a real defect from a new capability request.
 
-Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds convergence, review evidence, full-cycle orchestration, technical-debt governance, model routing, managed updates and a browserless ChatGPT Project + GitHub code-review gate.
+Specify PowerPack is an extension layer for the official [GitHub Spec Kit](https://github.com/github/spec-kit). It does **not** fork or replace Spec Kit. It adds one command — `speckit-implement-review` — a deep, evidence-validated implementation-review gate: convergence, capability-based quality gates, an independent Sol review and a browserless ChatGPT Project + GitHub code-review gate.
 
 The canonical repository is `ds1david/specify-powerpack`. The canonical CLI is `specify-powerpack`; the previous `speckit-powerpack` command is retained as a compatibility alias during migration.
+
+> **Single-command baseline (SPEC-001).** Earlier releases also shipped `speckit-implement`, `speckit-converge`, `speckit-checklist-converge`, `speckit-full-cycle` and a `speckit-debt-*` lifecycle. Those were removed to consolidate the supported surface; `implement-review` now re-uses upstream Spec Kit `speckit-implement` / `speckit-converge` directly. Removed capabilities may return through new specs.
 
 ## Workflow
 
 ```text
-speckit-specify
-→ speckit-clarify
-→ speckit-plan
-→ speckit-checklist
-→ speckit-checklist-converge
-→ speckit-tasks
-→ speckit-analyze
-→ speckit-implement
-→ speckit-implement-review
+speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speckit-analyze
+→ speckit-implement            (upstream Spec Kit)
+→ speckit-implement-review     (Specify PowerPack)
 ```
 
-`implement-review` owns convergence, quality gates, independent Sol review and the final Project-aware GitHub review. Findings return to implementation; any implementation change invalidates approvals bound to an earlier snapshot.
+`implement-review` owns convergence (via upstream `speckit-converge`), quality gates, independent Sol review and the final Project-aware GitHub review. Findings return to implementation; any implementation change invalidates approvals bound to an earlier snapshot.
 
 ## What is implemented
 
-- same-SPEC predecessor enforcement;
-- explicit implementation receipts;
+- repository-evidence predecessor enforcement (a completed `tasks.md` plus a real change delta);
 - convergence and review repair loops;
 - Deep Review Evidence Protocol schema 2.0 + validator;
 - capability-based quality gates instead of hard-coded Maven/npm/pytest assumptions;
-- technical-debt governance that forbids hiding current-flow findings as debt;
 - Codex/Claude executor routing;
 - browserless ChatGPT Project context;
 - GitHub App/connector discovery and OAuth readiness checks;
-- GitHub tool execution through the official Codex Apps MCP runtime;
-- immutable two-phase GitHub PR review;
+- GitHub connector execution through the ChatGPT Web conversation transport;
+- immutable Master Prompt + Review Packet GitHub PR review;
 - cross-platform installer for Linux/WSL/macOS and Windows;
 - PowerPack-managed Spec Kit bootstrap/update.
 
@@ -48,9 +42,9 @@ repository .specify/powerpack/review.json
              ▼
        ~/.codex/auth.json
              │
-      ChatGPT backend reads
+      ChatGPT Web resolves
              │
-      serialized Project context
+      the bound Project context
              │
              ├───────────────┐
              │               │
@@ -60,12 +54,13 @@ repository .specify/powerpack/review.json
              │               │
              └──────┬────────┘
                     ▼
-          codex exec --json --ephemeral
-          --sandbox read-only
+          POST /backend-api/f/conversation
                     │
-          [$github](app://connector)
+          Sentinel PoW + Turnstile
                     │
-              codex_apps MCP
+          plugin:connector_* + @Github
+                    │
+          SSE + JIT allow (only on confirm_action)
                     │
                 GitHub tools
                     │
@@ -75,30 +70,39 @@ repository .specify/powerpack/review.json
 ```
 
 There is no Chrome, CDP, Playwright, Selenium or Web2API in the supported production path.
+The review uses the Codex token from `~/.codex/auth.json`, the ChatGPT Web Sentinel
+requirements flow and the SSE conversation endpoint. The browserless extra installs
+the required `curl-cffi` transport dependency.
 
 ### What “Project context” means
 
-Specify PowerPack reads the bound ChatGPT Project through account-scoped ChatGPT backend APIs, serializes Project metadata/instructions and recent Project conversations, and injects that material as read-only context for the review turn.
+Specify PowerPack resolves the bound ChatGPT Project through account-scoped ChatGPT backend APIs and starts the review as a `gizmo_interaction`. ChatGPT Web supplies the Project's existing context; PowerPack does not serialize recent Project conversations into the review prompt.
 
 This is deliberately reported as:
 
 ```text
-project_context_serialized = true
-native_project_binding      = false
+project_context_serialized = false
+native_project_binding      = true
 response_visible_in_project = false
 ```
 
-The review is **not** written as a native conversation inside the ChatGPT Project.
+The review is created through the ChatGPT Web conversation API with the bound Project
+as `gizmo_interaction`; a PATCH fallback attaches it to the Project when necessary.
 
 ### What “GitHub connector” means
 
-Specify PowerPack does not manually inject private `tools[]` into `/backend-api/codex/responses`. It discovers the installed GitHub App/connector, then explicitly selects it with:
+Specify PowerPack discovers the installed GitHub App/connector, then explicitly selects
+the dynamic connector in the ChatGPT Web payload with:
 
 ```text
-[$github](app://<connector-id>)
+plugin:connector_<dynamic-id> + @Github
 ```
 
-The Codex runtime owns App resolution, MCP tools, approvals, tool execution and continuation. Specify PowerPack observes the JSONL lifecycle and requires structural `codex_apps` GitHub tool-call/result evidence. Shell and web-search fallbacks are rejected.
+The SSE parser observes GitHub tool invocation and permission-gate events. When the
+connector emits an explicit `confirm_action`, the transport refreshes Sentinel tokens
+and sends the HAR-compatible JIT `allow` continuation with conversation-level memory.
+Already-authorized tool results continue directly without another `allow`. Shell and
+web-search fallbacks are rejected.
 
 ## Immutable code review
 
@@ -119,9 +123,9 @@ The review receives:
 - previous review on round 2+;
 - exact GitHub App binding.
 
-Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and literal Project-context evidence before validating the review JSON.
+Specify PowerPack requires GitHub tool evidence, exact changed-file coverage, snapshot identity match and bound Project identity before validating the review JSON.
 
-Trade-off: two phases add latency, but avoid approving an ambiguous or stale snapshot.
+The Master Review turn resolves the immutable snapshot before returning its verdict; a connector authorization continuation is sent only when the SSE emits `confirm_action`.
 
 ## First installation
 
@@ -233,15 +237,11 @@ specify-powerpack update . --project-only --reset-config
     ├── bin/
     │   ├── powerpack.py
     │   ├── capabilities.py
-    │   ├── review_protocol.py
-    │   ├── debt.py
-    │   └── full_cycle.py
+    │   └── review_protocol.py
     ├── model-routing.json
     ├── prerequisites.json
     ├── quality-gates.json
     ├── review.json
-    ├── full-cycle.json
-    ├── technical-debt.json
     ├── update.json
     ├── deep-review-protocol.md
     └── reviews/            # local generated review artifacts

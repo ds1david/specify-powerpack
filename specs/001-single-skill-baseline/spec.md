@@ -21,6 +21,60 @@ smoke/homologation coverage must all describe the same product contract.
 This is a deliberate scope decision, not a statement that any removed capability was
 defective. Removed capabilities may be redesigned and reintroduced later through new specs.
 
+## Clarifications
+
+### Session 2026-09-09
+
+- Q: Should `implement-review` keep depending on the PowerPack `speckit.implement` / `speckit.converge` wraps, or be re-based on the upstream Spec Kit commands so the wraps can be removed? → A: Remove both wraps; re-base the `implement-review` prerequisite gate and Phase 1 convergence onto upstream Spec Kit `speckit-implement` / `speckit-converge`. Preserved set stays exactly `{implement-review}`.
+- Q: Is the browserless ChatGPT Project + GitHub review path intrinsic to `implement-review` or an optional gate that can be trimmed? → A: Keep it as part of the `implement-review` contract (runtime + `smoke_chatgpt_github_browserless.py` + smoke doc), but remove the exploratory scaffolding: `scripts/homologation/probe_*`, `*.har` dumps, `docs/WEB_GITHUB_HEADLESS_PROBE.md`.
+- Q: Should the `powerpack-tools` extension (`doctor`, `update`) be preserved as infrastructure, or do those commands count toward the single-command contract? → A: Preserve `powerpack-tools` intact as runtime infrastructure; the exact-set assertion is scoped to the `powerpack-core` preset only → `{"speckit.implement-review"}`.
+- Q: Which installation paths are officially supported and must be validated for the parity contract? → A: `install.sh`, `install.py`, and `install.ps1`, each validated to produce `{"speckit.implement-review"}` for one canonical integration. Full installer×integration matrix is not required as an end-to-end gate.
+
+### PR #15 review (2026-09-09)
+
+- Finding (HIGH, behavioral regression): the first re-based gate accepted *any* non-doc
+  change on the branch/worktree, so SPEC-B could be satisfied by SPEC-A's code — contradicting
+  `implement-review`'s stated "explicit same-SPEC predecessor is proven". → Resolution:
+  **FR-018a** — the delta is scoped to the SPEC via `feature_base_commit` (diff from the
+  commit that introduced the SPEC's plan/tasks to HEAD), the working tree is not consulted,
+  and a cross-SPEC rejection test is mandatory.
+
+### PR #15 review — round 2 (2026-09-10)
+
+- Finding (HIGH ×2): the SPEC, the prerequisite contract and the runtime had diverged on
+  FR-018a. (a) `feature_base_commit` returned the *parent* of the SPEC-introduction commit,
+  so a non-doc change bundled into that commit counted as implementation evidence with no
+  later commit. (b) checkbox state was read from the working-tree `tasks.md`, so locally
+  ticking boxes without committing passed the gate. → Resolution: FR-018a below is the
+  single definition — the anchor is the SPEC-introduction commit itself and the delta is
+  **strictly after** it; checkbox state is read from `git show HEAD:<feature>/tasks.md`.
+  Contract, `speckit.implement-review.md`, `research.md`, `data-model.md`, `quickstart.md`
+  and `T025-validation-runbook.md` are aligned to it. Two regression tests are mandatory
+  (bundled-code-in-introduction-commit → `NO_IMPLEMENTATION_DELTA`; committed `[ ]` +
+  working-tree `[X]` → `TASKS_INCOMPLETE`).
+
+### PR #15 review — round 3 (2026-09-10, live homologation)
+
+- The T025/T051 live browserless round-trip was executed against the PR head (evidence:
+  `T025-evidence/`). The mechanism passed (S1–S7, real Codex → ChatGPT Project → GitHub,
+  no step failed due to a removed command). The deep review returned `CHANGES_REQUIRED`.
+- Finding (HIGH, self-referential gate): `implement_evidence` required **every** `tasks.md`
+  checkbox `[X]`, including the T025/T051/T057 homologation tasks — which can only be done
+  *after* `implement-review` runs. The SPEC's own committed HEAD could therefore never pass
+  its own prerequisite. → Resolution: FR-018a below — a checkbox line tagged `[ACCEPTANCE]`
+  is implementation-complete work validated *after* `implement-review` and is **excluded**
+  from the prerequisite's checkbox count (`count_implementation_checkboxes`). Homologation
+  evidence is then a PR-review concern (the committed `T025-evidence/` + `RESULT.md`), not
+  a runtime gate. Regression test: an unchecked `[ACCEPTANCE]` task + all implementation
+  boxes `[X]` + a committed code delta → `{"ok": true}`.
+- Finding (HIGH): a normal `update` of an already-installed project never removed retired
+  removed-command runtimes/config. → Resolution: FR-003 / FR-012 below — `install_support`
+  prunes obsolete PowerPack-owned paths and removed-command routing/prerequisite keys on
+  every refresh (not a compatibility shim; dead-file removal).
+- Findings (MEDIUM ×2): `test_baseline_contract.py` proved the exact-set and
+  removed-command-unknown properties only against source/argparse. → Resolution: FR-011 /
+  FR-014 — the guard also exercises the real installed command namespace and dispatcher.
+
 ## Terminology *(reconciliation — mandatory reading)*
 
 The previous draft of this spec used the word "skill" throughout. The repository does not
@@ -36,18 +90,25 @@ preset (`src/speckit_powerpack/assets/presets/powerpack-core/preset.yml`, entrie
 - **Preserved capability**: `implement-review` (the `speckit.implement-review` command plus
   every supporting asset, runtime, and integration it needs to remain installable,
   discoverable, and operational).
-- **Removed command**: any PowerPack-provided command in the baseline preset that is not
-  `speckit.implement-review`, unless a `[NEEDS CLARIFICATION]` resolution below explicitly
-  preserves it as a required dependency of `implement-review`.
+- **Removed command**: every PowerPack-provided command in the baseline preset that is not
+  `speckit.implement-review` — including `speckit.implement` and `speckit.converge` (see
+  Clarifications 2026-09-09: the `implement-review` flow is re-based onto the upstream Spec
+  Kit commands instead of these wraps).
 - **Out of scope for removal**: the upstream Spec Kit workflow commands / agent skills
   (`speckit-plan`, `speckit-tasks`, `speckit-specify`, `speckit-analyze`, `speckit-clarify`,
   `speckit-constitution`, `speckit-checklist`, `speckit-converge`, `speckit-implement`,
   `speckit-taskstoissues`, `graphify`, …) that PowerPack does not own. They live under the
   host project's `.claude/skills/` and are installed by Spec Kit / other tooling, not by
   PowerPack. Nothing in this spec deletes or renames them.
+- **Preserved infrastructure (not a product command)**: the `powerpack-tools` extension and
+  its `speckit.powerpack-tools.doctor` / `speckit.powerpack-tools.update` commands, plus the
+  `bin/powerpack.py` runtime. `doctor` is an operational prerequisite of `implement-review`.
+  The extension is kept intact (see Clarifications 2026-09-09); only code paths that exist
+  solely for a removed `powerpack-core` command are trimmed from it.
 
-The exact-set assertions in this spec are always scoped to **PowerPack-provided commands**,
-never to the host project's full command or skill inventory.
+The exact-set assertions in this spec are always scoped to **`powerpack-core` preset
+commands** (the `provides.templates` list), never to the `powerpack-tools` extension
+namespace and never to the host project's full command or skill inventory.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -93,13 +154,15 @@ only for legitimate configuration reasons unrelated to the removed commands).
 
 **Acceptance Scenarios**:
 
-1. **Given** a clean installation and a project with a valid completed implementation
-   receipt, **When** the `implement-review` prerequisite check runs, **Then** it passes.
+1. **Given** a clean installation and a project whose implementation was completed via
+   upstream `speckit-implement`, **When** the re-based `implement-review` prerequisite check
+   runs, **Then** it passes without any PowerPack `speckit.implement` receipt.
 2. **Given** the `implement-review` flow is executing, **When** it needs to converge or
-   re-run implementation for authorized appended work, **Then** the mechanism it depends on
-   for that step is still present and functional.
-3. **Given** the mandatory readiness checks for `implement-review`, **When** they run,
-   **Then** every command/runtime they invoke still exists after the cleanup.
+   re-run implementation for authorized appended work, **Then** it invokes upstream
+   `speckit-converge` / `speckit-implement` and that step completes.
+3. **Given** the mandatory readiness checks for `implement-review` (including
+   `specify-powerpack doctor` and `review status`), **When** they run, **Then** every
+   command/runtime they invoke still exists after the cleanup.
 
 ### User Story 3 - No removed command survives as a hidden path (Priority: P2)
 
@@ -148,15 +211,16 @@ the suite; the baseline contract test must fail.
 
 ### Edge Cases
 
-- A platform-specific installer (Linux/WSL vs Windows, shell vs PowerShell vs Python vs
-  package vs local-dev) copies legacy content even after preset cleanup → the contract is
-  verified against the resulting install state, not only installer source.
+- One of `install.sh` / `install.py` / `install.ps1` copies legacy content even after preset
+  cleanup → the contract is verified against the resulting install state, not only installer
+  source.
 - A helper or runtime module used by a removed command is also required by `implement-review`
   → it is classified as shared core infrastructure and preserved (see FR-013).
 - A removed command name still appears in a completed spec, changelog, ADR, or merged-PR
   record → allowed as `HISTORICAL_REFERENCE` provided it does not imply current support.
-- The `implement-review` flow calls `speckit-converge` / `speckit-implement` internally →
-  resolution of the dependency clarification below determines whether those remain.
+- The `implement-review` flow calls convergence / implementation steps internally → after
+  re-basing (FR-018) it MUST call upstream Spec Kit `speckit-converge` / `speckit-implement`,
+  never the removed PowerPack `speckit.converge` / `speckit.implement` wraps.
 - Smoke test only checks `"speckit.implement-review" in commands` → insufficient; exact-set
   equality is required.
 
@@ -177,15 +241,21 @@ the suite; the baseline contract test must fail.
 - **FR-003**: Every removed command MUST be removed completely: preset `provides` entry,
   command file, command-specific prompts/templates/manifests/metadata, command-specific
   runtime modules, command-specific configuration files and keys, command-specific scripts
-  and assets, dedicated tests and fixtures, and operational documentation.
+  and assets, dedicated tests and fixtures, and operational documentation. *(Resolved round
+  3, 2026-09-10)* This MUST also hold for an **already-installed project after a normal
+  `update`/refresh** — `install_support` MUST prune obsolete PowerPack-owned paths and
+  removed-command config keys from the target, not merely stop copying them. This is
+  dead-file removal, not a compatibility migration shim (which line "no migration shim is
+  provided" in Scope still forbids).
 - **FR-004**: After the cleanup, every discovery mechanism PowerPack controls (preset
   registration, manifest, filesystem scan, metadata scan, command generator, or equivalent)
   MUST expose exactly one PowerPack-provided command: `speckit.implement-review`.
 - **FR-005**: Every officially supported installation path MUST install only
-  `implement-review` as PowerPack command content. The implementation MUST review all
-  applicable entrypoints (Linux/WSL, Windows, Python, shell, PowerShell, package-based,
-  local-development, and agent-specific). No installer MAY copy, register, generate, or
-  reference a removed command.
+  `implement-review` as `powerpack-core` command content. The officially supported paths
+  (per Clarifications 2026-09-09) are the three entrypoints the README advertises:
+  `install.sh` (Linux/WSL/macOS), `install.py` (any platform with Python), and `install.ps1`
+  (Windows PowerShell). No installer MAY copy, register, generate, or reference a removed
+  command.
 - **FR-006**: A fresh installation into a clean target MUST result in exactly one
   PowerPack-provided command — `{"speckit.implement-review"}` — with no residual file that
   belongs exclusively to a removed command present in the generated install state.
@@ -210,13 +280,21 @@ the suite; the baseline contract test must fail.
   PowerPack-provided command namespace, not membership. `registered_powerpack_commands ==
   {"speckit.implement-review"}` and `installed_powerpack_commands ==
   {"speckit.implement-review"}` MUST both hold. A test of the form
-  `"speckit.implement-review" in commands` is insufficient on its own.
+  `"speckit.implement-review" in commands` is insufficient on its own. *(Resolved round 3)*
+  The `installed_powerpack_commands` assertion MUST enumerate the command namespace
+  materialised by a real installation composition (preset boundary), not only re-check the
+  source preset.
 - **FR-012**: Feature flags, aliases, mappings, constants, paths, environment variables,
-  config keys, registry entries, and templates used exclusively by removed commands MUST be
-  removed. This includes removed-command entries in `config/default-model-routing.json`,
-  `config/default-full-cycle.json`, `config/default-technical-debt.json`,
-  `prerequisites.json` defaults, and runtime prerequisite maps — except entries that the
-  dependency clarification below preserves.
+  registry entries, and routing/prerequisite map entries used exclusively by removed
+  commands MUST be removed. This includes removed-command keys in
+  `config/default-model-routing.json`, the `prerequisites.json` defaults, and runtime
+  prerequisite maps. (Whole config *files* dedicated to a removed command — e.g.
+  `config/default-full-cycle.json`, `config/default-technical-debt.json` — are covered by
+  FR-003.) The `implement-review` prerequisite entry MUST be re-based onto an upstream
+  `speckit-implement` signal (FR-018), not deleted. *(Resolved round 3)* On a normal
+  `update`/refresh, `install_support` MUST also strip these removed-command keys from an
+  existing target's `model-routing.json` / `prerequisites.json` even without
+  `--reset-config`, while preserving keys and files that are not removed-command-specific.
 - **FR-013**: Generic infrastructure MUST remain when required by `implement-review`, the
   installation lifecycle, cross-agent support, shared tests, or the reusable PowerPack core.
   The `powerpack-tools` extension and `bin/powerpack.py` runtime remain in scope only for
@@ -225,7 +303,13 @@ the suite; the baseline contract test must fail.
   core redesign.
 - **FR-014**: Removed commands MUST NOT survive through deprecated aliases, redirects,
   hidden copies, fallback implementations, or compatibility wrappers. No deprecation
-  compatibility layer is required or permitted.
+  compatibility layer is required or permitted. Compliance MUST be verified behaviourally,
+  not only by textual search: an automated check MUST invoke a removed command name against a
+  clean install and assert unknown-command behaviour at the command registration/dispatch
+  layer (not merely that the string is absent from source). *(Resolved round 3)* This check
+  MUST drive the real resolver over a materialised install (guarded to skip only when the
+  `specify` binary is absent), covering at least `speckit.implement`, `speckit.full-cycle`
+  and one `speckit.debt-*`, and assert no `implement-review` side effect.
 - **FR-015**: Where technically applicable, direct invocation of a removed command name MUST
   behave as invocation of an unknown/nonexistent command. The system MUST NOT silently
   redirect the invocation to `implement-review` or any other capability.
@@ -236,37 +320,58 @@ the suite; the baseline contract test must fail.
 - **FR-017**: At least one automated test MUST encode the single-command baseline as an
   explicit exact-set contract so that adding or restoring a PowerPack-provided command
   requires an intentional contract change through a new spec or equivalent scope decision.
-- **FR-018** *(dependency treatment)*: The implementation MUST keep the `implement-review`
-  flow operational end to end. `implement-review` currently depends on a `COMPLETED`
-  `implement` state receipt (recorded today by `speckit.implement`) and on `speckit-converge`
-  for its Phase 1 convergence loop. The baseline MUST resolve this per
-  `[NEEDS CLARIFICATION #1]` below: either preserve `speckit.implement` and `speckit.converge`
-  as required dependencies of `implement-review`, or re-base the `implement-review`
-  prerequisite gate and convergence step onto upstream Spec Kit `speckit-implement` /
-  `speckit-converge` so the PowerPack wraps can be removed without breaking the flow.
-- **FR-019**: Installation MUST produce the same PowerPack command inventory on every
-  supported platform. A platform-specific installer MAY differ internally but MUST NOT
-  produce a different command set.
-
-### Open Clarifications
-
-- **[NEEDS CLARIFICATION #1]**: `implement-review` depends on `speckit.implement` (records
-  the `COMPLETED` implement receipt its prereq gate checks) and `speckit.converge` (its
-  Phase 1 convergence loop, and re-implementation of appended tasks). Which is the baseline?
-  (A) Preserve `speckit.implement` + `speckit.converge` as required dependencies →
-  preserved set becomes `{implement-review, implement, converge}`. (B) Re-base the
-  `implement-review` gate and convergence step onto upstream Spec Kit `speckit-implement` /
-  `speckit-converge` and remove both PowerPack wraps → preserved set stays exactly
-  `{implement-review}`. (C) Preserve only the minimal receipt-recording runtime as core
-  infrastructure (FR-013), remove the `speckit.implement` / `speckit.converge` command
-  templates.
-- **[NEEDS CLARIFICATION #2]**: Documentation and homologation scripts under
-  `scripts/homologation/` and `docs/` currently cover browserless ChatGPT/GitHub review,
-  full-cycle, and technical-debt. Which of these are (a) part of `implement-review`'s own
-  supported contract and preserved, versus (b) removed-command support material to delete?
-  Specifically: is the browserless ChatGPT Project + GitHub review path an intrinsic part of
-  `implement-review` (preserve all its scripts/docs/tests) or an optional gate that may also
-  be trimmed?
+- **FR-018** *(dependency re-basing — resolved 2026-09-09)*: The implementation MUST keep the
+  `implement-review` flow operational end to end while removing the `speckit.implement` and
+  `speckit.converge` wraps. Specifically: (a) the `implement-review` prerequisite gate MUST
+  be satisfiable without a PowerPack `speckit.implement` completion receipt, and the
+  `speckit.implement` command template MUST be removed. (b) The `implement-review` Phase 1
+  convergence loop (including re-implementation of appended tasks) MUST call upstream
+  `speckit-converge` / `speckit-implement`, and the PowerPack `speckit.converge` command
+  template MUST be removed. No `speckit.implement` / `speckit.converge` behavior may survive
+  as an alias, shim, or hidden copy (FR-014).
+- **FR-018a** *(SPEC-scoped predecessor evidence — resolved after PR review, 2026-09-09)*:
+  The re-based prerequisite MUST prove an explicit prior implementation **of the active
+  SPEC**, not merely "some non-documentation change exists on the branch". It MUST be
+  satisfied only when (i) every **implementation** task checkbox in the SPEC's **committed**
+  `tasks.md` (read from `HEAD`, not the working tree) is `[X]`, and (ii) a non-documentation
+  change has been **committed strictly after** the commit that introduced the SPEC's
+  `plan.md`/`tasks.md`, up to `HEAD`. Neither a different SPEC's earlier code change on the
+  same (or a re-used) branch nor a non-documentation change bundled into the SPEC's own
+  introduction commit MUST satisfy it. A checkbox line tagged **`[ACCEPTANCE]`** is
+  implementation-complete work whose validation necessarily runs *after* `implement-review`
+  (homologation); it MUST be excluded from the checkbox count in (i), and homologation is
+  then proven by PR review over the committed evidence, not by this runtime gate. The
+  working tree MUST NOT be consulted for checkbox state or the
+  implementation delta (the browserless gate already pins `HEAD == PR head SHA`); it is
+  read only to confirm `tasks.md` exists. Git and a committed `HEAD` are mandatory; an
+  unavailable Git repository MUST fail closed with `GIT_UNAVAILABLE`.
+  Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE` (the SPEC's own
+  artifacts are not committed yet or its introduction commit is contaminated),
+  `NO_IMPLEMENTATION_DELTA`, `GIT_UNAVAILABLE`. Automated tests MUST encode the cross-SPEC
+  rejection (SPEC-A code must not satisfy SPEC-B's gate) and the `[ACCEPTANCE]` exemption
+  (an unchecked `[ACCEPTANCE]` task must not block; a plain unchecked task still does).
+- **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to
+  produce the same `powerpack-core` command inventory — `{"speckit.implement-review"}` — for
+  the canonical integration `codex` (`DEFAULT_INTEGRATION` in `cli.py`). A platform-specific
+  installer MAY differ internally but MUST NOT produce a different command set.
+  Cross-integration parity (`codex` vs `claude`) is assumed by inspection, not required as an
+  end-to-end gate.
+- **FR-020** *(browserless review scope — resolved 2026-09-09)*: The browserless ChatGPT
+  Project + GitHub review gate (Codex CLI + `~/.codex/auth.json` + GitHub connector,
+  read-only) REMAINS part of the `implement-review` contract. Its runtime, the
+  `smoke_chatgpt_github_browserless.py` homologation smoke, and
+  `docs/CHATGPT_GITHUB_BROWSERLESS_SMOKE.md` MUST be preserved and kept working.
+- **FR-021** *(browserless review scope — resolved 2026-09-09)*: Exploratory discovery
+  scaffolding for that path MUST be removed — the `scripts/homologation/probe_*` probes,
+  captured `*.har` traffic dumps, and `docs/WEB_GITHUB_HEADLESS_PROBE.md`. These are
+  historical investigation artifacts, are not exercised by the minimum smoke, and MUST NOT be
+  treated as part of the supported contract. A test whose **sole** subject is a removed probe
+  MUST be deleted (FR-009); a test covering the preserved smoke or the preserved
+  `github_connector_preflight` MUST stay. A test that covers both MUST be split or narrowed
+  to the preserved surface, not deleted.
+- **FR-022**: Documentation and homologation material for `full-cycle` and the technical-debt
+  lifecycle follows the normal removed-command rule (FR-003, FR-007): delete, or convert to
+  clearly labelled non-advertising history.
 
 ### Key Entities
 
@@ -292,18 +397,22 @@ the suite; the baseline contract test must fail.
   `ACTIVE_REFERENCE` occurrences; every remaining occurrence is classified historical or
   false-positive.
 - **SC-003**: The minimum supported `implement-review` flow completes on a fixture project
-  with a valid completed implementation, with no failure attributable to a removed command
-  or a removed runtime helper.
-- **SC-004**: Every supported installer produces an identical PowerPack command inventory
-  (`{"speckit.implement-review"}`) — zero cross-platform divergence.
+  with a valid completed implementation. "Attributable to a removed command" means: the
+  failure's root cause is a deleted file, command, config key, or a re-basing change made by
+  this feature (verifiable by `git bisect` / reverting the change) — not a pre-existing
+  unrelated defect. Zero such failures.
+- **SC-004**: `install.sh`, `install.py`, and `install.ps1` each produce an identical
+  `powerpack-core` command inventory (`{"speckit.implement-review"}`) for the canonical
+  integration — zero divergence across the three entrypoints.
 - **SC-005**: The full automated test suite passes, and it includes at least one exact-set
   baseline contract test that fails if a second PowerPack-provided command is added.
 - **SC-006**: No installed file belonging exclusively to a removed command is present in the
   clean install state (residual-artifact count == 0).
 - **SC-007**: Current-state documentation (README + installation + architecture + agent
-  instructions) presents `implement-review` as the only current PowerPack capability; a
-  reviewer can identify the current supported surface in under 2 minutes from the README
-  alone.
+  instructions) presents `implement-review` as the only current `powerpack-core` command:
+  the README's capability/overview section names exactly one such command, and no
+  current-state page lists a removed command as available. Verifiable by inspection of the
+  named sections.
 
 ## Assumptions
 
@@ -315,14 +424,18 @@ the suite; the baseline contract test must fail.
   never deleted or renamed by this work.
 - `.specify/memory/constitution.md` is still the unpopulated template and imposes no
   concrete constraints on this spec; if it is filled before planning, the plan must re-check.
+- Every target project already has upstream Spec Kit `speckit-implement` and
+  `speckit-converge` available (Spec Kit ≥ 1.0.0). The re-based `implement-review` flow and
+  its evidence gate (FR-018) depend on this; PowerPack does not install those commands.
 - The implementation baseline is a recorded commit. The previous draft recorded
   `a825557a0d021e9e9948ad212349bf91d76a619c`; current `main` HEAD is
   `489f5355f7d2b32e50f0c0daa7b6bdb577655338`. The plan MUST record the actual starting SHA
   and explain any inventory delta between `a825557` and the chosen baseline (notably the
   browserless code-review and project-evolution-policy merges #9 and #10).
 - The technical-debt lifecycle commands (`debt-create`, `debt-list`, `debt-consult`,
-  `debt-start`, `debt-close`), `full-cycle`, and `checklist-converge` are `REMOVE` unless a
-  clarification says otherwise — they are not dependencies of `implement-review`.
+  `debt-start`, `debt-close`), `full-cycle`, `checklist-converge`, `implement`, and
+  `converge` are all `REMOVE` — none is a preserved dependency of `implement-review` (the
+  review flow is re-based onto upstream Spec Kit for implementation/convergence, per FR-018).
 - This change is intentionally breaking for consumers of removed commands; no migration
   shim is provided.
 - "No implementation details / written for non-technical stakeholders" is only partially
@@ -338,7 +451,7 @@ Every supported installation path MUST converge on this logical state:
 Specify PowerPack
 ├── core infrastructure (shared runtime, doctor, model routing, state receipts, review status)
 └── commands
-    └── speckit.implement-review   (+ dependencies preserved per NEEDS CLARIFICATION #1)
+    └── speckit.implement-review   (re-based on upstream speckit-implement / speckit-converge)
 ```
 
 A platform-specific installer MAY differ internally but MUST NOT produce a different
@@ -381,12 +494,14 @@ contract through a new spec or an equivalent explicit scope decision.
   (FR-002, FR-013).
 - **R-004 — Weak smoke assertion**: checking only that `implement-review` exists lets legacy
   commands linger. *Mitigation*: exact-set equality (FR-011).
-- **R-005 — Platform divergence**: Linux/WSL and Windows installers generate different
-  inventories. *Mitigation*: enforce the same post-install contract on every platform
-  (FR-019, SC-004).
+- **R-005 — Platform divergence**: `install.sh` / `install.py` / `install.ps1` generate
+  different inventories. *Mitigation*: enforce the same post-install contract on all three
+  entrypoints (FR-019, SC-004).
 - **R-006 — Breaking `implement-review`**: removing `speckit.implement` / `speckit.converge`
-  silently breaks the review flow's prereq gate and convergence loop. *Mitigation*: resolve
-  `[NEEDS CLARIFICATION #1]` before implementation; User Story 2 acceptance scenarios.
+  breaks the review flow's prereq gate and convergence loop unless it is re-based first.
+  *Mitigation*: FR-018 — re-base the gate onto upstream `speckit-implement` and the Phase 1
+  loop onto upstream `speckit-converge` / `speckit-implement`, verified by User Story 2
+  acceptance scenarios, before deleting either wrap.
 
 ## Migration Strategy
 
@@ -394,7 +509,8 @@ Intentionally breaking for consumers of removed commands. No deprecation compati
 layer. Sequence:
 
 1. Record the actual baseline SHA and inventory the preset.
-2. Identify shared dependencies and resolve the `implement-review` dependency clarification.
+2. Identify shared dependencies; re-base the `implement-review` prerequisite gate and Phase 1
+   convergence onto upstream Spec Kit before deleting `speckit.implement` / `speckit.converge`.
 3. Remove non-`implement-review` commands (and preserved dependencies excepted).
 4. Clean preset registration and configuration.
 5. Update installers.
@@ -409,7 +525,91 @@ with the architecture current at that time.
 ## Definition of Done
 
 This spec is complete when every officially supported installation path results in a
-PowerPack command inventory of exactly `{"speckit.implement-review"}` (plus any dependency
-preserved by `[NEEDS CLARIFICATION #1]`), and implementation, preset registration,
+PowerPack command inventory of exactly `{"speckit.implement-review"}`, with the
+`implement-review` flow re-based onto upstream `speckit-implement` / `speckit-converge`, and
+implementation, preset registration,
 installation, current-state documentation, and smoke-test expectations all describe that
 same state.
+
+## Review Execution Flow Addendum (2026-09-11)
+
+The preserved browserless review is evidence-first and externally recoverable. A maintainer
+submits one compact execution prompt together with a structured Review Evidence Package.
+GitHub remains the only source for PR and repository evidence. If the connector cannot provide
+the required snapshot, the attempt stops and remains pending instead of being misreported as
+an implementation failure or repaired through another conversational prompt.
+
+### Additional acceptance scenarios
+
+1. **Given** a Review Evidence Package, **when** the execution prompt is submitted, **then**
+   the prompt references the package and state machine without duplicating packet, protocol,
+   SPEC or output-schema contents.
+2. **Given** multiple package artifacts, **when** they are uploaded, **then** every file is
+   processed to completion before the single review prompt is submitted and native attachment
+   references are preserved in the conversation request.
+3. **Given** an unavailable, unauthorized, stale or incomplete GitHub response, **when** the
+   first review response is classified, **then** the review aborts as an external blocker,
+   remains pending, and does not request a second prompt or close implementation tasks.
+
+### Functional Requirements Addendum
+
+- **FR-023** *(structured review package)*: The browserless `implement-review` execution MUST
+  consume one attached Review Evidence Package containing, when applicable, the OutputSchema,
+  MasterPrompt, ReviewPacket, ReviewProtocol, GitHubEvidenceContract, SpecArtifacts,
+  PreviousFindings and Instructions. The execution prompt MUST be compact and MUST NOT inline
+  or repeat those artifact bodies.
+- **FR-024** *(attachment lifecycle)*: Every package artifact MUST be uploaded as an actual
+  conversation attachment, processed to completion, and referenced by native attachment
+  metadata. Multiple attachments MUST be supported; submission MUST not occur while any
+  required upload is pending or failed. The manifest MUST identify artifacts and digests.
+- **FR-025** *(account-scoped GitHub connector)*: PR and repository evidence MUST be obtained
+  exclusively through the GitHub connector selected for the active ChatGPT account. The flow
+  MUST resolve the current connector identity after account changes, use connector/JIT
+  authorization when required, and MUST NOT require or embed a GitHub API token or stale id.
+- **FR-026** *(humanized transport pacing)*: Attachment, processing, authorization, retry and
+  prompt-submission operations MUST use one injectable random wait policy between 1.5 and 4.0
+  seconds for each inter-operation wait. No fixed `wait 2s` loop is permitted.
+- **FR-027** *(homologation evidence)*: Before submission, the flow MUST copy the exact prompt
+  and every generated review attachment into the run evidence directory, together with the
+  manifest and upload/processing status. Copies MUST remain when the review blocks externally.
+- **FR-028** *(external blocker boundary)*: A missing GitHub snapshot, incomplete changed-file
+  inventory, unavailable connector/tool, authorization failure or equivalent evidence gap MUST
+  abort the current attempt after the first terminal response. The result MUST be marked
+  `PENDING_EXTERNAL_REVIEW` with `blocked_reason` and `coverage.context_gaps`; no repair
+  continuation, second prompt, implementation finding, merge decision or task closure may be
+  emitted for that attempt.
+- **FR-029** *(terminal serialization)*: A review reaching technical analysis MUST emit exactly
+  one structurally valid JSON object conforming to the attached OutputSchema. Required arrays,
+  immutable snapshot fields, changed-file coverage, requirement coverage, inspection evidence,
+  lifecycle accounting and verdict challenge MUST be validated before emission. An incomplete
+  artifact MUST be `BLOCKED`, never silently repaired by a second prompt.
+- **FR-030** *(evidence-source precedence)*: Review reasoning MUST follow the package authority
+  order: OutputSchema for shape; ReviewPacket for target and lineage; GitHubEvidenceContract
+  for prerequisites; ReviewProtocol for method and verdict; SpecArtifacts for expected
+  behavior; PreviousFindings for lifecycle only; Instructions for operational constraints.
+  Project memory, PR prose, commit messages and CI status MUST NOT replace GitHub evidence.
+
+### Additional measurable outcomes
+
+- **SC-008**: A browserless review submission contains one compact execution prompt and a
+  manifest-backed attachment set; the prompt has no duplicated package body.
+- **SC-009**: Every submitted run retains the exact prompt, every attached artifact, manifest
+  and upload/processing records; all required attachments completed before submission.
+- **SC-010**: When GitHub cannot prove immutable snapshot evidence, the run ends after the
+  first response with `execution_status == PENDING_EXTERNAL_REVIEW`, an external reason and
+  open implementation acceptance tasks.
+- **SC-011**: Transport tests prove every inter-operation wait uses the random 1.5–4.0 second
+  policy range and no fixed two-second wait remains.
+- **SC-012**: Account-rollover tests prove the active connector is discovered and authorized
+  dynamically, without a GitHub token or stale connector id.
+
+### Additional risks and mitigations
+
+- **R-007 — Attachment race**: submit occurs before processing completes. Mitigation: a
+  processing barrier plus manifest and evidence assertions.
+- **R-008 — Connector drift**: an id from another ChatGPT account is reused. Mitigation:
+  dynamic discovery and JIT authorization.
+- **R-009 — Blocker misclassification**: missing GitHub evidence becomes a code finding or
+  repair loop. Mitigation: immediate pending state and explicit external classification.
+- **R-010 — Automation-like pacing**: fixed short waits cause rapid retries. Mitigation: one
+  injectable random 1.5–4.0 second policy for all transport operations.

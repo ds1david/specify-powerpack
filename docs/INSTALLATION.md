@@ -22,6 +22,13 @@ For the browserless code-review provider you also need:
 
 You do **not** need Chrome, Chromium, Playwright, CDP or ChatGPT-Web2API.
 
+The live ChatGPT Web review transport additionally requires the optional
+browserless dependency:
+
+```bash
+uv sync --extra browserless
+```
+
 ## Fastest installation
 
 Clone the Specify PowerPack repository, then run the wrapper for your operating system.

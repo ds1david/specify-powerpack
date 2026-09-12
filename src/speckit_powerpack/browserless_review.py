@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -10,21 +12,18 @@ from typing import Any
 
 from .backend_compat import install_backend_compat
 from .chatgpt_project_provider import ChatGPTBackendClient, ChatGPTProjectError
-from .codex_apps_runtime import (
-    CodexAppsError,
-    parse_codex_jsonl,
-    require_github_tool_evidence,
-    run_codex_exec,
-)
 from .github_connector_discovery import GitHubConnectorDiscoveryError, discover_github_connector
+from .chatgpt_web_review import ChatGPTWebReviewClient, ChatGPTWebReviewError
 from .review_context import (
     PullRequestTarget,
     ReviewSnapshot,
     build_snapshot,
     current_head,
+    git,
     resolve_pull_request,
     resolve_spec_context,
 )
+from .review_response_normalizer import normalize_review_response
 
 
 install_backend_compat()
@@ -34,8 +33,21 @@ CANONICAL_CLI = "specify-powerpack"
 PROJECT_AUTHORIZATION = "codex-backend-api"
 PROJECT_PROVIDER = "chatgpt-project"
 REVIEW_BACKEND = "codex-apps-github"
-REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4})\b", re.IGNORECASE)
+REQUIREMENT_ID = re.compile(r"\b((?:FR|NFR|REQ|SC|AC|UC)-?\d{1,4}[A-Za-z]?)\b", re.IGNORECASE)
+CANONICAL_REQUIREMENT_ID = re.compile(
+    r"^(FR|NFR|REQ|SC|AC|UC)-?(\d{1,4})([A-Za-z]?)$", re.IGNORECASE
+)
 CHALLENGE_RESULTS = {"SURVIVED", "FINDING", "BLOCKED", "NOT_APPLICABLE"}
+EXTERNAL_BLOCKED_REASONS = {
+    "MISSING_GITHUB_SNAPSHOT",
+    "MISSING_CHANGED_FILES",
+    "MISSING_CHANGED_FILE_CONTENTS",
+    "MISSING_SPEC",
+    "MISSING_TOOL",
+    "INCOMPLETE_CONTEXT",
+}
+MASTER_PROMPT_VERSION = "1.2"
+REVIEW_PROTOCOL_VERSION = "3.0"
 
 
 class BrowserlessReviewError(RuntimeError):
@@ -57,6 +69,7 @@ class BrowserlessReviewResult:
     project: ProjectBinding
     github_tools: tuple[str, ...]
     snapshot_tools: tuple[str, ...]
+    github_call_count: int = 0
 
 
 def load_project_binding(project: Path) -> ProjectBinding:
@@ -89,12 +102,13 @@ def load_project_binding(project: Path) -> ProjectBinding:
     return ProjectBinding(project_id, project_name, str(binding.get("project_url") or "").strip() or None)
 
 
-def _extract_json(text: str) -> dict[str, Any]:
+def _extract_json(text: str, *, allow_partial: bool = False) -> dict[str, Any]:
     raw = (text or "").strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
         raw = re.sub(r"\s*```$", "", raw, count=1)
     decoder = json.JSONDecoder()
+    candidates: list[dict[str, Any]] = []
     for index, char in enumerate(raw):
         if char != "{":
             continue
@@ -103,19 +117,271 @@ def _extract_json(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
         if isinstance(value, dict):
-            return value
+            candidates.append(value)
+    review_candidates = [
+        value for value in candidates if "verdict" in value and "review_context" in value
+    ]
+    if review_candidates:
+        # A continuation can contain an earlier incomplete object followed by
+        # the evidence-complete final object. The last matching object is the
+        # final protocol result, not the first progress snapshot.
+        return review_candidates[-1]
+    if allow_partial and candidates:
+        # Targeted repair continuations may intentionally return only the
+        # requested coverage fragment. The caller merges that fragment into
+        # the authoritative review before full protocol validation.
+        partial_candidates = [candidate for candidate in candidates if isinstance(candidate.get("coverage"), dict)]
+        return partial_candidates[-1] if partial_candidates else candidates[-1]
+    if candidates:
+        raise BrowserlessReviewError("Reviewer returned JSON, but not the required final code-review object.")
     raise BrowserlessReviewError("Reviewer did not return a JSON object.")
 
 
+def _external_blocked_reasons(review: dict[str, Any]) -> list[str]:
+    values: list[Any] = []
+    for key in ("blocked_reason", "status"):
+        value = review.get(key)
+        values.extend(value if isinstance(value, list) else [value] if value else [])
+    for container in (review.get("coverage"), review.get("review_context")):
+        if isinstance(container, dict):
+            value = container.get("blocked_reason")
+            values.extend(value if isinstance(value, list) else [value] if value else [])
+    reasons = {str(value).strip().upper() for value in values if str(value).strip().upper() in EXTERNAL_BLOCKED_REASONS}
+    if reasons:
+        return sorted(reasons)
+    if str(review.get("verdict") or "").upper() == "BLOCKED":
+        coverage = review.get("coverage") if isinstance(review.get("coverage"), dict) else None
+        if coverage is None:
+            return sorted(reasons)
+        changed_files = coverage.get("changed_files")
+        inspection = coverage.get("inspection_evidence")
+        gaps = coverage.get("context_gaps") if isinstance(coverage.get("context_gaps"), list) else []
+        gap_text = " ".join(str(item).lower() for item in gaps)
+        if not isinstance(changed_files, list) or not changed_files:
+            reasons.add("MISSING_CHANGED_FILES")
+        if "immutable" in gap_text and ("snapshot" in gap_text or "inventory" in gap_text):
+            reasons.add("MISSING_GITHUB_SNAPSHOT")
+        if isinstance(changed_files, list) and changed_files and (
+            not isinstance(inspection, list) or len(inspection) < len(changed_files)
+        ):
+            reasons.add("MISSING_CHANGED_FILE_CONTENTS")
+        if "spec requirement" in gap_text or "active spec" in gap_text:
+            reasons.add("MISSING_SPEC")
+    return sorted(reasons)
+
+
+def _abort_external_review(
+    review: dict[str, Any],
+    *,
+    output_path: Path,
+    packet: dict[str, Any],
+    reasons: list[str],
+) -> None:
+    """Persist an external BLOCKED result and stop before any repair/closure."""
+    review.setdefault("lineage", packet)
+    review["execution_status"] = "PENDING_EXTERNAL_REVIEW"
+    review["blocked_reason"] = reasons
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    raise BrowserlessReviewError(
+        "Review aborted because external evidence was unavailable; implementation review remains pending: "
+        + ", ".join(reasons)
+    )
+
+
+def _canonical_requirement_id(value: object) -> str | None:
+    match = CANONICAL_REQUIREMENT_ID.fullmatch(str(value or "").strip())
+    if not match:
+        return None
+    return f"{match.group(1).upper()}-{match.group(2)}{match.group(3).upper()}"
+
+
 def _requirement_ids(spec_context: str) -> tuple[str, ...]:
-    return tuple(sorted({match.group(1).upper() for match in REQUIREMENT_ID.finditer(spec_context or "")}))
+    return tuple(
+        sorted(
+            {
+                canonical
+                for match in REQUIREMENT_ID.finditer(spec_context or "")
+                if (canonical := _canonical_requirement_id(match.group(1))) is not None
+            }
+        )
+    )
+
+
+def _merge_requirement_repair(
+    original: dict[str, Any],
+    repaired: dict[str, Any],
+    expected_requirement_ids: set[str],
+) -> dict[str, Any]:
+    """Accept only requirement coverage from a coverage-repair continuation.
+
+    The first review remains authoritative for every other field. This keeps a
+    continuation opened only to fill requirement coverage from rewriting the
+    verdict, findings, snapshot context, or changed-file evidence.
+    """
+    repaired_coverage = repaired.get("coverage")
+    repaired_requirements = (
+        repaired_coverage.get("requirements")
+        if isinstance(repaired_coverage, dict)
+        else None
+    )
+    if not isinstance(repaired_requirements, list):
+        raise BrowserlessReviewError("Coverage repair did not return coverage.requirements.")
+    canonical_requirements: list[dict[str, Any]] = []
+    repaired_ids: set[str] = set()
+    for item in repaired_requirements:
+        if not isinstance(item, dict):
+            continue
+        canonical = _canonical_requirement_id(item.get("id"))
+        if canonical is None:
+            continue
+        normalized_item = dict(item)
+        normalized_item["id"] = canonical
+        canonical_requirements.append(normalized_item)
+        repaired_ids.add(canonical)
+    if repaired_ids != expected_requirement_ids or len(canonical_requirements) != len(expected_requirement_ids):
+        missing = sorted(expected_requirement_ids - repaired_ids)
+        extra = sorted(repaired_ids - expected_requirement_ids)
+        raise BrowserlessReviewError(
+            "Coverage repair returned the wrong requirement IDs; "
+            f"missing={missing}, extra={extra}."
+        )
+    merged = dict(original)
+    merged_coverage = dict(original.get("coverage") or {})
+    merged_coverage["requirements"] = canonical_requirements
+    merged["coverage"] = merged_coverage
+    return merged
+
+
+def _changed_files_for_snapshot(review: dict[str, Any]) -> tuple[list[Any] | None, bool]:
+    """Extract the changed-file set without accepting ambiguous reviewer prose."""
+    coverage = review.get("coverage") or {}
+    raw = coverage.get("changed_files") if "changed_files" in coverage else review.get("changed_files")
+    if isinstance(raw, list):
+        return raw, False
+    if isinstance(raw, dict):
+        for key in ("files", "paths", "changed_files"):
+            value = raw.get(key)
+            if isinstance(value, list):
+                return value, True
+        keys = list(raw.keys())
+        if keys and all(
+            isinstance(key, str)
+            and key.strip()
+            and not key.startswith(("_", "total", "count", "status"))
+            and ("/" in key or "." in Path(key).name)
+            for key in keys
+        ):
+            return keys, True
+    return None, False
+
+
+def _missing_snapshot_fields(review: dict[str, Any]) -> list[str]:
+    context = review.get("review_context") or {}
+    return [
+        field
+        for field in ("base_ref", "base_sha", "merge_base", "head_sha")
+        if not context.get(field)
+        or (field != "base_ref" and not re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field))))
+    ]
+
+
+def _retain_snapshot_repair_evidence(
+    previous: dict[str, Any],
+    repaired: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep review evidence when a snapshot-only continuation omits it."""
+    merged = dict(repaired)
+    previous_coverage = previous.get("coverage") or {}
+    repaired_coverage = dict(merged.get("coverage") or {})
+    for key in ("inspection_evidence", "fronts", "baseline_scenarios", "previous_findings"):
+        old_value = previous_coverage.get(key)
+        new_value = repaired_coverage.get(key)
+        if isinstance(old_value, list) and old_value and (not isinstance(new_value, list) or not new_value):
+            repaired_coverage[key] = old_value
+    if repaired_coverage:
+        merged["coverage"] = repaired_coverage
+    return merged
+
+
+def _missing_inspection_files(review: dict[str, Any], snapshot: ReviewSnapshot) -> list[str]:
+    coverage = review.get("coverage") or {}
+    raw = coverage.get("inspection_evidence")
+    evidence_by_file = {
+        str(item.get("file") or "").strip()
+        for item in raw
+        if isinstance(item, dict) and len(str(item.get("evidence") or "").strip()) >= 8
+    } if isinstance(raw, list) else set()
+    return sorted(set(snapshot.changed_files) - evidence_by_file)
+
+
+def _complete_snapshot_from_local_git(
+    project_path: Path,
+    review: dict[str, Any],
+    local_head: str,
+) -> bool:
+    """Complete omitted PR manifest fields from the verified PR worktree.
+
+    The worktree is created from the GitHub PR head before review starts. This
+    fallback only reconstructs manifest identity; GitHub tool evidence and the
+    review verdict remain mandatory and are never synthesized locally.
+    """
+    context = review.get("review_context") or {}
+    remote_base = ""
+    try:
+        remote_head = git(project_path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        if remote_head.startswith("origin/"):
+            remote_base = remote_head.removeprefix("origin/")
+    except Exception:
+        pass
+    base_ref = str(context.get("base_ref") or remote_base).strip()
+    if not base_ref:
+        return False
+    base_sha = str(context.get("base_sha") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        try:
+            base_sha = git(project_path, "rev-parse", f"origin/{base_ref}").strip().lower()
+        except Exception:
+            return False
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        return False
+    merge_base = str(context.get("merge_base") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", merge_base):
+        try:
+            merge_base = git(project_path, "merge-base", base_sha, local_head).strip().lower()
+        except Exception:
+            return False
+    if not re.fullmatch(r"[0-9a-f]{40}", merge_base):
+        return False
+    changed_files, _ = _changed_files_for_snapshot(review)
+    if not changed_files:
+        try:
+            changed_files = [
+                item.strip()
+                for item in git(project_path, "diff", "--name-only", f"{merge_base}..{local_head}").splitlines()
+                if item.strip()
+            ]
+        except Exception:
+            return False
+    if not changed_files:
+        return False
+    review.setdefault("review_context", {}).update(
+        {
+            "base_ref": base_ref,
+            "base_sha": base_sha,
+            "merge_base": merge_base,
+            "head_sha": local_head.lower(),
+        }
+    )
+    review.setdefault("coverage", {})["changed_files"] = changed_files
+    return True
 
 
 def _snapshot_prompt(target: PullRequestTarget, connector_id: str) -> str:
     return f"""This is phase 1 of a read-only {PRODUCT_NAME} code review.
 
-Use exclusively the installed GitHub App selected by this explicit Codex App mention:
-[$github](app://{connector_id})
+Use exclusively the installed GitHub connector selected dynamically for this turn:
+plugin:{connector_id} (the transport will emit the matching @Github ecosystem mention).
 
 Resolve the immutable identity of exactly this pull request:
 repository: {target.repository}
@@ -139,12 +405,198 @@ Return JSON only with exactly these semantic fields:
 """
 
 
+def _master_prompt_path(project: Path) -> Path:
+    path = project / ".specify" / "powerpack" / "master-review-prompt.md"
+    if not path.is_file():
+        raise BrowserlessReviewError(f"Installed Master Review Prompt is missing: {path}")
+    return path
+
+
+def _review_packet(
+    *,
+    target: PullRequestTarget,
+    spec: Any,
+    snapshot: ReviewSnapshot | None,
+    project: ProjectBinding,
+    protocol: str,
+    previous_review: dict[str, Any] | None,
+    round_number: int,
+    attempt: int,
+    segment: int,
+    master_prompt: str,
+    current_head_sha: str,
+) -> dict[str, Any]:
+    previous_context = (previous_review or {}).get("review_context") or {}
+    previous_findings = (previous_review or {}).get("findings") or []
+    if not previous_findings:
+        previous_findings = ((previous_review or {}).get("coverage") or {}).get("previous_findings") or []
+    return {
+        "review_id": f"{target.repository}#{target.number}:{spec.spec_id}:implement-review",
+        "target": {
+            "repository": target.repository,
+            "pull_request": target.url,
+            "pull_request_number": target.number,
+            "active_spec": f"specs/{spec.spec_id}/",
+        },
+        "expected_evidence": [
+            "pr_metadata",
+            "base_ref",
+            "base_sha",
+            "merge_base",
+            "head_sha",
+            "snapshot_identity",
+            "changed_files",
+            "changed_file_contents",
+            "active_spec_artifacts",
+        ],
+        "provided_evidence": {
+            "snapshot": "verified" if snapshot else "pending_github_connector",
+            "changed_files": "verified" if snapshot else "pending_github_connector",
+            "changed_file_contents": "pending_github_connector",
+            "active_spec_artifacts": "attached_spec_artifacts",
+        },
+        "round": round_number,
+        "attempt": attempt,
+        "conversation_segment": segment,
+        "repository": target.repository,
+        "pull_request": target.url,
+        "active_spec": f"specs/{spec.spec_id}/",
+        "expected_requirement_ids": list(_requirement_ids(getattr(spec, "serialized", ""))),
+        "current_head_sha": snapshot.head_sha if snapshot else current_head_sha,
+        "current_snapshot_sha256": snapshot.snapshot_sha256 if snapshot else None,
+        "previous_snapshot_sha256": previous_context.get("snapshot_sha256") or None,
+        "master_prompt": {
+            "version": MASTER_PROMPT_VERSION,
+            "sha256": hashlib.sha256(master_prompt.encode("utf-8")).hexdigest(),
+        },
+        "review_protocol": {
+            "version": REVIEW_PROTOCOL_VERSION,
+            "sha256": hashlib.sha256(protocol.encode("utf-8")).hexdigest(),
+        },
+        "checkpoint": {
+            "last_completed_round": max(0, round_number - 1),
+            "open_findings": [item for item in previous_findings if isinstance(item, dict)],
+            "resolved_findings": [],
+            "previous_review_context": previous_context,
+        },
+        "project": {
+            "project_id": project.project_id,
+            "project_name": project.project_name,
+            "authority": "bound ChatGPT Project; context resolved by Web",
+        },
+    }
+
+
+def _master_review_prompt(master_prompt: str, packet: dict[str, Any], *, target: PullRequestTarget) -> str:
+    return """@Github
+
+Execute POWERPACK MASTER CODE REVIEW v1.2.
+
+Use the attached Review Evidence Package as the only execution contract.
+Follow its authority order and state machine. Use @GitHub exclusively for
+PR/repository evidence; begin with snapshot resolution and evidence
+acquisition, then perform the review and adversarial challenge.
+
+Return exactly one final JSON object conforming to the attached OutputSchema.
+If any mandatory evidence is unavailable, return BLOCKED with explicit
+blocked_reason and coverage.context_gaps. Do not explain, repeat attachment
+content, emit progress or partial output, or request another prompt.
+"""
+
+
+def _write_review_bundle(
+    *,
+    bundle_dir: Path,
+    master_prompt: str,
+    protocol: str,
+    evidence_contract: str,
+    packet: dict[str, Any],
+    spec_context: str,
+    previous_review: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Persist the structured inputs used by one review execution.
+
+    The transport uploads these exact files as native conversation attachments;
+    the local bundle is retained as the reproducibility/evidence copy.
+    """
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    artifacts: dict[str, str] = {
+        "output-schema.json": json.dumps({
+            "type": "object",
+            "required": ["review_context", "coverage", "findings", "review_divergences", "verdict_challenge", "lineage", "verdict"],
+            "properties": {
+                "coverage": {"type": "object"},
+                "findings": {"type": "array"},
+                "review_divergences": {"type": "array"},
+                "blocked_reason": {"type": "array"},
+                "verdict": {"enum": ["APPROVED", "CHANGES_REQUIRED", "BLOCKED"]},
+            },
+        }, ensure_ascii=False, indent=2) + "\n",
+        "master-prompt.md": master_prompt,
+        "packet.json": json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
+        "protocol.md": protocol,
+        "github-evidence-contract.md": evidence_contract,
+        "spec-artifacts.md": spec_context,
+        "instructions.md": (
+            "Execute the Review Evidence Package. MasterPrompt orchestrates the "
+            "state machine; authority order is OutputSchema, ReviewPacket, "
+            "GitHubEvidenceContract, ReviewProtocol, SpecArtifacts, "
+            "PreviousFindings, Instructions.\n"
+            "Return only the terminal JSON artifact after identity, evidence, "
+            "review, challenge and private schema validation.\n"
+        ),
+    }
+    if previous_review is not None:
+        artifacts["previous-review.json"] = json.dumps(previous_review, ensure_ascii=False, indent=2) + "\n"
+    manifest_entries = []
+    for name, content in artifacts.items():
+        path = bundle_dir / name
+        path.write_text(content, encoding="utf-8")
+        manifest_entries.append({
+            "name": name,
+            "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "bytes": len(content.encode("utf-8")),
+        })
+    manifest = {
+        "schema_version": 1,
+        "execution_model": "one-message-with-structured-artifacts",
+        "master_prompt": {
+            "version": MASTER_PROMPT_VERSION,
+            "sha256": hashlib.sha256(master_prompt.encode("utf-8")).hexdigest(),
+        },
+        "artifacts": manifest_entries,
+    }
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
+def _review_bundle_attachments(bundle_dir: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Load the exact bundle files as explicit one-message attachments."""
+    attachments: list[dict[str, Any]] = []
+    for item in manifest.get("artifacts", []):
+        name = str(item.get("name") or "").strip()
+        path = bundle_dir / name
+        if not name or not path.is_file():
+            raise BrowserlessReviewError(f"Review attachment is missing: {path}")
+        content = path.read_text(encoding="utf-8")
+        mime_type = "application/json" if path.suffix == ".json" else "text/markdown"
+        attachments.append({"name": name, "mime_type": mime_type, "content": content})
+    manifest_path = bundle_dir / "manifest.json"
+    if manifest_path.is_file():
+        attachments.append({
+            "name": "manifest.json",
+            "mime_type": "application/json",
+            "content": manifest_path.read_text(encoding="utf-8"),
+        })
+    return attachments
+
+
 def _review_prompt(
     *,
     connector_id: str,
     snapshot: ReviewSnapshot,
-    project_name: str,
-    project_context: str,
     spec_context: str,
     protocol: str,
     user_instruction: str,
@@ -154,8 +606,8 @@ def _review_prompt(
     requirements = list(_requirement_ids(spec_context))
     return f"""You are the mandatory independent browserless code-review gate for {PRODUCT_NAME}.
 
-Use exclusively the installed GitHub App selected by this explicit Codex App mention for PR/repository evidence:
-[$github](app://{connector_id})
+Use exclusively the installed GitHub connector selected dynamically for PR/repository evidence:
+plugin:{connector_id} (the transport will emit the matching @Github ecosystem mention).
 
 IMMUTABLE REVIEW SNAPSHOT — authoritative; do not substitute another PR or snapshot:
 {json.dumps(snapshot.as_dict(), ensure_ascii=False, indent=2)}
@@ -164,11 +616,6 @@ EXPECTED REQUIREMENT IDS — coverage.requirements must contain exactly this set
 {json.dumps(requirements, ensure_ascii=False)}
 
 The local implementation HEAD has already been verified by {PRODUCT_NAME} to equal the PR head SHA. Use GitHub tools to inspect the exact PR, complete diff, every changed file and all related source/tests/contracts needed to establish blast radius. Follow pagination. Do not rely on the PR description or CI as proof.
-
-CHATGPT PROJECT CONTEXT — serialized read-only background memory:
-<project_context>
-{project_context[:24000]}
-</project_context>
 
 ACTIVE SPEC KIT CONTEXT — authoritative requirements:
 <spec_context>
@@ -200,34 +647,8 @@ Rules:
 - coverage.inspection_evidence MUST contain one object per changed file with fields file and evidence describing what was inspected.
 - coverage.verdict_challenge MUST contain strongest_counterexample, result and non-empty evidence. APPROVED requires result SURVIVED or evidence-backed NOT_APPLICABLE.
 - coverage.context_gaps MUST be a list. If material Project-only knowledge is absent from durable repository evidence, describe it there and do not APPROVE.
-- Add this extra top-level object so {PRODUCT_NAME} can prove Project context was actually consumed:
-  "project_context_evidence": {{
-    "project_name": "{project_name}",
-    "literal_evidence": "3 to 20 consecutive words copied literally from the serialized Project context, not merely the Project name"
-  }}
 - If responsible review is impossible, return a structurally valid BLOCKED review rather than APPROVED.
 """
-
-
-def _normalize_spaces(value: str) -> str:
-    return " ".join((value or "").split())
-
-
-def _validate_project_evidence(review: dict[str, Any], *, project_name: str, project_context: str) -> None:
-    evidence = review.get("project_context_evidence")
-    if not isinstance(evidence, dict):
-        raise BrowserlessReviewError("Review is missing project_context_evidence.")
-    returned_name = str(evidence.get("project_name") or "").strip()
-    if returned_name.casefold() != project_name.casefold():
-        raise BrowserlessReviewError("Reviewer did not identify the bound ChatGPT Project correctly.")
-    literal = _normalize_spaces(str(evidence.get("literal_evidence") or ""))
-    words = literal.split()
-    if not (3 <= len(words) <= 20):
-        raise BrowserlessReviewError("project_context_evidence.literal_evidence must contain 3 to 20 words.")
-    if literal.casefold() == project_name.casefold():
-        raise BrowserlessReviewError("Project context evidence cannot be only the Project name.")
-    if literal.casefold() not in _normalize_spaces(project_context).casefold():
-        raise BrowserlessReviewError("Project context evidence is not a literal excerpt from the serialized Project context.")
 
 
 def _validate_snapshot_contract(review: dict[str, Any], snapshot: ReviewSnapshot) -> None:
@@ -257,9 +678,10 @@ def _validate_hardened_review_contract(
 
     expected_requirements = set(_requirement_ids(spec_context))
     actual_requirements = {
-        str(item.get("id") or "").upper()
+        canonical
         for item in coverage.get("requirements", [])
         if isinstance(item, dict) and str(item.get("id") or "").strip()
+        if (canonical := _canonical_requirement_id(item.get("id"))) is not None
     }
     if expected_requirements and actual_requirements != expected_requirements:
         missing = sorted(expected_requirements - actual_requirements)
@@ -311,6 +733,22 @@ def _validate_hardened_review_contract(
     if review.get("verdict") == "APPROVED" and context_gaps:
         raise BrowserlessReviewError("APPROVED is forbidden while coverage.context_gaps is non-empty.")
 
+    divergences = review.get("review_divergences")
+    if not isinstance(divergences, list):
+        raise BrowserlessReviewError("review_divergences must be a list.")
+    if review.get("verdict") == "APPROVED" and divergences:
+        raise BrowserlessReviewError("APPROVED is forbidden while review_divergences is non-empty.")
+
+    for index, finding in enumerate(review.get("findings") or []):
+        if not isinstance(finding, dict):
+            raise BrowserlessReviewError(f"findings[{index}] must be an object.")
+        required = ("authority_ref", "implementation_evidence", "failure_scenario", "required_change")
+        missing = [field for field in required if not str(finding.get(field) or "").strip()]
+        if missing:
+            raise BrowserlessReviewError(
+                f"findings[{index}] is missing causal authority/evidence fields: {', '.join(missing)}"
+            )
+
 
 def _validate_protocol(project: Path, review_path: Path, previous: Path | None) -> None:
     validator = project / ".specify" / "powerpack" / "bin" / "review_protocol.py"
@@ -342,12 +780,23 @@ def run_browserless_code_review(
     model: str = "gpt-5.6-sol",
     effort: str = "xhigh",
     timeout: int = 600,
-    max_project_conversations: int = 2,
     locale: str = "pt-BR",
+    verbose: bool = False,
+    ephemeral: bool = True,
+    round_number: int | None = None,
+    attempt: int = 1,
+    segment: int = 1,
 ) -> BrowserlessReviewResult:
     project_path = project_path.resolve()
     if not project_path.is_dir():
         raise BrowserlessReviewError(f"Repository path does not exist: {project_path}")
+
+    def _log(kind: str, msg: str) -> None:
+        # kind: "browserless" = a chatgpt.com/backend-api call;
+        #       "codex"       = retained for compatibility with older logs.
+        if verbose:
+            print(f"  [{kind}] {msg}", file=sys.stderr, flush=True)
+
     binding = load_project_binding(project_path)
     target = resolve_pull_request(project_path, pull_request)
     spec = resolve_spec_context(project_path)
@@ -355,79 +804,352 @@ def run_browserless_code_review(
 
     client = ChatGPTBackendClient()
     try:
-        client.validate_auth()
+        _log("browserless", "checking auth + rate limit (/backend-api/wham/usage)…")
+        usage = client.validate_auth()
+        rl = usage.get("rate_limit") if isinstance(usage, dict) else None
+        if isinstance(rl, dict) and rl.get("limit_reached"):
+            reset = int((rl.get("primary_window") or {}).get("reset_after_seconds") or 0)
+            raise BrowserlessReviewError(
+                f"Codex rate limit reached (plan={usage.get('plan_type')}); the primary window "
+                f"resets in ~{reset // 60} min. Re-run after that — a review turn would fail mid-way "
+                "and still bill the tokens it used."
+            )
+        _log("browserless", "discovering the GitHub connector (/backend-api/aip/connectors …)…")
         github = discover_github_connector(client, locale=locale)
-        project, project_context = client.build_project_context(
-            binding.project_id,
-            max_conversations=max(0, min(max_project_conversations, 4)),
-            max_chars=32_000,
-        )
+        _log("browserless", f"resolving bound ChatGPT Project (/backend-api/gizmos/{binding.project_id} …)…")
+        # The Project is already bound to the Web conversation. Do not fetch
+        # and serialize its conversations into the prompt again; gizmo
+        # interaction resolves that context server-side.
+        project = client.get_project(binding.project_id)
+        _log("browserless", f"Project '{project.name}' bound; GitHub connector {github.connector_id}")
     except (ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise BrowserlessReviewError(str(exc)) from exc
     if project.id != binding.project_id or project.name.casefold() != binding.project_name.casefold():
         raise BrowserlessReviewError("Serialized ChatGPT Project does not match the repository binding.")
 
-    snapshot_turn = run_codex_exec(
-        project_path=project_path,
+    try:
+        web = ChatGPTWebReviewClient()
+    except ChatGPTWebReviewError as exc:
+        raise BrowserlessReviewError(str(exc)) from exc
+
+    protocol_path = project_path / ".specify" / "powerpack" / "deep-review-protocol.md"
+    if not protocol_path.is_file():
+        raise BrowserlessReviewError(f"Installed Deep Review Protocol is missing: {protocol_path}")
+    protocol = protocol_path.read_text(encoding="utf-8", errors="replace")
+    evidence_contract_path = project_path / ".specify" / "powerpack" / "github-evidence-contract.md"
+    if not evidence_contract_path.is_file():
+        raise BrowserlessReviewError(f"Installed GitHub Evidence Contract is missing: {evidence_contract_path}")
+    evidence_contract = evidence_contract_path.read_text(encoding="utf-8", errors="replace")
+    master_path = _master_prompt_path(project_path)
+    master_prompt = master_path.read_text(encoding="utf-8", errors="replace")
+    previous_text = ""
+    previous_review: dict[str, Any] | None = None
+    if previous:
+        if not previous.is_file():
+            raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
+        previous_text = previous.read_text(encoding="utf-8", errors="replace")
+        try:
+            parsed_previous = json.loads(previous_text)
+        except json.JSONDecodeError as exc:
+            raise BrowserlessReviewError(f"Previous review is not valid JSON: {previous}") from exc
+        if not isinstance(parsed_previous, dict):
+            raise BrowserlessReviewError(f"Previous review must be a JSON object: {previous}")
+        previous_review = parsed_previous
+    if round_number is None:
+        previous_round = int((previous_review or {}).get("round") or 0)
+        round_number = previous_round + 1 if previous_review else 1
+    packet = _review_packet(
+        target=target,
+        spec=spec,
+        snapshot=None,
+        project=binding,
+        protocol=protocol,
+        previous_review=previous_review,
+        round_number=round_number,
+        attempt=attempt,
+        segment=segment,
+        master_prompt=master_prompt,
+        current_head_sha=local_head,
+    )
+    output_path_hint = (output.resolve() if output else project_path / ".specify" / "powerpack" / "reviews" / f"round-{round_number}-pr{target.number}.json")
+    packet_path = output_path_hint.with_name(output_path_hint.stem + "-packet.json")
+    packet_path.parent.mkdir(parents=True, exist_ok=True)
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Keep a human-auditable copy beside review.json. This directory is created
+    # before the Web submit, so failed runs still retain every produced input.
+    bundle_path = output_path_hint.with_name(output_path_hint.stem + "-attachments")
+    bundle_manifest = _write_review_bundle(
+        bundle_dir=bundle_path,
+        master_prompt=master_prompt,
+        protocol=protocol,
+        evidence_contract=evidence_contract,
+        packet=packet,
+        spec_context=spec.serialized,
+        previous_review=previous_review,
+    )
+    review_attachments = _review_bundle_attachments(bundle_path, bundle_manifest)
+    _log("browserless", f"review attachments evidence written: {bundle_path}")
+
+    _log("browserless", f"ChatGPT Web Master Review — round={round_number} attempt={attempt} segment={segment}")
+    review_prompt = (
+        _master_review_prompt(master_prompt, packet, target=target)
+        + "\n\nADDITIONAL USER REVIEW INSTRUCTION:\n"
+        + (prompt.strip() or "Perform the complete Master Code Review for this immutable snapshot.")
+    )
+    prompt_evidence_path = os.environ.get("SPECKIT_POWERPACK_REVIEW_PROMPT_EVIDENCE", "").strip()
+    if prompt_evidence_path:
+        prompt_evidence = review_prompt
+        if not prompt_evidence.lstrip().lower().startswith("@github"):
+            prompt_evidence = "@Github " + prompt_evidence
+        evidence_path = Path(prompt_evidence_path).resolve()
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(prompt_evidence, encoding="utf-8")
+        _log(
+            "browserless",
+            "prompt evidence written: "
+            + str(evidence_path)
+            + f" chars={len(prompt_evidence)} sha256={hashlib.sha256(prompt_evidence.encode('utf-8')).hexdigest()}",
+        )
+    review_text = web.ask(
+        review_prompt,
+        project_id=binding.project_id,
+        connector_id=github.connector_id,
+        repository=target.repository,
         model=model,
         effort=effort,
-        prompt=_snapshot_prompt(target, github.connector_id),
-        timeout=min(timeout, 300),
+        attachments=review_attachments,
     )
-    if snapshot_turn.returncode != 0:
-        raise BrowserlessReviewError((snapshot_turn.stderr or snapshot_turn.stdout or "snapshot turn failed").strip())
-    snapshot_events = parse_codex_jsonl(snapshot_turn.stdout, connector_id=github.connector_id)
+    review_tools = list(web.last_tool_invocations)
     try:
-        require_github_tool_evidence(snapshot_events)
-    except CodexAppsError as exc:
-        raise BrowserlessReviewError(f"PR snapshot discovery failed: {exc}") from exc
-    snapshot_payload = _extract_json(str(snapshot_events.get("assistant_text") or ""))
+        review = _extract_json(review_text)
+    except BrowserlessReviewError as first_error:
+        # A connector may complete without an authorization gate but leave the
+        # model at a tool boundary. Continue the same attempt/conversation only
+        # to request the mandated final review object; this is not a new round
+        # and does not replay any homologation probe.
+        if not web.conversation_id or not web.last_tool_invocations:
+            raise
+        _log("browserless", "review stream ended at a tool boundary; requesting final JSON in the same segment…")
+        continuation = web.ask(
+            "Continue the same Master Code Review from the completed connector result. Do not repeat repository discovery. Return only the final structured JSON object required by the Master Prompt, including review_context and verdict.",
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        try:
+            review = _extract_json(continuation)
+        except BrowserlessReviewError:
+            raise first_error
+    external_blocked_reasons = _external_blocked_reasons(review)
+    if external_blocked_reasons:
+        _log(
+            "browserless",
+            "aborting review attempt; external evidence is unavailable and implementation review remains pending: "
+            + ", ".join(external_blocked_reasons),
+        )
+        _abort_external_review(
+            review,
+            output_path=output_path_hint,
+            packet=packet,
+            reasons=external_blocked_reasons,
+        )
+    # Complete only immutable identity from the verified PR worktree before
+    # opening shape-repair continuations. The model's semantic review remains
+    # untouched and is still validated below.
+    if _complete_snapshot_from_local_git(project_path, review, local_head):
+        _log("browserless", "review response normalized from verified immutable local PR snapshot")
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
+    missing_snapshot_fields = _missing_snapshot_fields(review)
+    if str(context.get("spec_id") or "").strip().casefold() != spec.spec_id.casefold():
+        missing_snapshot_fields.append("spec_id")
+    changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+    prior_changed_files: list[Any] | None = None
+    if normalized_changed_files:
+        _log("browserless", "review evidence shape: normalized changed_files mapping keys to snapshot paths")
+    invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+    if invalid_changed_files:
+        _log(
+            "browserless",
+            "review evidence shape: top_keys="
+            + ",".join(sorted(str(key) for key in review.keys()))
+            + " coverage_keys="
+            + ",".join(sorted(str(key) for key in coverage.keys()))
+            + " changed_files_type="
+            + type(changed_files_value).__name__
+            + " changed_files_len="
+            + str(len(changed_files_value) if hasattr(changed_files_value, "__len__") else 0),
+        )
+    repair_attempts = 0
+    while (
+        (missing_snapshot_fields or invalid_changed_files)
+        and web.conversation_id
+        and review_tools
+        and repair_attempts < 2
+    ):
+        repair_attempts += 1
+        _log(
+            "browserless",
+            "review object is missing immutable snapshot fields "
+            + ", ".join(missing_snapshot_fields)
+            + (", changed_files array" if invalid_changed_files else "")
+            + "; requesting evidence-complete JSON in the same segment…",
+        )
+        continuation = web.ask(
+            f"The review object is incomplete. Continue the same review and use @GitHub to resolve the immutable PR snapshot. Return only one complete final JSON object. Its review_context MUST include spec_id exactly {spec.spec_id!r}, base_ref and full 40-character hexadecimal base_sha, merge_base, and head_sha values, plus the complete changed_files list under coverage.changed_files. Never abbreviate a SHA or rename the SPEC. If the snapshot cannot be proven, return verdict BLOCKED with context_gaps explaining the exact missing evidence.",
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        previous_review = review
+        prior_changed_files, _ = _changed_files_for_snapshot(previous_review)
+        review = _retain_snapshot_repair_evidence(
+            previous_review,
+            _extract_json(continuation),
+        )
+        completed_changed_files, _ = _changed_files_for_snapshot(review)
+        if (not completed_changed_files) and prior_changed_files:
+            review.setdefault("coverage", {})["changed_files"] = prior_changed_files
+            _log("browserless", "review evidence shape: retained prior non-empty changed_files evidence")
+        context = review.get("review_context") or {}
+        missing_snapshot_fields = _missing_snapshot_fields(review)
+        changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+        invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+
+    if missing_snapshot_fields:
+        if _complete_snapshot_from_local_git(project_path, review, local_head):
+            _log("browserless", "review evidence shape: completed omitted PR manifest from verified local PR worktree")
+            missing_snapshot_fields = _missing_snapshot_fields(review)
+            changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+            invalid_changed_files = not isinstance(changed_files_value, list) or not changed_files_value
+        if missing_snapshot_fields:
+            raise BrowserlessReviewError(
+                "ChatGPT Web review did not return a complete immutable PR snapshot; "
+                "missing or invalid fields: " + ", ".join(missing_snapshot_fields)
+            )
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
+    changed_files_value, normalized_changed_files = _changed_files_for_snapshot(review)
+    if (not isinstance(changed_files_value, list) or not changed_files_value) and all(
+        re.fullmatch(r"[0-9a-fA-F]{40}", str(context.get(field) or ""))
+        for field in ("merge_base", "head_sha")
+    ):
+        try:
+            local_files = [
+                item.strip()
+                for item in git(project_path, "diff", "--name-only", f"{context['merge_base']}..{context['head_sha']}").splitlines()
+                if item.strip()
+            ]
+        except Exception as exc:
+            local_files = []
+            _log("browserless", f"local changed-file fallback unavailable: {type(exc).__name__}")
+        if local_files:
+            changed_files_value = local_files
+            _log("browserless", "review evidence shape: used immutable local diff for missing changed_files")
+    snapshot_payload = {
+        "repository": target.repository,
+        "pull_request_number": target.number,
+        "base_ref": context.get("base_ref"),
+        "base_sha": context.get("base_sha"),
+        "merge_base": context.get("merge_base"),
+        "head_sha": context.get("head_sha"),
+        "changed_files": changed_files_value,
+    }
     snapshot = build_snapshot(
         target=target,
         spec_id=spec.spec_id,
         payload=snapshot_payload,
         local_head=local_head,
     )
-
-    protocol_path = project_path / ".specify" / "powerpack" / "deep-review-protocol.md"
-    if not protocol_path.is_file():
-        raise BrowserlessReviewError(f"Installed Deep Review Protocol is missing: {protocol_path}")
-    protocol = protocol_path.read_text(encoding="utf-8", errors="replace")
-    previous_text = ""
-    if previous:
-        if not previous.is_file():
-            raise BrowserlessReviewError(f"Previous review does not exist: {previous}")
-        previous_text = previous.read_text(encoding="utf-8", errors="replace")
-
-    review_turn = run_codex_exec(
-        project_path=project_path,
-        model=model,
-        effort=effort,
-        prompt=_review_prompt(
+    review = normalize_review_response(review, snapshot)
+    context = review.get("review_context") or {}
+    coverage = review.get("coverage") or {}
+    if str(context.get("snapshot_sha256") or "").strip().casefold() != snapshot.snapshot_sha256.casefold():
+        _log("browserless", "review snapshot hash differs from immutable packet; requesting exact hash in the same segment…")
+        continuation = web.ask(
+            f"Return the same final review JSON again with review_context exactly bound to the immutable snapshot. Set review_context.snapshot_sha256 to this exact lowercase SHA-256 value: {snapshot.snapshot_sha256}. Preserve all findings, coverage and changed-file evidence; do not recalculate or abbreviate it.",
+            project_id=binding.project_id,
             connector_id=github.connector_id,
-            snapshot=snapshot,
-            project_name=binding.project_name,
-            project_context=project_context,
-            spec_context=spec.serialized,
-            protocol=protocol,
-            user_instruction=prompt,
-            previous_review=previous_text,
-        ),
-        timeout=timeout,
-    )
-    if review_turn.returncode != 0:
-        raise BrowserlessReviewError((review_turn.stderr or review_turn.stdout or "review turn failed").strip())
-    review_events = parse_codex_jsonl(review_turn.stdout, connector_id=github.connector_id)
-    try:
-        require_github_tool_evidence(review_events)
-    except CodexAppsError as exc:
-        raise BrowserlessReviewError(f"Deep review GitHub evidence failed: {exc}") from exc
-    review = _extract_json(str(review_events.get("assistant_text") or ""))
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        review = _retain_snapshot_repair_evidence(review, _extract_json(continuation))
+        review_context = review.get("review_context") or {}
+        review_coverage = review.get("coverage") or {}
+        review_files, _ = _changed_files_for_snapshot(review)
+        if not review_files:
+            review.setdefault("coverage", {})["changed_files"] = list(snapshot.changed_files)
+    expected_requirement_ids = set(_requirement_ids(spec.serialized))
+    actual_requirement_ids = {
+        str(item.get("id") or "").upper()
+        for item in (review.get("coverage") or {}).get("requirements", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    if expected_requirement_ids and actual_requirement_ids != expected_requirement_ids:
+        _log(
+            "browserless",
+            "review response omitted or changed active SPEC requirements; preserving the one-turn contract and failing validation",
+        )
+
+    missing_inspection_files = _missing_inspection_files(review, snapshot)
+    if missing_inspection_files and web.conversation_id and review_tools:
+        _log(
+            "browserless",
+            "review object is missing inspection evidence for "
+            + str(len(missing_inspection_files))
+            + " changed files; requesting targeted GitHub inspection evidence…",
+        )
+        continuation = web.ask(
+            "Continue the same review using @GitHub. Return only a JSON object with "
+            "coverage.inspection_evidence entries for these missing changed files, "
+            "with each entry containing the exact file path and concrete evidence of "
+            "what was inspected. Do not change the verdict, findings, review_context, "
+            "or existing evidence. Missing files: "
+            + json.dumps(missing_inspection_files, ensure_ascii=False),
+            project_id=binding.project_id,
+            connector_id=github.connector_id,
+            repository=target.repository,
+            model=model,
+            effort=effort,
+            require_connector_evidence=False,
+        )
+        review_tools.extend(web.last_tool_invocations)
+        repaired_evidence = _extract_json(continuation, allow_partial=True)
+        existing_coverage = review.setdefault("coverage", {})
+        existing_entries = existing_coverage.get("inspection_evidence")
+        existing_entries = existing_entries if isinstance(existing_entries, list) else []
+        new_entries = (repaired_evidence.get("coverage") or {}).get("inspection_evidence")
+        new_entries = new_entries if isinstance(new_entries, list) else []
+        existing_paths = {str(item.get("file") or "").strip() for item in existing_entries if isinstance(item, dict)}
+        existing_coverage["inspection_evidence"] = existing_entries + [
+            item for item in new_entries
+            if isinstance(item, dict) and str(item.get("file") or "").strip() not in existing_paths
+        ]
+    output_path = (output or _default_output(project_path, snapshot)).resolve()
+    packet_path = output_path.with_name(output_path.stem + "-packet.json")
+    packet.update({
+        "current_head_sha": snapshot.head_sha,
+        "current_snapshot_sha256": snapshot.snapshot_sha256,
+    })
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    review.setdefault("lineage", packet)
+    review.setdefault("powerpack_checkpoint", packet["checkpoint"])
+    coverage = review.setdefault("coverage", {})
+    if "previous_findings" in review and "previous_findings" not in coverage:
+        coverage["previous_findings"] = review["previous_findings"]
     _validate_snapshot_contract(review, snapshot)
     _validate_hardened_review_contract(review, snapshot=snapshot, spec_context=spec.serialized)
-    _validate_project_evidence(review, project_name=binding.project_name, project_context=project_context)
-
-    output_path = (output or _default_output(project_path, snapshot)).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _validate_protocol(project_path, output_path, previous)
@@ -437,6 +1159,7 @@ def run_browserless_code_review(
         output_path=output_path,
         snapshot=snapshot,
         project=binding,
-        github_tools=tuple(review_events.get("codex_apps_tools") or ()),
-        snapshot_tools=tuple(snapshot_events.get("codex_apps_tools") or ()),
+        github_tools=review_tools,
+        snapshot_tools=(),
+        github_call_count=len(review_tools),
     )

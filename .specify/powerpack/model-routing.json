@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "active_integration": "codex",
+  "stages": {
+    "implement-review": "orchestration"
+  },
+  "stage_reasons": {
+    "implement-review": "The parent orchestrates convergence, fixes and reviewer handoffs; the deep reviewer remains a separate Sol/xhigh role."
+  },
+  "reviewer_contract": {
+    "codex": {
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
+      "sandbox": "read-only"
+    }
+  },
+  "effort": {
+    "claude": {
+      "economical": "medium",
+      "coding": "default",
+      "reasoning": "default",
+      "semantic_gate": "default",
+      "orchestration": "default",
+      "advisor": "default",
+      "reviewer": "xhigh"
+    },
+    "codex": {
+      "economical": "medium",
+      "coding": "high",
+      "reasoning": "high",
+      "semantic_gate": "high",
+      "orchestration": "high",
+      "advisor": "high",
+      "reviewer": "xhigh"
+    }
+  },
+  "integrations": {
+    "claude": {
+      "economical": "haiku",
+      "coding": "sonnet",
+      "reasoning": "sonnet",
+      "semantic_gate": "sonnet",
+      "orchestration": "sonnet",
+      "advisor": "opus",
+      "reviewer": "external-codex:gpt-5.6-sol"
+    },
+    "codex": {
+      "economical": "gpt-5.6-luna",
+      "coding": "gpt-5.6-terra",
+      "reasoning": "gpt-5.6-terra",
+      "semantic_gate": "gpt-5.6-sol",
+      "orchestration": "gpt-5.6-terra",
+      "advisor": "gpt-5.6-sol",
+      "reviewer": "gpt-5.6-sol"
+    }
+  }
+}

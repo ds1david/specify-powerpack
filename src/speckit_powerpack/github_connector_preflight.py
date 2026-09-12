@@ -118,7 +118,8 @@ def discover_github_connector(client: ChatGPTBackendClient, *, locale: str = "en
         str(plugin.get("status") or "").upper() == "ENABLED"
         and app.get("status") == "ENABLED"
         and link
-        and link.get("auth_status") == "ACTIVE"
+        # Authorization may be requested by the Web conversation through its
+        # explicit JIT confirm_action/allow step; ACTIVE is not required here.
         and availability
         and availability.get("installed") is True
         and availability.get("available") is True

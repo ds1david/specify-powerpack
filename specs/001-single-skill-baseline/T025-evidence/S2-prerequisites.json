@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "mode": "strict",
+  "steps": {
+    "implement-review": [
+      {
+        "check": "implementation-evidence"
+      }
+    ]
+  }
+}

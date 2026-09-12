@@ -6,6 +6,10 @@ The project is intentionally being generalized over time. The long-term goal is 
 
 This evolution is part of the product strategy, not evidence that the current implementation is defective. Reviews and maintenance work must therefore distinguish failures against the current contract from proposals that expand that contract.
 
+## Scope history
+
+- **2026-09-09 — SPEC-001 single-command baseline.** `speckit-implement`, `speckit-converge`, `speckit-checklist-converge`, `speckit-full-cycle` and the `speckit-debt-*` lifecycle were removed. `speckit-implement-review` is now the only command Specify PowerPack provides; it re-uses upstream Spec Kit `speckit-implement` / `speckit-converge` directly, and its predecessor gate is repository evidence (a completed `tasks.md` plus a real change delta) rather than a PowerPack receipt. This was a deliberate scope reduction, not a statement that the removed capabilities were defective; they may return through new specs. See `specs/001-single-skill-baseline/`.
+
 ## Bug / defect
 
 Treat an item as a bug or defect when there is concrete evidence that the current implementation:

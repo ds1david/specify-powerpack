@@ -1,0 +1,24 @@
+schema_version: "1.0"
+
+extension:
+  id: "powerpack-tools"
+  name: "Specify PowerPack Tools"
+  version: "0.1.0"
+  description: "Portable runtime diagnostics, update management and semantic routing helpers used by Specify PowerPack presets."
+  author: "David Oliveira"
+  repository: "https://github.com/ds1david/specify-powerpack"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=1.0.0"
+
+provides:
+  commands:
+    - name: "speckit.powerpack-tools.doctor"
+      file: "commands/doctor.md"
+      description: "Diagnose Specify PowerPack runtime, agent CLIs and project configuration."
+    - name: "speckit.powerpack-tools.update"
+      file: "commands/update.md"
+      description: "Check/update Specify PowerPack with explicit confirmation and safe recovery modes."
+
+tags: ["workflow", "routing", "quality", "review", "update", "recovery"]

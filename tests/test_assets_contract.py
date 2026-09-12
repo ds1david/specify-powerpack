@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -16,9 +17,14 @@ def test_implement_review_has_single_canonical_asset():
     assert 'file: "commands/speckit.implement-review.md"' in preset
 
 
-def test_debt_and_full_cycle_commands_are_packaged():
+def test_single_skill_baseline_removed_command_assets_are_gone():
+    """SPEC-001: only `implement-review` survives in powerpack-core."""
     commands = PRESET / "commands"
-    for filename in (
+    assert sorted(p.name for p in commands.glob("*.md")) == ["speckit.implement-review.md"]
+    for gone in (
+        "speckit.implement.md",
+        "speckit.converge.md",
+        "speckit.checklist-converge.md",
         "speckit.full-cycle.md",
         "speckit.debt-create.md",
         "speckit.debt-list.md",
@@ -26,9 +32,13 @@ def test_debt_and_full_cycle_commands_are_packaged():
         "speckit.debt-start.md",
         "speckit.debt-close.md",
     ):
-        assert (commands / filename).is_file(), filename
-    assert (ASSETS / "runtime" / "powerpack_debt.py").is_file()
-    assert (ASSETS / "runtime" / "powerpack_full_cycle.py").is_file()
+        assert not (commands / gone).exists(), gone
+    assert not (ASSETS / "runtime" / "powerpack_debt.py").exists()
+    assert not (ASSETS / "runtime" / "powerpack_full_cycle.py").exists()
+    assert not (ASSETS / "config" / "default-full-cycle.json").exists()
+    assert not (ASSETS / "config" / "default-technical-debt.json").exists()
+    assert not (ASSETS / "policies").exists()
+    assert not (ASSETS / "templates").exists()
 
 
 def test_review_defaults_are_browserless_project_and_github():
@@ -99,6 +109,7 @@ def test_installed_metadata_uses_specify_powerpack_brand():
 
 def test_deep_review_protocol_and_validator_are_packaged():
     assert (ASSETS / "review" / "deep-review-protocol.md").is_file()
+    assert (ASSETS / "review" / "github-evidence-contract.md").is_file()
     assert (ASSETS / "runtime" / "powerpack_review_protocol.py").is_file()
     protocol = (ASSETS / "review" / "deep-review-protocol.md").read_text(encoding="utf-8")
     assert "exactly that same set of IDs" in protocol
@@ -108,36 +119,14 @@ def test_deep_review_protocol_and_validator_are_packaged():
     assert "ChatGPT Project Web" not in protocol
 
 
-def test_technical_debt_policy_forbids_review_escape_hatch():
-    debt = json.loads((ASSETS / "config" / "default-technical-debt.json").read_text(encoding="utf-8"))
-    policy = debt["creation_policy"]
-    assert policy["forbid_active_review_findings"] is True
-    assert policy["forbid_active_convergence_gaps"] is True
-    assert policy["forbid_blockers"] is True
-    assert policy["powerpack_policy_is_minimum_floor"] is True
-    assert debt["storage_format"] == "markdown-v1"
-    assert debt["template_path"] == ".specify/powerpack/technical-debt-template.md"
-
-
-def test_full_cycle_defaults_preserve_safety_invariants():
-    config = json.loads((ASSETS / "config" / "default-full-cycle.json").read_text(encoding="utf-8"))
-    assert config["schema_version"] == 2
-    assert config["behavior"]["same_spec_only"] is True
-    assert config["behavior"]["stop_on_blocked"] is True
-    assert config["behavior"]["allow_debt_escape_hatch"] is False
-    assert config["behavior"]["explicit_initial_implement_required"] is True
-    assert config["behavior"]["implement_review_owns_convergence"] is True
-    assert "converge" not in config["phases"]
-
-
 def test_implement_review_contract_routes_browserless_project_github_gate():
     text = (PRESET / "commands" / "speckit.implement-review.md").read_text(encoding="utf-8")
     assert "speckit-implement\n  -> speckit-implement-review" in text
     assert "speckit-converge" in text
     assert "gpt-5.6-sol/xhigh/read-only" in text
-    assert "browserless ChatGPT Project + GitHub review" in text
-    assert "[$github](app://<connector-id>)" in text
-    assert "codex_apps MCP" in text
+    assert "browserless ChatGPT Web Project + GitHub connector review" in text
+    assert "POST /backend-api/f/conversation (SSE)" in text
+    assert "JIT allow continuation" in text
     assert "specify-powerpack review run" in text
     assert "--pr <number-or-canonical-github-pr-url>" in text
     assert "local `HEAD == PR head SHA`" in text
@@ -147,7 +136,6 @@ def test_implement_review_contract_routes_browserless_project_github_gate():
 
 def test_installed_command_docs_reject_removed_browser_review_contracts():
     command_files = [
-        PRESET / "commands" / "speckit.full-cycle.md",
         ASSETS / "extensions" / "powerpack-tools" / "commands" / "doctor.md",
         ASSETS / "extensions" / "powerpack-tools" / "commands" / "update.md",
     ]
@@ -169,8 +157,7 @@ def test_installed_command_docs_reject_removed_browser_review_contracts():
 def test_model_routing_preserves_reviewer_profile():
     routing = json.loads((ASSETS / "config" / "default-model-routing.json").read_text(encoding="utf-8"))
     assert routing["schema_version"] == 2
-    assert routing["stages"]["full-cycle"] == "orchestration"
-    assert routing["stages"]["implement-review"] == "orchestration"
+    assert routing["stages"] == {"implement-review": "orchestration"}
     assert routing["integrations"]["codex"]["coding"] == "gpt-5.6-terra"
     assert routing["integrations"]["codex"]["reviewer"] == "gpt-5.6-sol"
     assert routing["effort"]["codex"]["reviewer"] == "xhigh"
@@ -179,3 +166,32 @@ def test_model_routing_preserves_reviewer_profile():
         "reasoning_effort": "xhigh",
         "sandbox": "read-only",
     }
+
+
+def test_devcontainer_homologation_assets_present_and_valid():
+    """The homologation devcontainer (T063): valid config + executable scripts,
+    with the credential mounts declared and nothing baked into an image layer."""
+    dc = ROOT / ".devcontainer"
+    config = json.loads((dc / "devcontainer.json").read_text(encoding="utf-8"))
+    mounts = " ".join(config.get("mounts", []))
+    for host in (".codex", ".claude", ".config/gh"):
+        assert host in mounts, f"expected a bind mount for ~/{host}"
+    assert config["postCreateCommand"] == "bash .devcontainer/postcreate.sh"
+    assert config["remoteEnv"]["SPECIFY_FEATURE"] == "001-single-skill-baseline"
+    # exec bit: ask git (the working-tree stat is unreliable on a Windows checkout)
+    staged = subprocess.run(
+        ["git", "ls-files", "-s", "--", ".devcontainer/homologate.sh", ".devcontainer/postcreate.sh"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+    modes = {line.split()[3].split("/")[-1]: line.split()[0] for line in staged.splitlines()}
+    for script in ("homologate.sh", "postcreate.sh"):
+        assert (dc / script).is_file(), script
+        assert modes.get(script) == "100755", f"{script} must be tracked mode 100755, got {modes.get(script)}"
+    homologate = (dc / "homologate.sh").read_text(encoding="utf-8")
+    assert "review run" in homologate and "--timeout" in homologate
+    assert "--effort" in homologate  # token-cost lever is exposed
+    assert "git worktree remove --force" in homologate  # cleanup on exit
+    assert 'ATTACHMENT_SOURCE="$WT/review-attachments"' in homologate
+    assert 'ATTACHMENT_TARGET="$EVID/review-attachments"' in homologate
+    assert 'cp -R "$ATTACHMENT_SOURCE/." "$ATTACHMENT_TARGET/"' in homologate
+    assert 'No S7 validation or task closure was performed.' in homologate

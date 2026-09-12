@@ -30,3 +30,26 @@ jobs:
       - name: Reject bytecode in wheel
         run: >-
           python -c "from pathlib import Path; import zipfile; wheel=next(Path('dist').glob('*.whl')); zf=zipfile.ZipFile(wheel); bad=[n for n in zf.namelist() if '__pycache__' in n or n.endswith('.pyc')]; assert not bad, bad"
+
+  installed-contract:
+    # FR-011 / FR-014 installed-side: the `@needs_specify` tests in
+    # test_baseline_contract.py run a real `specify preset add` composition.
+    # They skip in the matrix job (no Spec Kit CLI); this job provides it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: installed command-set contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package + Spec Kit CLI
+        run: |
+          python -m pip install -U pip pytest
+          python -m pip install -e .
+          python -m pip install "git+https://github.com/github/spec-kit.git@v1.0.4"
+      - name: Installed-composition contract tests (must not skip)
+        run: |
+          specify version
+          pytest -q tests/test_baseline_contract.py -rs \
+            -k "installed_powerpack_command_namespace or undispatchable_after_a_real_install"

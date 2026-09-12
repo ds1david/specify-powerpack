@@ -1,0 +1,57 @@
+# T025 — Round 6 review transport evidence
+
+## Context
+
+The implementation review used the configured ChatGPT Project and the dynamic
+GitHub connector for PR #15. The connector requested JIT authorization; the
+transport refreshed Sentinel credentials and the allow continuation returned
+HTTP 200. This confirms that authorization remains conditional: no allow is
+sent unless the SSE stream contains an explicit `confirm_action`.
+
+## Failure observed
+
+The review stream contained intermediate connector/tool JSON after the GitHub
+calls. The browserless review adapter selected that JSON as the final response.
+Snapshot validation then failed because the object had no `review_context` or
+`base_ref`:
+
+```text
+ReviewContextError: PR snapshot did not include base_ref.
+```
+
+This was a transport/result-selection failure, not a code-review finding.
+
+The next homologation showed the complementary SSE shape: the reviewer did
+produce the final JSON, but it was split across `o=patch` append operations and
+multiple `v` delta envelopes. Selecting only the last delta caused the adapter
+to see a truncated fragment and report that no JSON object was returned.
+
+After delta reconstruction was fixed, the reviewer returned a JSON object but
+omitted immutable snapshot fields such as `base_ref`. Snapshot validation
+correctly rejected that incomplete evidence. The runner now requests one
+evidence-completion continuation in the same segment; it remains blocked if
+the required PR identity cannot be proven.
+
+## Hardening implemented
+
+- SSE parsing retains candidate assistant text without allowing an earlier
+  tool payload to overwrite the eventual candidate.
+- JSON extraction now scans embedded/fenced JSON and accepts only an object
+  containing both `verdict` and `review_context`.
+- A tool/progress JSON object is rejected explicitly instead of being passed
+  to snapshot validation.
+- Connector continuation supports multiple explicit authorization gates,
+  refreshing Sentinel credentials for each allow and stopping immediately when
+  no `confirm_action` is present.
+- If an already-authorized connector stream ends at a tool boundary without a
+  final object, the client requests one bounded finalization continuation in
+  the same conversation segment, without replaying discovery or creating a
+  new review round.
+- Patch append operations and string delta envelopes are accumulated before
+  extracting the final review JSON.
+
+## Verification
+
+The new tests cover intermediate tool JSON selection and rejection of a
+non-review JSON response. The full test result and publication commit are
+recorded in the implementation-round comment on PR #15.

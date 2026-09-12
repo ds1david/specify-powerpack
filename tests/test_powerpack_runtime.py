@@ -16,21 +16,29 @@ def git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
 
 
-def repo(tmp_path: Path) -> tuple[Path, Path]:
+def commit(root: Path, message: str) -> None:
+    git(root, "add", "-A")
+    git(root, "commit", "-m", message)
+
+
+def repo(tmp_path: Path, feature_name: str = "001-demo") -> tuple[Path, Path]:
+    """A repo whose SPEC artifacts are committed AFTER a base commit, so the
+    SPEC-introduction commit `feature_base_commit` anchors on is distinct from
+    the repo root and the delta after it is well-defined."""
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init")
     git(root, "config", "user.email", "test@example.com")
     git(root, "config", "user.name", "Test")
     (root / ".specify").mkdir()
-    feature = root / "specs" / "001-demo"
+    (root / "README.md").write_text("hello\n")
+    commit(root, "base")  # pre-SPEC baseline
+    feature = root / "specs" / feature_name
     feature.mkdir(parents=True)
     (feature / "spec.md").write_text("# Spec\n")
     (feature / "plan.md").write_text("# Plan\n")
     (feature / "tasks.md").write_text("# Tasks\n")
-    (root / "README.md").write_text("hello\n")
-    git(root, "add", ".")
-    git(root, "commit", "-m", "init")
+    commit(root, f"spec {feature_name}: plan + tasks")
     return root, feature
 
 
@@ -56,29 +64,222 @@ def test_receipts_are_isolated_by_spec(tmp_path: Path):
     assert result["ok"] is False
 
 
-def test_implement_delta_ignores_preexisting_dirty_file(tmp_path: Path, monkeypatch):
-    root, feature = repo(tmp_path)
-    (root / "dirty.txt").write_text("before\n")
-    monkeypatch.chdir(root)
-    args = type("Args", (), {"feature_dir": str(feature)})()
-    assert rt.cmd_implement_begin(args) == 0
-    (feature / "tasks.md").write_text("# Tasks\nchanged\n")
-    assert rt.cmd_implement_end(args) == 0
-    changed = rt.latest_implement_files(root, feature)
-    assert "specs/001-demo/tasks.md" in changed
-    assert "dirty.txt" not in changed
+def _complete_tasks(feature: Path) -> None:
+    feature.joinpath("tasks.md").write_text("# Tasks\n\n- [X] T001 Do the thing in src/app.py\n")
 
 
-def test_implement_delta_detects_second_change_to_dirty_file(tmp_path: Path, monkeypatch):
+def test_implement_evidence_missing_tasks(tmp_path: Path):
     root, feature = repo(tmp_path)
-    path = root / "README.md"
-    path.write_text("dirty-before\n")
+    feature.joinpath("tasks.md").unlink()
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": False, "step": "implement-review", "reason": "MISSING_TASKS"}
+
+
+def test_implement_evidence_tasks_incomplete(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text("- [X] T001 done\n- [ ] T002 not done\n")
+    commit(root, "tasks: one still open")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1
+
+
+def test_implement_evidence_reads_task_checkboxes_from_head_not_working_tree(tmp_path: Path):
+    """Reviewer finding 1: checking the boxes only in the working tree, without
+    committing, must not satisfy the gate. Checkbox state comes from
+    `git show HEAD:<feature>/tasks.md`, matching the committed snapshot the
+    browserless review pins (`HEAD == PR head SHA`)."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text("- [ ] T001 build it in src/app.py\n")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement; tasks.md still unchecked in HEAD")
+    # working tree now claims completion; HEAD does not
+    feature.joinpath("tasks.md").write_text("- [X] T001 build it in src/app.py\n")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1
+
+
+def test_implement_evidence_no_implementation_delta(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    feature.joinpath("plan.md").write_text("# Plan\ndocs-only change\n")
+    commit(root, "docs only")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_ok_with_committed_code_delta(tmp_path: Path):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement SPEC-001")
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
+def test_implement_evidence_ignores_acceptance_tasks(tmp_path: Path):
+    """R001-002 (round 3): `[ACCEPTANCE]`-tagged tasks are post-review homologation
+    and must not gate the prerequisite that proves the implementation — otherwise
+    the SPEC's own HEAD can never pass its own gate (they can only be done after
+    `implement-review` runs)."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text(
+        "- [X] T001 build it in src/app.py\n"
+        "- [ ] T099 [ACCEPTANCE] live homologation round-trip — runs after implement-review\n"
+    )
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "implement SPEC-001; acceptance task still open by design")
+    result = rt.implement_evidence(root, feature)
+    assert result == {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
+def test_implement_evidence_still_blocks_on_unchecked_implementation_task(tmp_path: Path):
+    """The `[ACCEPTANCE]` exemption is narrow: a plain unchecked task still blocks."""
+    root, feature = repo(tmp_path)
+    feature.joinpath("tasks.md").write_text(
+        "- [X] T001 done\n"
+        "- [ ] T002 real implementation work, not tagged\n"
+        "- [ ] T099 [ACCEPTANCE] homologation\n"
+    )
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")
+    commit(root, "partial implementation")
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "TASKS_INCOMPLETE"
+    assert result["unchecked"] == 1  # T002 only; the [ACCEPTANCE] line is not counted
+    assert result["total"] == 2
+
+
+def test_implement_evidence_ignores_uncommitted_code(tmp_path: Path):
+    """A committed snapshot is required — `implement-review` reviews HEAD."""
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    commit(root, "check the tasks")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print('hi')\n")  # not committed
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_rejects_other_specs_code_delta(tmp_path: Path):
+    """Reviewer finding: SPEC-B must not be satisfied by SPEC-A's earlier code."""
+    root, feat_a = repo(tmp_path, "001-a")
+    (root / "src").mkdir()
+    (root / "src" / "foo.py").write_text("A = 1\n")  # implemented for SPEC-A
+    commit(root, "implement SPEC-001-a")
+    # SPEC-B enters the picture only now
+    feat_b = root / "specs" / "002-b"
+    feat_b.mkdir(parents=True)
+    (feat_b / "spec.md").write_text("# B\n")
+    (feat_b / "plan.md").write_text("# B plan\n")
+    (feat_b / "tasks.md").write_text("- [X] T001 do B in src/bar.py\n")
+    commit(root, "spec 002-b: plan + tasks")
+
+    # SPEC-A: its own committed code delta -> OK
+    _complete_tasks(feat_a)
+    commit(root, "check A tasks")
+    assert rt.implement_evidence(root, feat_a)["ok"] is True
+
+    # SPEC-B: no code committed since its baseline -> rejected
+    res_b = rt.implement_evidence(root, feat_b)
+    assert res_b["ok"] is False
+    assert res_b["reason"] == "NO_IMPLEMENTATION_DELTA"
+
+
+def test_implement_evidence_rejects_code_bundled_into_spec_introduction_commit(tmp_path: Path):
+    """Reviewer finding 2: a non-documentation change living in the very commit
+    that introduced plan.md/tasks.md is the planning baseline, not implementation
+    evidence. With no implementation commit after the SPEC was introduced, the
+    gate must reject — even though that commit does touch a `.py` file."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test")
+    (root / ".specify").mkdir()
+    (root / "README.md").write_text("hello\n")
+    commit(root, "base")
+    feature = root / "specs" / "002-b"
+    feature.mkdir(parents=True)
+    (feature / "spec.md").write_text("# B\n")
+    (feature / "plan.md").write_text("# B plan\n")
+    (feature / "tasks.md").write_text("- [X] T001 do B in src/unrelated.py\n")
+    (root / "src").mkdir()
+    (root / "src" / "unrelated.py").write_text("x = 1\n")
+    commit(root, "spec 002-b: plan + tasks + bundled unrelated code")
+    # no implementation commit after the SPEC was introduced -> HEAD is the anchor
+
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    # A contaminated introduction commit is not a valid planning baseline.
+    assert result["reason"] == "NO_SPEC_BASELINE"
+
+
+def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path: Path):
+    root, _ = repo(tmp_path)
+    feat = root / "specs" / "099-loose"
+    feat.mkdir(parents=True)
+    (feat / "tasks.md").write_text("- [X] T001 done\n")  # never committed
+    result = rt.implement_evidence(root, feat)
+    assert result["ok"] is False
+    assert result["reason"] == "NO_SPEC_BASELINE"
+
+
+def test_implement_evidence_blocks_without_git(tmp_path: Path):
+    # A project directory that is not inside a Git repository cannot prove a
+    # committed implementation snapshot and must fail closed.
+    root = tmp_path / "nogit"
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (root / ".specify").mkdir()
+    (feature / "spec.md").write_text("# Spec\n")
+    (feature / "plan.md").write_text("# Plan\n")
+    _complete_tasks(feature)
+    result = rt.implement_evidence(root, feature)
+    assert result["ok"] is False
+    assert result["reason"] == "GIT_UNAVAILABLE"
+
+
+def test_implement_evidence_rejects_contaminated_spec_anchor(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test")
+    (root / ".specify").mkdir()
+    (root / "README.md").write_text("base\n")
+    commit(root, "base")
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (feature / "plan.md").write_text("# Plan\n")
+    (feature / "tasks.md").write_text("- [X] T001 done\n")
+    (root / "src").mkdir()
+    (root / "src" / "bundled.py").write_text("x = 1\n")
+    commit(root, "spec artifacts and bundled implementation")
+    assert rt.feature_base_commit(root, feature) is None
+    assert rt.implement_evidence(root, feature)["reason"] == "NO_SPEC_BASELINE"
+
+
+def test_prereq_check_implement_review_uses_evidence(tmp_path: Path, monkeypatch, capsys):
+    root, feature = repo(tmp_path)
+    _complete_tasks(feature)
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("x = 1\n")
+    commit(root, "implement + complete tasks")
     monkeypatch.chdir(root)
-    args = type("Args", (), {"feature_dir": str(feature)})()
-    rt.cmd_implement_begin(args)
-    path.write_text("changed-during-implement\n")
-    rt.cmd_implement_end(args)
-    assert "README.md" in rt.latest_implement_files(root, feature)
+    args = type("Args", (), {"step": "implement-review", "feature_dir": str(feature)})()
+    assert rt.cmd_prereq_check(args) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True and out["reason"] == "OK"
 
 
 def test_documentation_only_gate_is_not_applicable(tmp_path: Path):

@@ -162,16 +162,75 @@ def _migrate_review_config(project: Path, *, reset: bool) -> None:
     write_json(path, default, overwrite=True)
 
 
+# Paths under `.specify/powerpack/` owned exclusively by commands removed in
+# SPEC-001 (technical-debt lifecycle + full-cycle). A fresh install never writes
+# them; `_prune_removed_command_state` removes them from an already-installed
+# project on every refresh so a normal `update` honours FR-003 / FR-012. This is
+# dead-file removal, not a compatibility migration shim.
+OBSOLETE_POWERPACK_PATHS = (
+    "bin/debt.py",
+    "bin/full_cycle.py",
+    "technical-debt-policy.md",
+    "technical-debt-template.md",
+    "technical-debt.json",
+    "full-cycle.json",
+)
+_SUPPORTED_STAGES = {"implement-review"}
+
+
+def _prune_removed_command_state(base: Path) -> None:
+    """Strip retired removed-command files and config keys from an existing
+    install (idempotent; no-ops on a fresh one). Runs unconditionally — a normal
+    `update` must not leave removed capabilities on disk (FR-003 / FR-012)."""
+    if not base.is_dir():
+        return
+    for relative in OBSOLETE_POWERPACK_PATHS:
+        (base / relative).unlink(missing_ok=True)
+
+    routing_path = base / "model-routing.json"
+    if routing_path.is_file():
+        try:
+            routing = json.loads(routing_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            routing = None
+        if isinstance(routing, dict):
+            changed = False
+            for key in ("stages", "stage_reasons"):
+                section = routing.get(key)
+                if isinstance(section, dict):
+                    pruned = {k: v for k, v in section.items() if k in _SUPPORTED_STAGES}
+                    if pruned != section:
+                        routing[key] = pruned
+                        changed = True
+            if changed:
+                write_json(routing_path, routing, overwrite=True)
+
+    prereq_path = base / "prerequisites.json"
+    if prereq_path.is_file():
+        try:
+            prereq = json.loads(prereq_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prereq = None
+        if isinstance(prereq, dict):
+            steps = prereq.get("steps")
+            if isinstance(steps, dict):
+                kept = {k: v for k, v in steps.items() if k in _SUPPORTED_STAGES}
+                kept["implement-review"] = [{"check": "implementation-evidence"}]
+                if kept != steps or int(prereq.get("schema_version", 0) or 0) < 2:
+                    prereq["steps"] = kept
+                    prereq["schema_version"] = max(2, int(prereq.get("schema_version", 0) or 0))
+                    write_json(prereq_path, prereq, overwrite=True)
+
+
 def install_support(project: Path, integration: str, *, reset_config: bool = False) -> None:
     base = project / ".specify" / "powerpack"
     bin_dir = base / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
+    _prune_removed_command_state(base)
     runtime_assets = {
         "runtime/powerpack_runtime.py": "powerpack.py",
         "runtime/powerpack_capabilities.py": "capabilities.py",
         "runtime/powerpack_review_protocol.py": "review_protocol.py",
-        "runtime/powerpack_debt.py": "debt.py",
-        "runtime/powerpack_full_cycle.py": "full_cycle.py",
     }
     for source_name, dest_name in runtime_assets.items():
         with asset(source_name) as source:
@@ -181,8 +240,8 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
                 dest.chmod(0o755)
     for source_name, dest_name in {
         "review/deep-review-protocol.md": "deep-review-protocol.md",
-        "policies/technical-debt.md": "technical-debt-policy.md",
-        "templates/technical-debt-backlog.md": "technical-debt-template.md",
+        "review/master-review-prompt.md": "master-review-prompt.md",
+        "review/github-evidence-contract.md": "github-evidence-contract.md",
     }.items():
         with asset(source_name) as source:
             shutil.copy2(source, base / dest_name)
@@ -192,17 +251,14 @@ def install_support(project: Path, integration: str, *, reset_config: bool = Fal
     write_json(base / "model-routing.json", routing, overwrite=reset_config)
     _migrate_review_config(project, reset=reset_config)
     for config, filename in (
-        ("config/default-technical-debt.json", "technical-debt.json"),
-        ("config/default-full-cycle.json", "full-cycle.json"),
         ("config/default-update.json", "update.json"),
     ):
         write_json(base / filename, read_asset_json(config), overwrite=reset_config)
     write_json(base / "prerequisites.json", {
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": "strict",
         "steps": {
-            "checklist-converge": [{"step": "checklist", "statuses": ["COMPLETED"]}],
-            "implement-review": [{"step": "implement", "statuses": ["COMPLETED"]}],
+            "implement-review": [{"check": "implementation-evidence"}],
         },
     }, overwrite=reset_config)
     write_json(base / "quality-gates.json", {
@@ -255,17 +311,35 @@ def _project_candidates() -> list[ChatGPTProject]:
     return projects
 
 
+def _project_id_from_selector(selector: str) -> str | None:
+    """Pull a `g-p-<id>` out of a bare id, an `id-with-slug`, or a full
+    `https://chatgpt.com/g/g-p-<id>-<slug>/project` URL."""
+    match = re.search(r"g-p-[0-9a-f]{16,}", selector.strip())
+    return match.group(0) if match else None
+
+
 def _select_project(projects: list[ChatGPTProject], selector: str | None, index: int | None) -> ChatGPTProject:
     if not projects:
         raise PowerPackError("No ChatGPT Projects were discovered for the Codex-authenticated account.")
     if selector:
-        exact = [item for item in projects if item.id == selector or item.name.casefold() == selector.casefold() or item.url == selector]
+        wanted_id = _project_id_from_selector(selector)
+        exact = [
+            item for item in projects
+            if item.id == selector
+            or (wanted_id and item.id == wanted_id)
+            or item.name.casefold() == selector.casefold()
+            or item.url == selector
+        ]
         if len(exact) == 1:
             return exact[0]
         partial = [item for item in projects if selector.casefold() in item.name.casefold()]
         if len(partial) == 1:
             return partial[0]
-        raise PowerPackError(f"Could not uniquely match ChatGPT Project: {selector}")
+        available = "; ".join(f"{item.name} ({item.id})" for item in projects) or "none"
+        raise PowerPackError(
+            f"Could not uniquely match ChatGPT Project: {selector!r}. Available: {available}. "
+            "Pass the exact id (the `g-p-…` value from `review project discover`)."
+        )
     if index is not None:
         if not (1 <= index <= len(projects)):
             raise PowerPackError("Project index is out of range.")
@@ -427,7 +501,7 @@ def cmd_review_setup(args: argparse.Namespace) -> None:
             "Project binding was saved, but the GitHub App is not ready for code review: " + str(exc)
         ) from exc
     print("GitHub App: READY" if github.ok else "GitHub App: NOT READY")
-    print("Transport: browserless Codex Apps MCP; no Chrome, CDP, Playwright or Web2API.")
+    print("Transport: ChatGPT Web SSE via Codex token + Sentinel; no Chrome, CDP, Playwright or Web2API.")
 
 
 def cmd_project_discover(args: argparse.Namespace) -> None:
@@ -476,6 +550,13 @@ def cmd_review_run(args: argparse.Namespace) -> None:
     project = Path(args.path).expanduser().resolve()
     previous = Path(args.previous).expanduser().resolve() if args.previous else None
     output = Path(args.output).expanduser().resolve() if args.output else None
+    verbose = not args.quiet
+    if verbose:
+        print(
+            f"Reviewing PR {args.pr} — this makes one Master Review turn (plus conditional connector continuation) "
+            "and can run for many minutes. Progress follows on stderr:",
+            file=sys.stderr, flush=True,
+        )
     try:
         result = run_browserless_code_review(
             project_path=project,
@@ -486,8 +567,12 @@ def cmd_review_run(args: argparse.Namespace) -> None:
             model=args.model,
             effort=args.effort,
             timeout=args.timeout,
-            max_project_conversations=args.max_conversations,
             locale=args.locale,
+            verbose=verbose,
+            ephemeral=not args.keep_session,
+            round_number=args.round_number,
+            attempt=args.attempt,
+            segment=args.segment,
         )
     except (BrowserlessReviewError, ChatGPTProjectError, GitHubConnectorDiscoveryError) as exc:
         raise PowerPackError(str(exc)) from exc
@@ -500,6 +585,7 @@ def cmd_review_run(args: argparse.Namespace) -> None:
         "project": {"id": result.project.project_id, "name": result.project.project_name},
         "snapshot_tools": list(result.snapshot_tools),
         "review_tools": list(result.github_tools),
+        "github_calls": result.github_call_count,
         "browser_used": False,
         "cdp_used": False,
         "playwright_used": False,
@@ -571,8 +657,17 @@ def build_parser() -> argparse.ArgumentParser:
     review_run.add_argument("--model", default="gpt-5.6-sol")
     review_run.add_argument("--effort", default="xhigh")
     review_run.add_argument("--timeout", type=int, default=600)
-    review_run.add_argument("--max-conversations", type=int, default=2)
     review_run.add_argument("--locale", default="pt-BR")
+    review_run.add_argument("--quiet", action="store_true", help="suppress the per-turn progress stream on stderr")
+    review_run.add_argument(
+        "--keep-session",
+        action="store_true",
+        help="do NOT pass codex exec --ephemeral: persist the turn to ~/.codex/sessions/ "
+        "(and the Codex web history). Against DECISIONS_AND_TRADEOFFS.md §8 — for audit-trail experiments.",
+    )
+    review_run.add_argument("--round-number", type=int)
+    review_run.add_argument("--attempt", type=int, default=1)
+    review_run.add_argument("--segment", type=int, default=1)
     review_run.set_defaults(func=cmd_review_run)
     return parser
 

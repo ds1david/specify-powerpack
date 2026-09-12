@@ -1,0 +1,17 @@
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-converge
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-implement
+/tmp/tmp.swTc3EEDSb/pp/.claude/skills/speckit-implement-review
+graphify
+speckit-analyze
+speckit-checklist
+speckit-clarify
+speckit-constitution
+speckit-converge
+speckit-implement
+speckit-implement-review
+speckit-plan
+speckit-powerpack-tools-doctor
+speckit-powerpack-tools-update
+speckit-specify
+speckit-tasks
+speckit-taskstoissues

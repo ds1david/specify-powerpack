@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "extensions": {
+    "powerpack-tools": {
+      "version": "0.1.0",
+      "source": "local",
+      "manifest_hash": "sha256:541130dea18329446f2b6a9de1959c9b2549051fef514aed72176fd1cc58bc9d",
+      "enabled": true,
+      "priority": 5,
+      "registered_commands": {
+        "claude": [
+          "speckit.powerpack-tools.doctor",
+          "speckit.powerpack-tools.update"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-09-11T05:00:31.011195+00:00"
+    }
+  }
+}

@@ -163,12 +163,206 @@ def git_head(root: Path) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def feature_rel(root: Path, feature: Path) -> str | None:
+    try:
+        return feature.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def feature_base_commit(root: Path, feature: Path) -> str | None:
+    """The commit that introduced this SPEC's planning artifacts.
+
+    Anchored on the first commit that added the SPEC's `plan.md` (written by
+    `/speckit-plan`, before any implementation), falling back to `tasks.md` then
+    the `specs/<feature>/` directory. The implementation delta is everything
+    committed **strictly after** this commit (`git diff <anchor>..HEAD`), so the
+    anchor commit's own tree is the planning baseline and never counts as
+    implementation evidence — even when that commit also carries unrelated
+    non-documentation changes (FR-018a). `None` when no anchor is committed yet
+    (the SPEC's artifacts must be committed before `implement-review`).
+    """
+    rel = feature_rel(root, feature)
+    if rel is None:
+        return None
+    for anchor in (f"{rel}/plan.md", f"{rel}/tasks.md", rel):
+        proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            continue
+        introduction = proc.stdout.strip().splitlines()[0]
+        changed = run(
+            ["git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", introduction],
+            root,
+        )
+        if changed.returncode != 0:
+            return None
+        paths = [path for path in changed.stdout.splitlines() if path]
+        # The anchor is the planning baseline. Reject it if implementation or
+        # unrelated files were bundled into that commit.
+        if not paths or any(
+            not path.startswith(f"{rel}/") or not is_documentation_only([path])
+            for path in paths
+        ):
+            return None
+        return introduction
+    return None
+
+
+def git_show(root: Path, spec: str) -> subprocess.CompletedProcess[str]:
+    """`git show <spec>` decoded as UTF-8.
+
+    A dedicated helper rather than `run()` because the shared helper leaves
+    `encoding` unset and would decode `tasks.md` (em-dashes, accented text) with
+    the locale codec — a `UnicodeDecodeError` on Windows CI runners.
+    """
+    return subprocess.run(
+        ["git", "show", spec],
+        cwd=str(root),
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def spec_implementation_delta(root: Path, feature: Path) -> tuple[str, list[str]]:
+    """('ok' | 'no_git' | 'no_baseline', non-documentation paths changed for THIS
+    SPEC's era).
+
+    Scoped to the active SPEC via `feature_base_commit`: only changes **committed
+    strictly after this SPEC's plan/tasks were introduced** count, so neither a
+    different SPEC's earlier code change on the same branch nor an unrelated
+    change bundled into the SPEC's own introduction commit is accepted as this
+    SPEC's implementation evidence. The working tree is deliberately not
+    consulted — `implement-review` reviews a committed snapshot (its browserless
+    gate requires `HEAD == PR head SHA`). `.specify/powerpack/` is excluded so
+    PowerPack's own state never counts.
+    """
+    if run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
+        return "no_git", []
+    base = feature_base_commit(root, feature)
+    if base is None:
+        return "no_baseline", []
+    diff = run(["git", "diff", "--name-only", "-z", base, "HEAD"], root)
+    if diff.returncode != 0:
+        return "no_baseline", []
+    paths = sorted(
+        p
+        for p in diff.stdout.split("\0")
+        if p and not p.startswith(".specify/powerpack/")
+    )
+    return "ok", paths
+
+
+ACCEPTANCE_TAG = re.compile(r"\[ACCEPTANCE\]", re.IGNORECASE)
+
+
+def count_task_checkboxes(text: str, *, skip_acceptance: bool = False) -> tuple[int, int]:
+    """Return (total, unchecked) GitHub task checkboxes in markdown text,
+    ignoring anything inside fenced code blocks.
+
+    With ``skip_acceptance`` set, checkbox lines carrying an ``[ACCEPTANCE]`` tag
+    are excluded — those are implementation-complete tasks that are *validated
+    after* `implement-review` runs (homologation), so they must not gate the
+    prerequisite that proves the implementation itself (FR-018a).
+    """
+    total = unchecked = 0
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = re.match(r"- \[([ xX])\]\s", stripped)
+        if match:
+            if skip_acceptance and ACCEPTANCE_TAG.search(stripped):
+                continue
+            total += 1
+            if match.group(1) == " ":
+                unchecked += 1
+    return total, unchecked
+
+
+def count_implementation_checkboxes(text: str) -> tuple[int, int]:
+    """(total, unchecked) task checkboxes that represent *implementation* work —
+    i.e. every checkbox except `[ACCEPTANCE]`-tagged post-review homologation."""
+    return count_task_checkboxes(text, skip_acceptance=True)
+
+
+def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
+    """Repository-evidence prerequisite for `implement-review` (replaces the
+    removed PowerPack `implement` completion receipt).
+
+    An explicit prior implementation **of the active SPEC** is proven by:
+    (1) the SPEC's committed `tasks.md` has every *implementation* task checkbox
+        `[X]` — `[ACCEPTANCE]`-tagged tasks are post-review homologation and are
+        excluded (`count_implementation_checkboxes`); and
+    (2) a non-documentation change committed strictly after this SPEC's
+        plan/tasks were introduced (`spec_implementation_delta`) — scoped to the
+        SPEC so neither another SPEC's earlier code change nor a change bundled
+        into this SPEC's introduction commit satisfies it.
+
+    Both are read from the committed snapshot at `HEAD`; the working tree is
+    never consulted (FR-018a — `implement-review` reviews `HEAD == PR head SHA`).
+    `tasks.md` *existence* is still checked in the working tree; only checkbox
+    state comes from `HEAD`. When Git or a committed HEAD is unavailable the
+    evaluator fails closed with `GIT_UNAVAILABLE`.
+    """
+    tasks = feature / "tasks.md"
+    if not tasks.is_file():
+        return {"ok": False, "step": "implement-review", "reason": "MISSING_TASKS"}
+
+    no_spec_baseline = {
+        "ok": False,
+        "step": "implement-review",
+        "reason": "NO_SPEC_BASELINE",
+        "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review",
+    }
+
+    if not shutil.which("git") or run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "GIT_UNAVAILABLE",
+            "detail": "a Git repository and committed HEAD are required to prove implementation evidence",
+        }
+
+    rel = feature_rel(root, feature)
+    blob = git_show(root, f"HEAD:{rel}/tasks.md") if rel else None
+    if blob is None or blob.returncode != 0:
+        return no_spec_baseline
+    total, unchecked = count_implementation_checkboxes(blob.stdout)
+
+    if total == 0 or unchecked > 0:
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "TASKS_INCOMPLETE",
+            "unchecked": unchecked,
+            "total": total,
+        }
+
+    status, changed = spec_implementation_delta(root, feature)
+    if status == "no_baseline":
+        return no_spec_baseline
+    if is_documentation_only(changed):
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "NO_IMPLEMENTATION_DELTA",
+            "detail": "no non-documentation change committed for this SPEC since its plan/tasks",
+        }
+    return {"ok": True, "step": "implement-review", "reason": "OK"}
+
+
 def intent_files(feature: Path, step: str) -> list[Path]:
     names = ["spec.md", "plan.md"]
-    if step in {"tasks", "analyze", "implement", "converge", "implement-review"}:
+    if step in {"tasks", "analyze", "implement-review"}:
         names.append("tasks.md")
     files = [feature / name for name in names if (feature / name).is_file()]
-    if step in {"checklist", "checklist-converge"}:
+    if step == "checklist":
         checklist_dir = feature / "checklists"
         if checklist_dir.is_dir():
             files.extend(sorted(checklist_dir.glob("*.md")))
@@ -186,7 +380,7 @@ def intent_fingerprint(feature: Path, step: str) -> str:
 def load_feature_state(root: Path, feature: Path) -> dict[str, Any]:
     return read_json(
         state_path(root, feature),
-        {"schema_version": 2, "feature": feature_id(root, feature), "steps": {}, "implement_runs": []},
+        {"schema_version": 2, "feature": feature_id(root, feature), "steps": {}},
     )
 
 
@@ -206,6 +400,10 @@ def checklist_artifact_evidence(feature: Path) -> bool:
 
 
 def cmd_state_mark(args: argparse.Namespace) -> int:
+    # Generic per-step receipt API, retained as reusable infrastructure (FR-013).
+    # It has no first-party command caller under the single-skill baseline; the
+    # `implement-review` prerequisite is now `implement_evidence` (repository
+    # evidence), not a receipt.
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
     if args.step == "checklist" and not checklist_artifact_evidence(feature):
@@ -271,10 +469,8 @@ def cmd_state_check(args: argparse.Namespace) -> int:
 
 
 def default_prerequisites() -> dict[str, list[dict[str, Any]]]:
-    return {
-        "checklist-converge": [{"step": "checklist", "statuses": ["COMPLETED"]}],
-        "implement-review": [{"step": "implement", "statuses": ["COMPLETED"]}],
-    }
+    # `implement-review` is handled by `implement_evidence`, not a receipt list.
+    return {}
 
 
 def cmd_prereq_check(args: argparse.Namespace) -> int:
@@ -285,6 +481,16 @@ def cmd_prereq_check(args: argparse.Namespace) -> int:
     if config.get("mode") in {"off", "disabled"}:
         print(json.dumps({"ok": True, "step": args.step, "mode": config.get("mode")}))
         return 0
+    if args.step == "implement-review":
+        # Repository-evidence gate. Any legacy
+        # {"step": "implement", "statuses": ["COMPLETED"]} entry in an existing
+        # prerequisites.json is intentionally ignored in favour of this check.
+        result = implement_evidence(root, feature)
+        result["feature"] = feature_id(root, feature)
+        if not result["ok"]:
+            result["next_action"] = "speckit-implement"
+        print(json.dumps(result))
+        return 0 if result["ok"] else 9
     requirements = config.get("steps", {}).get(args.step, default_prerequisites().get(args.step, []))
     results: list[dict[str, Any]] = []
     for req in requirements:
@@ -307,92 +513,6 @@ def cmd_prereq_check(args: argparse.Namespace) -> int:
             return 9
     print(json.dumps({"ok": True, "step": args.step, "feature": feature_id(root, feature), "requirements": results}))
     return 0
-
-
-def git_candidate_files(root: Path) -> list[str]:
-    proc = run(["git", "ls-files", "-co", "--exclude-standard", "-z"], root)
-    if proc.returncode != 0:
-        return []
-    return sorted({item for item in proc.stdout.split("\0") if item})
-
-
-def workspace_snapshot(root: Path) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for raw in git_candidate_files(root):
-        path = root / raw
-        if path.is_file() and not raw.startswith(".specify/powerpack/"):
-            try:
-                result[raw] = sha_file(path)
-            except OSError:
-                continue
-    return result
-
-
-def snapshot_delta(before: dict[str, str], after: dict[str, str]) -> list[str]:
-    paths = set(before) | set(after)
-    return sorted(path for path in paths if before.get(path) != after.get(path))
-
-
-def cmd_implement_begin(args: argparse.Namespace) -> int:
-    root = find_root()
-    feature = resolve_feature_dir(root, args.feature_dir)
-    data = load_feature_state(root, feature)
-    runs = data.setdefault("implement_runs", [])
-    if any(item.get("status") == "RUNNING" for item in runs):
-        print("BLOCKED: an implement run is already RUNNING for this SPEC.")
-        return 12
-    run_id = datetime.now(timezone.utc).strftime("impl-%Y%m%dT%H%M%S%fZ")
-    runs.append({
-        "run_id": run_id,
-        "status": "RUNNING",
-        "started_at": utc_now(),
-        "before": workspace_snapshot(root),
-        "git_head_before": git_head(root),
-    })
-    save_feature_state(root, feature, data)
-    print(json.dumps({"run_id": run_id, "feature": feature_id(root, feature), "status": "RUNNING"}))
-    return 0
-
-
-def cmd_implement_end(args: argparse.Namespace) -> int:
-    root = find_root()
-    feature = resolve_feature_dir(root, args.feature_dir)
-    data = load_feature_state(root, feature)
-    running = [item for item in data.get("implement_runs", []) if item.get("status") == "RUNNING"]
-    if not running:
-        print("BLOCKED: no RUNNING implement receipt exists for this SPEC.")
-        return 13
-    item = running[-1]
-    after = workspace_snapshot(root)
-    changed = snapshot_delta(item.get("before", {}), after)
-    item.update({
-        "status": "COMPLETED",
-        "completed_at": utc_now(),
-        "changed_files": changed,
-        "git_head_after": git_head(root),
-    })
-    item.pop("before", None)
-    data["steps"]["implement"] = {
-        "status": "COMPLETED",
-        "recorded_at": utc_now(),
-        "intent_sha256": intent_fingerprint(feature, "implement"),
-        "git_head": git_head(root),
-        "run_id": item["run_id"],
-        "changed_files": changed,
-    }
-    save_feature_state(root, feature, data)
-    print(json.dumps({
-        "run_id": item["run_id"],
-        "feature": feature_id(root, feature),
-        "status": "COMPLETED",
-        "changed_files": changed,
-    }, ensure_ascii=False))
-    return 0
-
-
-def latest_implement_files(root: Path, feature: Path) -> list[str]:
-    runs = [item for item in load_feature_state(root, feature).get("implement_runs", []) if item.get("status") == "COMPLETED"]
-    return list(runs[-1].get("changed_files", [])) if runs else []
 
 
 def is_documentation_only(paths: Iterable[str]) -> bool:
@@ -473,7 +593,7 @@ def gate_for_project(root: Path, files: list[str]) -> dict[str, Any]:
 def cmd_gate_detect(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, latest_implement_files(root, feature))
+    result = gate_for_project(root, spec_implementation_delta(root, feature)[1])
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["status"] != "BLOCKED_CONFIGURATION" else 7
 
@@ -481,7 +601,7 @@ def cmd_gate_detect(args: argparse.Namespace) -> int:
 def cmd_gate_run(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    result = gate_for_project(root, latest_implement_files(root, feature))
+    result = gate_for_project(root, spec_implementation_delta(root, feature)[1])
     print(json.dumps(result, ensure_ascii=False))
     if result["status"] == "NOT_APPLICABLE":
         return 0
@@ -570,7 +690,7 @@ def save_review_state(root: Path, feature: Path, data: dict[str, Any]) -> None:
 def cmd_review_start(args: argparse.Namespace) -> int:
     root = find_root()
     feature = resolve_feature_dir(root, args.feature_dir)
-    prereq = evaluate_receipt(root, feature, "implement", {"COMPLETED"}, require_current=False)
+    prereq = implement_evidence(root, feature)
     if not prereq["ok"]:
         print(json.dumps({"status": "BLOCKED", "reason": "missing-implement-predecessor", "detail": prereq}))
         return 9
@@ -913,11 +1033,6 @@ def build_parser() -> argparse.ArgumentParser:
     prereq = sub.add_parser("prereq")
     psub = prereq.add_subparsers(dest="prereq_command", required=True)
     p = psub.add_parser("check"); p.add_argument("--step", required=True); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_prereq_check)
-
-    implement = sub.add_parser("implement")
-    isub = implement.add_subparsers(dest="implement_command", required=True)
-    p = isub.add_parser("begin"); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_implement_begin)
-    p = isub.add_parser("end"); p.add_argument("--feature-dir"); p.set_defaults(func=cmd_implement_end)
 
     gate = sub.add_parser("gate")
     gsub = gate.add_subparsers(dest="gate_command", required=True)

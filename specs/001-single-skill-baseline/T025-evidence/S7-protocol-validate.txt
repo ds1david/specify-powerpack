@@ -1,0 +1,7 @@
+{
+  "valid": true,
+  "classification": "VALID",
+  "schema_version": "2.0",
+  "verdict": "CHANGES_REQUIRED",
+  "errors": []
+}

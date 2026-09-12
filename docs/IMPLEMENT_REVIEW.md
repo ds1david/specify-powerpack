@@ -14,7 +14,7 @@ implement receipt
       → approved current snapshot? COMPLETE
 ```
 
-All review findings are current-flow work. They cannot be converted into technical debt merely to make the workflow finish.
+All review findings are current-flow work. They cannot be deferred merely to make the workflow finish; they return to implementation until the same final snapshot is approved.
 
 ## Readiness
 
@@ -38,6 +38,8 @@ The local Git origin must be GitHub and must match the PR repository.
 
 Each round starts with a fresh GitHub-tool manifest containing base/head/merge-base and complete changed files. Specify PowerPack binds the active SPEC to that manifest and hashes the canonical snapshot.
 
+The judgment turn uses the versioned `.specify/powerpack/master-review-prompt.md` plus a generated Review Packet. The packet carries the immutable snapshot, Project context as supplemental data, protocol/master hashes and the authoritative checkpoint. Its lineage is `Review -> Round -> Attempt -> Conversation Segment`: a conversation rollover increments only the segment; a changed implementation snapshot starts a new round.
+
 If local `HEAD != PR head SHA`, the review stops. Any implementation change therefore invalidates previous approval automatically because the next run produces a different head/snapshot.
 
 ## Evidence inputs
@@ -47,13 +49,15 @@ The deep reviewer receives four distinct evidence classes:
 1. **immutable GitHub PR evidence** — authoritative current code/diff identity;
 2. **Spec Kit context** — authoritative current requirements;
 3. **ChatGPT Project context** — serialized historical/background memory;
-4. **previous review** — mandatory finding revalidation on round 2+.
+4. **previous review/checkpoint** — mandatory finding revalidation on round 2+; the checkpoint is lifecycle authority.
 
 Project memory never substitutes for current PR evidence.
 
 ## GitHub evidence rules
 
-The selected GitHub App is injected as an explicit `app://` Codex App mention. The resulting Codex JSONL must contain completed `codex_apps` MCP calls with tool results associated with GitHub.
+The dynamically discovered GitHub connector is injected into the ChatGPT Web payload as
+`plugin:connector_*` plus the `@Github` ecosystem mention. The resulting SSE must contain
+GitHub tool activity and, when requested, a successful JIT `allow` continuation.
 
 Forbidden evidence fallbacks:
 
@@ -62,6 +66,12 @@ Forbidden evidence fallbacks:
 - PR description alone;
 - CI status alone;
 - Project memory alone.
+
+## Master Prompt and Review Packet
+
+The runner never uses the homologation probe questions as a code-review task. The probe remains a separate live transport test. The review task explicitly asks the GitHub connector to inspect the exact PR, then return one consolidated structured result after all review fronts and the adversarial pass. Mission summaries, repository listings and standalone changed-file probes are not substitutes for code review.
+
+The generated packet is persisted beside the review result as `<review-stem>-packet.json` when an explicit output path is supplied.
 
 ## Deep Review Protocol
 
@@ -92,20 +102,12 @@ python .specify/powerpack/bin/review_protocol.py validate \
   --previous <previous-review.json>
 ```
 
-## Project-context proof
+## Project binding
 
-The review must return:
-
-```json
-{
-  "project_context_evidence": {
-    "project_name": "exact bound Project name",
-    "literal_evidence": "3 to 20 consecutive words from serialized Project context"
-  }
-}
-```
-
-Specify PowerPack verifies that the literal excerpt actually occurs in the serialized context and is not merely the Project name.
+The review runs as a `gizmo_interaction` in the configured ChatGPT Project.
+The Project supplies its own Web context; PowerPack sends only the binding
+identity in the review packet and does not serialize Project conversations into
+the prompt.
 
 ## Output
 
@@ -115,7 +117,8 @@ Default output path:
 .specify/powerpack/reviews/<spec>-pr<number>-<head-prefix>.json
 ```
 
-The CLI prints a machine-readable completion summary including verdict, snapshot and the GitHub tools observed. It explicitly reports browser/CDP/Playwright/Web2API usage as false.
+The CLI prints a machine-readable completion summary including verdict, snapshot and the
+resolved GitHub connector. It explicitly reports browser/CDP/Playwright/Web2API usage as false.
 
 ## Previous findings
 

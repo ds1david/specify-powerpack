@@ -1,0 +1,1 @@
+../../../.specify/extensions/powerpack-tools/.specify-dev/agent-commands/claude/speckit-powerpack-tools-doctor/SKILL.md

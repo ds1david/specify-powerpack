@@ -1,0 +1,16 @@
+== T025 offline evidence -> /home/david/workspace/specify-powerpack/specs/001-single-skill-baseline/T025-evidence ==
+PP=/tmp/tmp.swTc3EEDSb/pp  FEATURE=specs/001-single-skill-baseline  2026-09-11T17:27:05Z
+PASS  P1 bin/ = exactly the 3 preserved runtimes (capabilities.py powerpack.py review_protocol.py )
+PASS  P2 command set has implement-review and no removed command file
+PASS  P3 upstream speckit-implement + speckit-converge present
+PASS  S2 prerequisites.json = schema 2 / implementation-evidence / no checklist-converge / no receipt
+PASS  S2 prereq check returned a known deterministic reason (exit=0)
+PASS  S2 all four failure reasons reproduced
+PASS  S4 capabilities.py has no implement_runs / latest_implement_files
+PASS  S5 review route exited 0
+PASS  S5 model-routing stages == {implement-review}
+PASS  §4 installed .specify/powerpack has zero active removed-command references
+PASS  flow-survives-cleanup + baseline-contract suites green
+
+== offline evidence collection: PASS ==
+Next: run the live steps S1/S3/S6/S7 (runbook §4) and fill T025-evidence/RESULT.md.

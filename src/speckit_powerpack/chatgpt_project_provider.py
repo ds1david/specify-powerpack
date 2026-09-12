@@ -136,10 +136,10 @@ def _project_from_dict(item: dict[str, Any]) -> ChatGPTProject | None:
 
 
 class ChatGPTBackendClient:
-    """Account-scoped ChatGPT backend reader used for auth, Project context and connector discovery.
+    """Account-scoped reader for auth, Project context and connector discovery.
 
-    This class deliberately does not generate reviewer responses. Review generation
-    belongs to the Codex Apps runtime so GitHub MCP tool evidence is observable.
+    Review generation is implemented by the separate ChatGPT Web SSE transport;
+    this client remains the deterministic metadata/context boundary.
     """
 
     def __init__(self, auth_path: Path | None = None, *, timeout: int = 30):
@@ -161,6 +161,9 @@ class ChatGPTBackendClient:
         headers = self._headers()
         if raw_body is not None:
             headers["Content-Type"] = "application/json"
+        from .request_log import log_request
+
+        log_request(method, url, raw_body, headers)
         req = urllib.request.Request(url, data=raw_body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
@@ -255,7 +258,15 @@ class ChatGPTBackendClient:
                 full = self.get_conversation(conversation_id)
                 transcript = _conversation_transcript(full, max_chars=8_000)
             except ChatGPTProjectError as exc:
-                transcript = f"[conversation could not be loaded: {exc}]"
+                reason = str(exc)
+                if "conversation_inaccessible" in reason or "don" in reason and "have access" in reason:
+                    transcript = (
+                        "[transcript not readable by the authenticated account — the ChatGPT "
+                        "Project is shared but its conversation contents require the owner's "
+                        "session or a per-conversation share link. Title above is the only signal.]"
+                    )
+                else:
+                    transcript = f"[conversation could not be loaded: {exc}]"
             sections.append(f"\n### {title}\n{transcript}")
             if sum(len(part) for part in sections) >= max_chars:
                 break

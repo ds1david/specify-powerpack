@@ -1,0 +1,25 @@
+{
+  "name": "specify-powerpack homologation",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" }
+  },
+
+  "// credential mounts": "Opt-in. initializeCommand creates the host dirs first so the bind mounts never fail; empty dirs just mean 'not logged in yet'. Nothing is baked into an image layer. See .devcontainer/README.md.",
+  "initializeCommand": "mkdir -p \"${localEnv:HOME}/.codex\" \"${localEnv:HOME}/.claude\" \"${localEnv:HOME}/.config/gh\"",
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached"
+  ],
+
+  "remoteEnv": {
+    "SPECKIT_POWERPACK_EXECUTOR": "codex",
+    "SPECIFY_FEATURE": "001-single-skill-baseline",
+    "PATH": "${containerEnv:PATH}:/home/vscode/.codex/packages/standalone/current/bin:/home/vscode/.local/bin"
+  },
+
+  "postCreateCommand": "bash .devcontainer/postcreate.sh",
+  "remoteUser": "vscode"
+}

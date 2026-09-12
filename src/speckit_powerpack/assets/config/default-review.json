@@ -3,7 +3,17 @@
   "provider": "unconfigured",
   "review_backend": "codex-apps-github",
   "mode": "browserless",
-  "conversation_strategy": "ephemeral-per-phase",
+  "conversation_strategy": "one-message-with-structured-artifacts",
+  "master_prompt": {
+    "path": ".specify/powerpack/master-review-prompt.md",
+    "version": "1.2",
+    "sha256_required": true
+  },
+  "lineage": {
+    "shape": "Review -> Round -> Attempt -> Conversation Segment",
+    "conversation_rollover_increments_round": false,
+    "checkpoint_authoritative": true
+  },
   "deep_review": {
     "schema_version": "2.0",
     "protocol_path": ".specify/powerpack/deep-review-protocol.md",
