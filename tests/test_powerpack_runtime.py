@@ -220,10 +220,8 @@ def test_implement_evidence_rejects_code_bundled_into_spec_introduction_commit(t
 
     result = rt.implement_evidence(root, feature)
     assert result["ok"] is False
-    # anchor must be the introduction commit itself (delta strictly after it),
-    # not its parent — a parent anchor would surface src/unrelated.py and pass.
-    assert result["reason"] == "NO_IMPLEMENTATION_DELTA"
-    assert result["reason"] != "NO_SPEC_BASELINE"
+    # A contaminated introduction commit is not a valid planning baseline.
+    assert result["reason"] == "NO_SPEC_BASELINE"
 
 
 def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path: Path):
@@ -236,8 +234,9 @@ def test_implement_evidence_no_spec_baseline_when_artifacts_uncommitted(tmp_path
     assert result["reason"] == "NO_SPEC_BASELINE"
 
 
-def test_implement_evidence_degrades_without_git(tmp_path: Path):
-    # a project directory that is not inside any git repository
+def test_implement_evidence_blocks_without_git(tmp_path: Path):
+    # A project directory that is not inside a Git repository cannot prove a
+    # committed implementation snapshot and must fail closed.
     root = tmp_path / "nogit"
     feature = root / "specs" / "001-demo"
     feature.mkdir(parents=True)
@@ -246,8 +245,28 @@ def test_implement_evidence_degrades_without_git(tmp_path: Path):
     (feature / "plan.md").write_text("# Plan\n")
     _complete_tasks(feature)
     result = rt.implement_evidence(root, feature)
-    assert result["ok"] is True
-    assert result["git_unavailable"] is True
+    assert result["ok"] is False
+    assert result["reason"] == "GIT_UNAVAILABLE"
+
+
+def test_implement_evidence_rejects_contaminated_spec_anchor(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test")
+    (root / ".specify").mkdir()
+    (root / "README.md").write_text("base\n")
+    commit(root, "base")
+    feature = root / "specs" / "001-demo"
+    feature.mkdir(parents=True)
+    (feature / "plan.md").write_text("# Plan\n")
+    (feature / "tasks.md").write_text("- [X] T001 done\n")
+    (root / "src").mkdir()
+    (root / "src" / "bundled.py").write_text("x = 1\n")
+    commit(root, "spec artifacts and bundled implementation")
+    assert rt.feature_base_commit(root, feature) is None
+    assert rt.implement_evidence(root, feature)["reason"] == "NO_SPEC_BASELINE"
 
 
 def test_prereq_check_implement_review_uses_evidence(tmp_path: Path, monkeypatch, capsys):

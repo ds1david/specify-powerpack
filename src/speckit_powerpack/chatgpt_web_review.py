@@ -50,6 +50,13 @@ class ChatGPTWebReviewClient:
             transport.LAST_SCRIPT = script
             self.dpl = dpl
             self.script = script
+            # Keep browser signals stable across the initial turn and all
+            # continuations in this review session.
+            self.session_profile = transport.build_config(
+                transport.UA,
+                dpl=self.dpl,
+                script=self.script,
+            )
         except Exception as exc:
             raise ChatGPTWebReviewError(f"Could not initialize ChatGPT Web Sentinel: {exc}") from exc
 
@@ -74,10 +81,16 @@ class ChatGPTWebReviewClient:
     ) -> str:
         """Send one review turn, including dynamic Project and GitHub binding."""
         try:
+            if self.conversation_id:
+                self.transport.human_wait(
+                    minimum=self.transport.REVIEW_TURN_WAIT_MIN_SECONDS,
+                    maximum=self.transport.REVIEW_TURN_WAIT_MAX_SECONDS,
+                )
             config = self.transport.build_config(
                 self.transport.UA,
                 dpl=self.dpl,
                 script=self.script,
+                session_profile=self.session_profile,
             )
             requirements = self.transport.get_chat_requirements(self.session, config)
             reply = self.transport.send_prompt(
@@ -93,6 +106,7 @@ class ChatGPTWebReviewClient:
                 parent_message_id=self.parent_message_id,
                 thinking_effort=self._web_effort(effort),
                 attachments=attachments,
+                session_profile=self.session_profile,
             )
             self.last_tool_invocations = tuple(self.transport.LAST_TOOL_INVOCATIONS)
             self.last_authorization_required = bool(self.transport.LAST_AUTHORIZATION_REQUIRED)

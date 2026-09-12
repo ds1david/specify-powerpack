@@ -28,6 +28,7 @@ from speckit_powerpack.browserless_review import (
     ProjectBinding,
 )
 from speckit_powerpack.chatgpt_pow_probe import (
+    build_config,
     build_conversation_body,
     human_wait,
     upload_prompt_attachments,
@@ -171,6 +172,20 @@ def test_web_transport_payload_keeps_project_and_dynamic_connector_binding():
     assert metadata["system_hints"] == ["plugin:connector_dynamic"]
     assert metadata["selected_github_repos"] == ["owner/repo"]
     assert metadata["serialization_metadata"]["custom_symbol_offsets"][0]["id"] == "plugin:connector_dynamic"
+
+
+def test_web_session_profile_can_be_reused_without_randomizing_browser_signals():
+    profile = build_config("UA", dpl="dpl", script="script")
+
+    assert build_config("UA", dpl="dpl", script="script", session_profile=profile) == profile
+    assert build_config("UA", dpl="other", script="other", session_profile=profile) == profile
+
+
+def test_connector_allow_keeps_persistent_permission_choice():
+    # The low-level allow body is covered by the transport contract; this
+    # assertion protects the intended persistent JIT choice in the source.
+    source = Path("src/speckit_powerpack/chatgpt_pow_probe.py").read_text(encoding="utf-8")
+    assert '"remember_answer": True' in source
 
 
 def test_web_transport_payload_carries_structured_review_attachments():
@@ -590,6 +605,73 @@ def test_connector_allow_preserves_dynamic_github_binding():
     metadata = body["messages"][0]["metadata"]
     assert metadata["system_hints"] == ["plugin:connector_current"]
     assert metadata["selected_github_repos"] == ["owner/repo"]
+
+
+def test_connector_allow_retries_transient_permission_race_with_fresh_credentials(monkeypatch):
+    class Response:
+        def __init__(self, status_code):
+            self.status_code = status_code
+            self.text = "pending" if status_code >= 400 else ""
+
+        def iter_lines(self):
+            yield b'data: {"v":{"message":{"id":"assistant-allow","author":{"role":"assistant"},"content":{"parts":["{\\"verdict\\":\\"BLOCKED\\"}"]}}}}'
+            yield b'data: [DONE]'
+
+    class Session:
+        def __init__(self):
+            self.statuses = [409, 429, 200]
+            self.calls = 0
+
+        def post(self, url, **kwargs):
+            self.calls += 1
+            return Response(self.statuses.pop(0))
+
+    credentials = iter([
+        {"token": "first", "proof_token": "p1", "turnstile_token": "t1"},
+        {"token": "second", "proof_token": "p2", "turnstile_token": "t2"},
+        {"token": "third", "proof_token": "p3", "turnstile_token": "t3"},
+    ])
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.get_chat_requirements", lambda *_: next(credentials))
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.human_wait", lambda **_: 0.0)
+
+    session = Session()
+    text, _ = send_connector_allow(
+        session,
+        {"token": "provided"},
+        conversation_id="conversation",
+        parent_message_id="parent",
+        target_message_id="target",
+        project_id="g-p-project",
+        model="gpt-5-6-thinking",
+        account_id="account",
+    )
+
+    assert text
+    assert session.calls == 3
+
+
+def test_connector_allow_does_not_retry_definitive_authorization_denial(monkeypatch):
+    class Response:
+        status_code = 403
+        text = "forbidden"
+
+    class Session:
+        calls = 0
+
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            return Response()
+
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.get_chat_requirements", lambda *_: {
+        "token": "sentinel", "proof_token": "proof", "turnstile_token": "turnstile",
+    })
+    monkeypatch.setattr("speckit_powerpack.chatgpt_pow_probe.human_wait", lambda **_: 0.0)
+    with pytest.raises(RuntimeError, match="HTTP 403"):
+        send_connector_allow(
+            Session(), {"token": "sentinel"}, conversation_id="conversation",
+            parent_message_id="parent", target_message_id="target", project_id=None,
+            model="gpt-5-6-thinking", account_id="account",
+        )
 
 
 def test_review_prompt_binds_project_spec_snapshot_and_github_app():

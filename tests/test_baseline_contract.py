@@ -89,6 +89,17 @@ def test_preset_yml_references_no_other_command_file():
     assert files == {"commands/speckit.implement-review.md"}
 
 
+def test_single_skill_boundary_keeps_upstream_skills_out_of_powerpack_inventory():
+    """SPEC-001 removes PowerPack commands, not upstream Spec Kit skills."""
+    upstream = ROOT / ".agents" / "skills"
+    assert {path.name for path in upstream.glob("speckit-*") if path.is_dir()} >= {
+        "speckit-implement",
+        "speckit-converge",
+    }
+    powerpack_commands = PRESET_YML.parent / "commands"
+    assert {path.stem for path in powerpack_commands.glob("*.md")} == EXPECTED
+
+
 def test_installed_support_has_no_removed_command_assets(tmp_path: Path):
     (tmp_path / ".specify").mkdir()
     cli.install_support(tmp_path, "codex")

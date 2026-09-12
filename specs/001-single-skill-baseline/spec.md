@@ -343,11 +343,11 @@ the suite; the baseline contract test must fail.
   then proven by PR review over the committed evidence, not by this runtime gate. The
   working tree MUST NOT be consulted for checkbox state or the
   implementation delta (the browserless gate already pins `HEAD == PR head SHA`); it is
-  read only to confirm `tasks.md` exists, and — when git is unavailable — for the degraded
-  checkbox scan.
+  read only to confirm `tasks.md` exists. Git and a committed `HEAD` are mandatory; an
+  unavailable Git repository MUST fail closed with `GIT_UNAVAILABLE`.
   Failure reasons: `MISSING_TASKS`, `TASKS_INCOMPLETE`, `NO_SPEC_BASELINE` (the SPEC's own
-  artifacts are not committed yet), `NO_IMPLEMENTATION_DELTA`. Git unavailable ⇒ degrade to
-  tasks-only, flagged `git_unavailable`. Automated tests MUST encode the cross-SPEC
+  artifacts are not committed yet or its introduction commit is contaminated),
+  `NO_IMPLEMENTATION_DELTA`, `GIT_UNAVAILABLE`. Automated tests MUST encode the cross-SPEC
   rejection (SPEC-A code must not satisfy SPEC-B's gate) and the `[ACCEPTANCE]` exemption
   (an unchecked `[ACCEPTANCE]` task must not block; a plain unchecked task still does).
 - **FR-019**: `install.sh`, `install.py`, and `install.ps1` MUST each be validated to

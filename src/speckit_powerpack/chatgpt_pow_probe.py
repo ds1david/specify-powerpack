@@ -27,6 +27,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import random
 import re
 import sys
@@ -83,6 +84,9 @@ WIN_KEYS = [
 
 HUMAN_WAIT_MIN_SECONDS = 1.5
 HUMAN_WAIT_MAX_SECONDS = 4.0
+REVIEW_TURN_WAIT_MIN_SECONDS = float(os.environ.get("SPECKIT_POWERPACK_WEB_TURN_MIN_SECONDS", "3"))
+REVIEW_TURN_WAIT_MAX_SECONDS = float(os.environ.get("SPECKIT_POWERPACK_WEB_TURN_MAX_SECONDS", "8"))
+CONNECTOR_ALLOW_MAX_ATTEMPTS = 3
 
 
 def human_wait(*, minimum: float = HUMAN_WAIT_MIN_SECONDS, maximum: float = HUMAN_WAIT_MAX_SECONDS) -> float:
@@ -125,7 +129,16 @@ def _time_string() -> str:
     return now.strftime("%a %b %d %Y %H:%M:%S") + " GMT-0500 (Eastern Standard Time)"
 
 
-def build_config(user_agent: str, dpl: str = "", script: str = "") -> List[Any]:
+def build_config(
+    user_agent: str,
+    dpl: str = "",
+    script: str = "",
+    *,
+    session_profile: Optional[List[Any]] = None,
+) -> List[Any]:
+    """Build browser signals, reusing one profile when a Web session supplies it."""
+    if session_profile is not None:
+        return list(session_profile)
     return [
         random.choice(SCREEN_SIZES),
         _time_string(),
@@ -1138,12 +1151,13 @@ def send_connector_allow(
     github_repos: Optional[List[str]] = None,
     dpl: str = "",
     script: str = "",
+    session_profile: Optional[List[Any]] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """POST allow for JIT GitHub connector permission (HAR-accurate)."""
     # 2o turno precisa de sentinel fresco (403 se reutilizar token velho)
     try:
         print("[allow] renovando sentinel...")
-        cfg = build_config(UA, dpl=dpl, script=script)
+        cfg = build_config(UA, dpl=dpl, script=script, session_profile=session_profile)
         requirements = get_chat_requirements(session, cfg)
         print(f"[allow] sentinel ok token={requirements.get('token','')[:24]}...")
     except Exception as e:
@@ -1223,24 +1237,52 @@ def send_connector_allow(
         f"turnstile={'sim' if requirements.get('turnstile_token') else 'nao'}"
     )
     last_error = ""
+    transient_statuses = {409, 425, 429, 500, 502, 503, 504}
     # ChatGPT Web has used both conversation routes for JIT continuations.
-    # Retry the alternate route only when the first route is unavailable; the
-    # explicit server confirm_action remains the sole authorization trigger.
+    # Retry transient permission races with fresh credentials, then try the
+    # alternate route for endpoint compatibility. The explicit server
+    # confirm_action remains the sole authorization trigger.
+    credential_refresh_failed = False
     for path in ("/backend-api/f/conversation", "/backend-api/conversation"):
-        # Usar as mesmas chaves/headers do 1o turno (proof_token / turnstile_token)
-        headers = conversation_headers(path, requirements, account_id, conduit=None)
-        if project_id:
-            headers["Referer"] = f"{BASE}/g/{project_id}/c/{conversation_id}"
-        else:
-            headers["Referer"] = f"{BASE}/c/{conversation_id}"
+        for attempt in range(CONNECTOR_ALLOW_MAX_ATTEMPTS):
+            # The permission dialog can become enabled after the server emits
+            # confirm_action. Re-fetch Sentinel/JIT credentials before each
+            # transient retry so a delayed authorization is not paired with
+            # stale proof tokens.
+            if attempt:
+                try:
+                    human_wait(
+                        minimum=min(HUMAN_WAIT_MIN_SECONDS * (2 ** (attempt - 1)), HUMAN_WAIT_MAX_SECONDS),
+                        maximum=min(HUMAN_WAIT_MIN_SECONDS * (2 ** attempt), HUMAN_WAIT_MAX_SECONDS),
+                    )
+                    cfg = build_config(UA, dpl=dpl, script=script, session_profile=session_profile)
+                    requirements = get_chat_requirements(session, cfg)
+                except Exception as exc:
+                    last_error = f"allow credential refresh failed: {exc}"
+                    print(f"[allow] refresh falhou: {exc}", file=sys.stderr)
+                    credential_refresh_failed = True
+                    break
 
-        r = session.post(BASE + path, headers=headers, json=body, stream=True, timeout=180)
-        print(f"[allow] POST {path} HTTP {r.status_code}")
-        if r.status_code < 400:
-            return parse_sse_assistant(r)
-        body_txt = r.text[:800]
-        last_error = f"allow failed {path} HTTP {r.status_code}: {body_txt[:200]}"
-        print(f"[allow] error body: {body_txt}", file=sys.stderr)
+            # Usar as mesmas chaves/headers do 1o turno (proof_token / turnstile_token)
+            headers = conversation_headers(path, requirements, account_id, conduit=None)
+            if project_id:
+                headers["Referer"] = f"{BASE}/g/{project_id}/c/{conversation_id}"
+            else:
+                headers["Referer"] = f"{BASE}/c/{conversation_id}"
+
+            r = session.post(BASE + path, headers=headers, json=body, stream=True, timeout=180)
+            print(f"[allow] POST {path} HTTP {r.status_code} attempt={attempt + 1}/{CONNECTOR_ALLOW_MAX_ATTEMPTS}")
+            if r.status_code < 400:
+                return parse_sse_assistant(r)
+            body_txt = r.text[:800]
+            last_error = f"allow failed {path} HTTP {r.status_code}: {body_txt[:200]}"
+            print(f"[allow] error body: {body_txt}", file=sys.stderr)
+            if r.status_code in {401, 403}:
+                break
+            if r.status_code not in transient_statuses:
+                break
+        if credential_refresh_failed or (last_error and ("HTTP 401" in last_error or "HTTP 403" in last_error)):
+            break
     raise RuntimeError(last_error or "allow failed on all conversation endpoints")
 
 
@@ -1283,6 +1325,7 @@ def send_prompt(
     parent_message_id: str = "client-created-root",
     thinking_effort: Optional[str] = "extended",
     attachments: Optional[List[Dict[str, Any]]] = None,
+    session_profile: Optional[List[Any]] = None,
 ) -> str:
     global LAST_ALLOW_SENT, LAST_TOOL_INVOCATIONS
     LAST_ALLOW_SENT = False
@@ -1334,7 +1377,10 @@ def send_prompt(
         # Auto-allow only explicit JIT confirmations. A deep review can make
         # several connector calls; each continuation is conditional and gets
         # fresh Sentinel credentials.
-        for _ in range(8):
+        # Bound JIT permission attempts; repeated denials can worsen a
+        # connector/account restriction. Route fallback remains low-level and
+        # is only for endpoint compatibility.
+        for _ in range(3):
             pending = meta.get("pending_allow") or {}
             if not (
                 pending.get("target_message_id")
@@ -1343,6 +1389,10 @@ def send_prompt(
             ):
                 break
             try:
+                human_wait(
+                    minimum=REVIEW_TURN_WAIT_MIN_SECONDS,
+                    maximum=REVIEW_TURN_WAIT_MAX_SECONDS,
+                )
                 text2, meta = send_connector_allow(
                     session,
                     requirements,
@@ -1356,6 +1406,7 @@ def send_prompt(
                     github_repos=github_repos,
                     dpl=LAST_DPL,
                     script=LAST_SCRIPT,
+                    session_profile=session_profile,
                 )
                 LAST_ALLOW_SENT = True
                 all_tool_invocations.extend(name for name in LAST_TOOL_INVOCATIONS if name not in all_tool_invocations)

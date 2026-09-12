@@ -33,7 +33,7 @@ judged the requirement-quality criterion satisfied — it does NOT mean implemen
 
 - [x] CHK013 Is the replacement prerequisite mechanism named concretely (repository-evidence: `tasks.md` all `[X]` + non-doc implementation delta) rather than described only as "re-base onto upstream"? [Clarity, Spec §FR-018 / contracts/implement-review-prereq.md]
 - [x] CHK014 Are the pass/fail conditions of the re-based gate individually testable, each with a named failure reason (`MISSING_TASKS` / `TASKS_INCOMPLETE` / `NO_IMPLEMENTATION_DELTA`)? [Measurability, contracts/implement-review-prereq.md]
-- [x] CHK015 Is the offline / non-git behavior of the gate specified (degrade to tasks-only, annotate) so it does not hard-block CI? [Edge Case, contracts/implement-review-prereq.md]
+- [x] CHK015 Is the offline / non-git behavior of the gate specified (fail closed with `GIT_UNAVAILABLE` rather than approving unverifiable evidence)? [Edge Case, contracts/implement-review-prereq.md]
 - [x] CHK016 Is the original intent the gate protects ("`implement-review` never satisfies its own predecessor; a real prior implementation must exist") preserved in the new wording? [Consistency, Spec §FR-018 vs §User Story 2 / research.md §D1]
 - [x] CHK017 Are the `prerequisites.json` shape change and backward-compat handling of a legacy `{"step":"implement","statuses":["COMPLETED"]}` entry specified? [Completeness, contracts/implement-review-prereq.md §Config]
 - [x] CHK018 Is it explicit that the Phase 1 convergence loop must call upstream `speckit-converge` / `speckit-implement` (hyphenated) and never the removed dotted wraps? [Clarity, research.md §D2 / Spec §Assumptions]

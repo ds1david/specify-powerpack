@@ -80,8 +80,8 @@ grows).
 some boxes unchecked → `TASKS_INCOMPLETE` (report count); the SPEC's own `plan.md`/`tasks.md`
 not committed → `NO_SPEC_BASELINE`; boxes all checked but only docs (or nothing) committed
 since the SPEC base → `NO_IMPLEMENTATION_DELTA`; uncommitted code → invisible (commit first);
-not a git repo → degrade to tasks-only with `git_unavailable: true` (do not hard-block
-CI/offline).
+not a git repo → fail closed with `GIT_UNAVAILABLE`; an unverifiable committed snapshot
+must never be accepted by the prerequisite gate.
 
 ## D2 — Re-basing `implement-review` convergence (Phase 1 loop)
 

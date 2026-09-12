@@ -54,6 +54,17 @@ assert no_removed_command_assets_under(project / ".specify" / "powerpack")
 `speckit.full-cycle`, `speckit.implement.md`, `speckit.converge.md`,
 `speckit.checklist-converge.md`.
 
+## Surface boundary
+
+"Single skill" in SPEC-001 means exactly one **PowerPack-owned command** in the
+`powerpack-core` preset. It does not mean deleting or renaming upstream Spec Kit skills
+such as `speckit-plan`, `speckit-implement`, or `speckit-converge`; those are predecessor
+capabilities consumed by `implement-review`, not PowerPack registrations. The separate
+`powerpack-tools` extension is also an explicitly preserved infrastructure surface.
+Tests enumerate the PowerPack preset registration and materialized PowerPack command
+namespace, while checking that removed PowerPack names are neither materialized nor
+redirected. They do not count upstream skills as PowerPack commands.
+
 ## Out of scope for these assertions
 
 - `powerpack-tools` extension commands `speckit.powerpack-tools.doctor` /

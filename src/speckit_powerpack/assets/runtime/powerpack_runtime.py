@@ -189,7 +189,22 @@ def feature_base_commit(root: Path, feature: Path) -> str | None:
         proc = run(["git", "log", "--reverse", "--format=%H", "--", anchor], root)
         if proc.returncode != 0 or not proc.stdout.strip():
             continue
-        return proc.stdout.strip().splitlines()[0]
+        introduction = proc.stdout.strip().splitlines()[0]
+        changed = run(
+            ["git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", introduction],
+            root,
+        )
+        if changed.returncode != 0:
+            return None
+        paths = [path for path in changed.stdout.splitlines() if path]
+        # The anchor is the planning baseline. Reject it if implementation or
+        # unrelated files were bundled into that commit.
+        if not paths or any(
+            not path.startswith(f"{rel}/") or not is_documentation_only([path])
+            for path in paths
+        ):
+            return None
+        return introduction
     return None
 
 
@@ -292,8 +307,8 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
     Both are read from the committed snapshot at `HEAD`; the working tree is
     never consulted (FR-018a — `implement-review` reviews `HEAD == PR head SHA`).
     `tasks.md` *existence* is still checked in the working tree; only checkbox
-    *state* comes from `HEAD`. When git is unavailable only (1) is checked,
-    against the working tree (degraded, flagged `git_unavailable`).
+    state comes from `HEAD`. When Git or a committed HEAD is unavailable the
+    evaluator fails closed with `GIT_UNAVAILABLE`.
     """
     tasks = feature / "tasks.md"
     if not tasks.is_file():
@@ -306,17 +321,19 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
         "detail": "commit this SPEC's spec.md/plan.md/tasks.md before implement-review",
     }
 
-    git_available = run(["git", "rev-parse", "--git-dir"], root).returncode == 0
-    if git_available:
-        rel = feature_rel(root, feature)
-        blob = git_show(root, f"HEAD:{rel}/tasks.md") if rel else None
-        if blob is None or blob.returncode != 0:
-            return no_spec_baseline
-        total, unchecked = count_implementation_checkboxes(blob.stdout)
-    else:
-        total, unchecked = count_implementation_checkboxes(
-            tasks.read_text(encoding="utf-8", errors="replace")
-        )
+    if not shutil.which("git") or run(["git", "rev-parse", "--git-dir"], root).returncode != 0:
+        return {
+            "ok": False,
+            "step": "implement-review",
+            "reason": "GIT_UNAVAILABLE",
+            "detail": "a Git repository and committed HEAD are required to prove implementation evidence",
+        }
+
+    rel = feature_rel(root, feature)
+    blob = git_show(root, f"HEAD:{rel}/tasks.md") if rel else None
+    if blob is None or blob.returncode != 0:
+        return no_spec_baseline
+    total, unchecked = count_implementation_checkboxes(blob.stdout)
 
     if total == 0 or unchecked > 0:
         return {
@@ -325,14 +342,6 @@ def implement_evidence(root: Path, feature: Path) -> dict[str, Any]:
             "reason": "TASKS_INCOMPLETE",
             "unchecked": unchecked,
             "total": total,
-        }
-
-    if not git_available:
-        return {
-            "ok": True,
-            "step": "implement-review",
-            "reason": "OK",
-            "git_unavailable": True,
         }
 
     status, changed = spec_implementation_delta(root, feature)

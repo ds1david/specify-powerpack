@@ -68,11 +68,11 @@ derived live.
 | `spec_base` | `feature_base_commit(root, feature)` — the commit that added the SPEC's `plan.md`/`tasks.md`/dir (the anchor itself, not its parent) | resolvable (SPEC artifacts are committed) |
 | `spec_implementation_delta` | `git diff <spec_base>..HEAD` (**strictly after** `spec_base`), minus `.specify/powerpack/`, vs `is_documentation_only()` | ≥1 non-doc file **committed strictly after the SPEC's plan/tasks**; working tree not consulted |
 | checkbox state | `git show HEAD:<feature>/tasks.md`, parsed outside code fences, `[ACCEPTANCE]` lines skipped (working tree used only when git is unavailable) | all **implementation** task checkboxes `[X]` in the committed blob |
-| `git_available` | `git rev-parse --git-dir` succeeds | if false → evaluate `tasks_*` only, annotate `git_unavailable: true` |
+| `git_available` | `git rev-parse --git-dir` succeeds | if false → fail closed with `GIT_UNAVAILABLE` |
 
 **Output (JSON, stdout):** `{"ok": bool, "step": "implement-review", "feature": "<id>",
 "reason": "<OK|MISSING_TASKS|TASKS_INCOMPLETE|NO_SPEC_BASELINE|NO_IMPLEMENTATION_DELTA>",
-"unchecked": <int?>, "total": <int?>, "detail": <str?>, "git_unavailable": <bool?>}`. Exit
+"unchecked": <int?>, "total": <int?>, "detail": <str?>}`. Exit
 `0` when `ok`, else `9` with `next_action: "speckit-implement"`.
 
 **Cross-SPEC rejection (FR-018a).** Because the delta is `<spec_base>..HEAD`, a SPEC whose
