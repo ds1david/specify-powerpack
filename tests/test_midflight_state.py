@@ -18,13 +18,13 @@ def test_manual_through_analyze_adopts_at_post_tasks(tmp_path):
     git(tmp_path, "config", "user.name", "Test")
     feature = tmp_path / "specs/soak/003-soak-qualification"
     feature.mkdir(parents=True)
-    (feature / "spec.md").write_text("# spec\\nFR-001 ok\\n")
-    (feature / "plan.md").write_text("# plan\\n")
-    (feature / "tasks.md").write_text("- [ ] T001 Implement\\n- [ ] T002 Verify\\n")
+    (feature / "spec.md").write_text("# spec\nFR-001 ok\n")
+    (feature / "plan.md").write_text("# plan\n")
+    (feature / "tasks.md").write_text("- [ ] T001 Implement\n- [ ] T002 Verify\n")
     checks = feature / "checklists"
     checks.mkdir()
-    (checks / "requirements.md").write_text("- [x] clear\\n")
-    (checks / "qualification.md").write_text("- [ ] one\\n- [ ] two\\n")
+    (checks / "requirements.md").write_text("- [x] clear\n")
+    (checks / "qualification.md").write_text("- [ ] one\n- [ ] two\n")
     marker = tmp_path / ".specify"
     marker.mkdir()
     (marker / "feature.json").write_text(json.dumps({"feature_directory": "specs/soak/003-soak-qualification"}))
@@ -47,9 +47,9 @@ def test_all_tasks_checked_requires_converge_recheck(tmp_path):
     git(tmp_path, "config", "user.name", "Test")
     feature = tmp_path / "specs/001-feature"
     feature.mkdir(parents=True)
-    (feature / "spec.md").write_text("# spec\\n")
-    (feature / "plan.md").write_text("# plan\\n")
-    (feature / "tasks.md").write_text("- [x] T001 Done\\n")
+    (feature / "spec.md").write_text("# spec\n")
+    (feature / "plan.md").write_text("# plan\n")
+    (feature / "tasks.md").write_text("- [x] T001 Done\n")
     marker = tmp_path / ".specify"
     marker.mkdir()
     (marker / "feature.json").write_text(json.dumps({"feature_directory": "specs/001-feature"}))
