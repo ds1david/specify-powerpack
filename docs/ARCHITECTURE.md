@@ -1,19 +1,42 @@
-# Architecture
+# PowerPack architecture
 
-PowerPack composes Spec Kit rather than replacing its SDD semantics.
+PowerPack is composed from Spec Kit primitives and keeps the public surface intentionally small.
 
-Public command: speckit.powerpack.deliver
-Workflow: powerpack-delivery
-Structured workflow step: powerpack-control
+## Public commands
 
-The workflow owns orchestration. The custom step owns facts that need machine-readable output: adoption state, checklist counts, task fingerprints and independent-review results.
+- `speckit.powerpack.deliver` launches the resumable delivery workflow.
+- `speckit.powerpack.doctor` diagnoses installation/runtime/review readiness without entering the workflow.
 
-The active lifecycle calls upstream commands directly:
+Both commands use Spec Kit command frontmatter with `sh`, `ps` and `py` script variants. The selected runtime comes from the initialized Spec Kit project.
 
-specify -> clarify -> plan -> [checklist] -> tasks -> checklist-converge -> analyze -> implement <-> converge -> review
+## Installed components
 
-Analyze remains advisory. PowerPack does not interpret analysis prose as a machine route back to an owning phase.
+```text
+powerpack extension
+├── deliver command
+├── doctor command
+└── runtime launchers
 
-Converge remains authoritative for implementation reconciliation. PowerPack compares the byte hash of tasks.md before and after converge. Changed tasks mean implementation must run again.
+powerpack-delivery workflow
+└── powerpack-control custom step
+    ├── adoption/state inspection
+    ├── checklist status
+    ├── tasks fingerprinting
+    └── independent review
+```
 
-The complete pre-rewrite repository is stored under backup/ for historical reference only. Active extension, workflow and step code never imports, loads, executes or resolves state/templates from it.
+The custom workflow step is distributed through `catalogs/step-catalog.json` because current Spec Kit installs third-party workflow steps through step catalogs.
+
+## Doctor isolation
+
+Doctor is deliberately implemented inside the extension rather than the `powerpack-control` step. It must remain usable when the workflow or custom step is missing, stale, or corrupted. It is read-only and may inspect installation metadata, Git, Codex authentication, GitHub App availability and active feature artifacts.
+
+## Delivery and review convergence
+
+Delivery composes upstream Spec Kit phases rather than replacing them. Checklist convergence precedes implementation; implementation convergence uses `speckit.converge` and task fingerprints; independent review is bound to an exact pushed PR HEAD.
+
+Every valid review finding is mandatory current-delivery work, including low-severity suggestions and documentation findings. Remediation keeps implementation/tests, project documentation and active SPEC artifacts synchronized before re-convergence and re-review.
+
+## Archive boundary
+
+The active runtime under `extensions/`, `workflows/` and `steps/` must not reference `backup/`. The archive exists only as historical source material.

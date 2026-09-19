@@ -20,4 +20,6 @@ Mandatory fronts:
 
 NOT_APPLICABLE requires evidence. Do not stop at the first blocker. Inspect every changed file, complete every front, and perform a second systematic pass.
 
+A finding still requires concrete current evidence and a current authority reference. Do not invent speculative backlog work. However, do not suppress an evidence-backed current issue because its severity is low or because it would normally be described as a suggestion, nit, hardening item or documentation improvement. Under PowerPack every emitted finding is mandatory current-delivery work and therefore prevents APPROVED until remediated.
+
 APPROVED requires zero findings, complete changed-file and requirement coverage, no material context gaps, mandatory-front completion, and a survived adversarial verdict challenge.

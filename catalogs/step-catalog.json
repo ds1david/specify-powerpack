@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-09-18T00:00:00Z",
+  "catalog_url": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/catalogs/step-catalog.json",
+  "steps": {
+    "powerpack-control": {
+      "id": "powerpack-control",
+      "name": "PowerPack Control",
+      "description": "Structured PowerPack adoption, checklist/task fingerprinting and independent review control.",
+      "author": "David Oliveira",
+      "version": "0.3.0",
+      "url": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/steps/powerpack-control/step.yml",
+      "init_url": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/steps/powerpack-control/__init__.py",
+      "extra_files": {
+        "state.py": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/steps/powerpack-control/state.py",
+        "review.py": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/steps/powerpack-control/review.py",
+        "deep-review-protocol.md": "https://raw.githubusercontent.com/ds1david/specify-powerpack/main/steps/powerpack-control/deep-review-protocol.md"
+      }
+    }
+  }
+}

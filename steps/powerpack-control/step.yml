@@ -2,5 +2,5 @@ schema_version: "1.0"
 step:
   type_key: "powerpack-control"
   name: "PowerPack Control"
-  version: "0.2.0"
+  version: "0.3.0"
   description: "Structured adoption, checklist/task fingerprinting and independent review control."

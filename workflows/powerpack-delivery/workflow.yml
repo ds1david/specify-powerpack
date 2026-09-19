@@ -2,7 +2,7 @@ schema_version: "1.0"
 workflow:
   id: "powerpack-delivery"
   name: "Specify PowerPack Delivery"
-  version: "0.2.0"
+  version: "0.3.0"
   author: "David Oliveira"
   description: "Start or adopt a Spec Kit feature and automate the remaining delivery lifecycle through independent review."
 
@@ -170,10 +170,16 @@ steps:
             timeout: 1800
             prompt: |
               Read .specify/powerpack/delivery/reviews/current.json and remediate
-              every current finding. Findings are mandatory current-delivery work.
-              Do not defer them to backlog, TODOs, technical debt, or future scope.
-              Preserve active SPEC intent and strengthen tests where required.
-              Do not edit the review result file.
+              every current finding. Every finding is mandatory current-delivery
+              work regardless of severity, category, or wording, including
+              suggestions, nits, warnings, hardening, and documentation findings.
+              Do not defer any finding to backlog, TODOs, technical debt, or a
+              future SPEC. Implement the required code/configuration/test change as
+              applicable, update project documentation and active SPEC artifacts
+              for the affected behavior/contracts/requirements/acceptance criteria,
+              and keep them synchronized with the implemented result.
+              Preserve active SPEC intent unless the finding proves the SPEC itself
+              needs correction or clarification. Do not edit the review result file.
 
       - id: implement-pending
         type: if
@@ -239,9 +245,15 @@ steps:
                 timeout: 1800
                 prompt: |
                   Read .specify/powerpack/delivery/reviews/current.json.
-                  Fix every finding as mandatory work. Do not defer findings to
-                  backlog, TODOs, technical debt, or later SPECs. Strengthen tests
-                  as required. Do not edit the review result file.
+                  Fix every finding as mandatory work. Every finding is mandatory
+                  regardless of severity, category, or wording, including
+                  suggestions, nits, warnings, hardening, and documentation
+                  findings. Do not defer findings to backlog, TODOs, technical
+                  debt, or later SPECs. Implement the required code/configuration
+                  and tests as applicable. Update project documentation and active
+                  SPEC artifacts for every affected behavior, contract,
+                  requirement, acceptance criterion, invariant, or task before
+                  re-convergence. Do not edit the review result file.
               - id: review-reconvergence
                 type: do-while
                 condition: "{{ steps.review-tasks-after.output.sha256 != steps.review-tasks-before.output.sha256 }}"

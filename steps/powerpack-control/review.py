@@ -79,7 +79,7 @@ def _request(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
             "ChatGPT-Account-ID": account,
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "specify-powerpack/0.2",
+            "User-Agent": "specify-powerpack/0.3",
         },
     )
     try:
@@ -165,8 +165,12 @@ Required procedure:
 7. Adversarially challenge the tentative verdict.
 8. Return one JSON object only.
 
-A blocking finding requires a current authority_ref. Generic best practice,
-preference or hypothetical future capability is insufficient.
+A finding requires a current authority_ref. Generic best practice, preference,
+or hypothetical future capability is insufficient. Do not invent backlog work.
+However, do not suppress a current evidence-backed issue because its severity is
+low or because it would normally be called a suggestion, nit, hardening item, or
+documentation improvement. Under PowerPack every emitted finding is mandatory
+current-delivery work and therefore requires CHANGES_REQUIRED until remediated.
 
 Every finding must include id, authority_ref, severity, category, title, file,
 evidence, failure_scenario, actual_behavior, required_behavior, behavioral_impact,
