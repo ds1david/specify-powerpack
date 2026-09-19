@@ -141,10 +141,10 @@ def _feature_dir(project: Path, target: str) -> tuple[Path | None, str]:
 
 
 _TASK_PLAN_TASK_RE = re.compile(
-    r"^\\s*-\\s*\\[(?P<mark>[ xX])\\]\\s+(?P<id>T\\d{3,})\\s+(?P<rest>.+?)\\s*$"
+    r"^\s*-\s*\[(?P<mark>[ xX])\]\s+(?P<id>T\d{3,})\s+(?P<rest>.+?)\s*$"
 )
 _TASK_PLAN_PHASE_RE = re.compile(
-    r"^##\\s+Phase\\s+(?P<number>\\d+)\\s*:\\s*(?P<name>.+?)\\s*$",
+    r"^##\s+Phase\s+(?P<number>\d+)\s*:\s*(?P<name>.+?)\s*$",
     re.IGNORECASE,
 )
 
