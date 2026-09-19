@@ -1,0 +1,23 @@
+schema_version: "1.0"
+bundle:
+  id: "powerpack-delivery"
+  name: "Specify PowerPack Delivery"
+  version: "0.2.0"
+  role: "feature-delivery"
+  description: "PowerPack extension, control step and delivery workflow."
+  author: "David Oliveira"
+  license: "MIT"
+requires:
+  speckit_version: ">=1.0.0"
+  tools: ["git", "codex"]
+  mcp: ["github"]
+provides:
+  extensions:
+    - id: "powerpack"
+      version: "0.2.0"
+  steps:
+    - id: "powerpack-control"
+  workflows:
+    - id: "powerpack-delivery"
+      version: "0.2.0"
+tags: ["powerpack", "delivery", "sdd", "review", "adoption"]

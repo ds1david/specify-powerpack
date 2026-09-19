@@ -1,0 +1,292 @@
+schema_version: "1.0"
+workflow:
+  id: "powerpack-delivery"
+  name: "Specify PowerPack Delivery"
+  version: "0.2.0"
+  author: "David Oliveira"
+  description: "Start or adopt a Spec Kit feature and automate the remaining delivery lifecycle through independent review."
+
+requires:
+  speckit_version: ">=1.0.0"
+  integrations:
+    any: ["claude", "codex", "copilot", "gemini", "opencode"]
+
+inputs:
+  target:
+    type: string
+    required: true
+    prompt: "Existing SPEC id/label, or the description for a new feature"
+  integration:
+    type: string
+    default: "auto"
+    prompt: "Implementation integration; auto uses the project's initialized integration"
+  script_runtime:
+    type: string
+    required: true
+    enum: ["sh", "ps", "py"]
+  run_clarify:
+    type: boolean
+    default: true
+  generate_checklist:
+    type: boolean
+    default: false
+  review_model:
+    type: string
+    default: ""
+  review_effort:
+    type: string
+    default: "high"
+
+steps:
+  - id: adopt
+    type: powerpack-control
+    action: inspect
+    target: "{{ inputs.target }}"
+
+  - id: already-delivered
+    type: if
+    condition: "{{ steps.adopt.output.state == 'DELIVERED' }}"
+    then:
+      - id: report-already-delivered
+        type: prompt
+        integration: "{{ inputs.integration }}"
+        prompt: |
+          This SPEC already has an APPROVED PowerPack review bound to the current
+          full Git HEAD. Report that delivery is already complete. Do not modify
+          code, artifacts, review state, or Git.
+
+  - id: continue-delivery
+    type: if
+    condition: "{{ steps.adopt.output.state != 'DELIVERED' }}"
+    then:
+      - id: specify-if-needed
+        type: if
+        condition: "{{ steps.adopt.output.has_spec == false }}"
+        then:
+          - id: specify
+            command: speckit.specify
+            integration: "{{ inputs.integration }}"
+            input:
+              args: "{{ inputs.target }}"
+
+      - id: clarify-plan-if-needed
+        type: if
+        condition: "{{ steps.adopt.output.has_plan == false }}"
+        then:
+          - id: clarify-if-enabled
+            type: if
+            condition: "{{ inputs.run_clarify == true }}"
+            then:
+              - id: clarify
+                command: speckit.clarify
+                integration: "{{ inputs.integration }}"
+          - id: plan
+            command: speckit.plan
+            integration: "{{ inputs.integration }}"
+
+      - id: checklist-if-requested
+        type: if
+        condition: "{{ steps.adopt.output.has_tasks == false and inputs.generate_checklist == true }}"
+        then:
+          - id: checklist
+            command: speckit.checklist
+            integration: "{{ inputs.integration }}"
+
+      - id: tasks-if-needed
+        type: if
+        condition: "{{ steps.adopt.output.has_tasks == false }}"
+        then:
+          - id: tasks
+            command: speckit.tasks
+            integration: "{{ inputs.integration }}"
+
+      - id: refresh
+        type: powerpack-control
+        action: inspect
+        target: ""
+
+      - id: checklist-convergence
+        type: do-while
+        condition: "{{ steps.checklist-status-after.output.unchecked > 0 }}"
+        max_iterations: 4
+        steps:
+          - id: checklist-status-before
+            type: powerpack-control
+            action: checklist
+            target: "{{ steps.refresh.output.spec_id }}"
+          - id: converge-checklists-if-needed
+            type: if
+            condition: "{{ steps.checklist-status-before.output.unchecked > 0 }}"
+            then:
+              - id: checklist-converge
+                type: prompt
+                integration: "{{ inputs.integration }}"
+                timeout: 1800
+                prompt: |
+                  Converge every existing reviewer-owned checklist for the active
+                  Spec Kit feature before implementation.
+
+                  Resolve the feature through .specify/feature.json and inspect
+                  every Markdown file under that feature's checklists directory.
+
+                  For each unchecked criterion:
+                  1. Evaluate it against the authoritative SPEC, clarifications,
+                     plan, contracts, data model and tasks.
+                  2. If satisfied, mark only that item [x] and preserve wording.
+                  3. If unsatisfied, repair the owning upstream artifact at source.
+                  4. Re-evaluate and mark [x] only after evidence satisfies it.
+                  5. Never approve in bulk, infer satisfaction from intent, or
+                     implement product code in this stage.
+                  6. Preserve task IDs and completed task markers.
+                  7. If upstream remediation affects work after implementation
+                     began, leave code reconciliation to analyze/implement/converge.
+
+                  Do not ask the user to bypass the checklist gate.
+          - id: checklist-status-after
+            type: powerpack-control
+            action: checklist
+            target: "{{ steps.refresh.output.spec_id }}"
+
+      - id: require-checklist-convergence
+        type: if
+        condition: "{{ steps.checklist-status-after.output.unchecked > 0 }}"
+        then:
+          - id: checklist-convergence-failure
+            type: powerpack-control
+            action: fail
+            message: "Reviewer-owned checklist convergence budget exhausted with unchecked items remaining."
+
+      - id: analyze
+        command: speckit.analyze
+        integration: "{{ inputs.integration }}"
+
+      - id: remediate-adopted-review
+        type: if
+        condition: "{{ steps.refresh.output.review_fresh == true and steps.refresh.output.review_verdict == 'CHANGES_REQUIRED' }}"
+        then:
+          - id: remediate-existing-review
+            type: prompt
+            integration: "{{ inputs.integration }}"
+            timeout: 1800
+            prompt: |
+              Read .specify/powerpack/delivery/reviews/current.json and remediate
+              every current finding. Findings are mandatory current-delivery work.
+              Do not defer them to backlog, TODOs, technical debt, or future scope.
+              Preserve active SPEC intent and strengthen tests where required.
+              Do not edit the review result file.
+
+      - id: implement-pending
+        type: if
+        condition: "{{ steps.refresh.output.pending_tasks > 0 }}"
+        then:
+          - id: implement
+            command: speckit.implement
+            integration: "{{ inputs.integration }}"
+
+      - id: convergence
+        type: do-while
+        condition: "{{ steps.tasks-after-converge.output.sha256 != steps.tasks-before-converge.output.sha256 }}"
+        max_iterations: 8
+        steps:
+          - id: tasks-before-converge
+            type: powerpack-control
+            action: fingerprint
+            target: "{{ steps.refresh.output.spec_id }}"
+          - id: converge
+            command: speckit.converge
+            integration: "{{ inputs.integration }}"
+          - id: tasks-after-converge
+            type: powerpack-control
+            action: fingerprint
+            target: "{{ steps.refresh.output.spec_id }}"
+          - id: implement-convergence-if-needed
+            type: if
+            condition: "{{ steps.tasks-after-converge.output.sha256 != steps.tasks-before-converge.output.sha256 }}"
+            then:
+              - id: implement-convergence
+                command: speckit.implement
+                integration: "{{ inputs.integration }}"
+
+      - id: prepare-review-target
+        type: prompt
+        integration: "{{ inputs.integration }}"
+        timeout: 1800
+        prompt: |
+          Prepare this converged feature branch for independent GitHub review.
+          Run relevant verification, commit intended delivery changes, push the
+          current branch to origin, and ensure exactly one open pull request
+          exists for this branch. Create a draft PR if none exists.
+          Do not merge and do not introduce new scope.
+
+      - id: review-convergence
+        type: do-while
+        condition: "{{ steps.deep-review.output.verdict == 'CHANGES_REQUIRED' }}"
+        max_iterations: 6
+        steps:
+          - id: deep-review
+            type: powerpack-control
+            action: review
+            target: "{{ steps.refresh.output.spec_id }}"
+            model: "{{ inputs.review_model }}"
+            effort: "{{ inputs.review_effort }}"
+          - id: remediate-review-if-needed
+            type: if
+            condition: "{{ steps.deep-review.output.verdict == 'CHANGES_REQUIRED' }}"
+            then:
+              - id: remediate-review
+                type: prompt
+                integration: "{{ inputs.integration }}"
+                timeout: 1800
+                prompt: |
+                  Read .specify/powerpack/delivery/reviews/current.json.
+                  Fix every finding as mandatory work. Do not defer findings to
+                  backlog, TODOs, technical debt, or later SPECs. Strengthen tests
+                  as required. Do not edit the review result file.
+              - id: review-reconvergence
+                type: do-while
+                condition: "{{ steps.review-tasks-after.output.sha256 != steps.review-tasks-before.output.sha256 }}"
+                max_iterations: 8
+                steps:
+                  - id: review-tasks-before
+                    type: powerpack-control
+                    action: fingerprint
+                    target: "{{ steps.refresh.output.spec_id }}"
+                  - id: review-converge
+                    command: speckit.converge
+                    integration: "{{ inputs.integration }}"
+                  - id: review-tasks-after
+                    type: powerpack-control
+                    action: fingerprint
+                    target: "{{ steps.refresh.output.spec_id }}"
+                  - id: review-implement-convergence-if-needed
+                    type: if
+                    condition: "{{ steps.review-tasks-after.output.sha256 != steps.review-tasks-before.output.sha256 }}"
+                    then:
+                      - id: review-implement-convergence
+                        command: speckit.implement
+                        integration: "{{ inputs.integration }}"
+              - id: republish-review-target
+                type: prompt
+                integration: "{{ inputs.integration }}"
+                timeout: 1800
+                prompt: |
+                  Re-run relevant verification, commit the remediated delivery,
+                  push the feature branch, and update the existing open PR.
+                  Do not merge and do not introduce new scope.
+
+      - id: require-approved-review
+        type: if
+        condition: "{{ steps.deep-review.output.verdict != 'APPROVED' }}"
+        then:
+          - id: unapproved-review-failure
+            type: powerpack-control
+            action: fail
+            message: "Independent review did not reach APPROVED."
+
+      - id: delivery-complete
+        type: prompt
+        integration: "{{ inputs.integration }}"
+        prompt: |
+          The implementation converged against Spec Kit artifacts and independent
+          PowerPack review is APPROVED for the current exact Git HEAD. Report the
+          delivered feature, verification, PR identity and review result.

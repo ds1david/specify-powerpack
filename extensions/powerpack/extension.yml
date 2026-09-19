@@ -1,0 +1,31 @@
+schema_version: "1.0"
+
+extension:
+  id: "powerpack"
+  name: "Specify PowerPack"
+  version: "0.2.0"
+  description: "Mid-flight-capable feature delivery with checklist, implementation and independent review convergence."
+  author: "David Oliveira"
+  repository: "https://github.com/ds1david/specify-powerpack"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=1.0.0"
+
+provides:
+  commands:
+    - name: "speckit.powerpack.deliver"
+      file: "commands/deliver.md"
+      description: "Start or adopt a Spec Kit feature and automate the remaining delivery lifecycle."
+  scripts:
+    - name: "powerpack-deliver-bash"
+      file: "scripts/bash/deliver.sh"
+      runtimes: ["bash"]
+    - name: "powerpack-deliver-powershell"
+      file: "scripts/powershell/deliver.ps1"
+      runtimes: ["powershell"]
+    - name: "powerpack-deliver-python"
+      file: "scripts/python/deliver.py"
+      runtimes: ["python"]
+
+tags: ["workflow", "delivery", "sdd", "review", "convergence", "adoption"]

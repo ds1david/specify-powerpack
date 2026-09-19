@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local tooling / indexes (not part of the distributed project)
+.codegraph/
+graphify-out/
+
+# Captured traffic / debugging dumps (may contain credentials)
+*.har
+
+# PowerPack runtime state
+.specify/powerpack/runtime/
+reviews/
+*.local.json
+
+# OS / editor
+.DS_Store
+*.swp
