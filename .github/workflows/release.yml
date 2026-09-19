@@ -1,0 +1,53 @@
+name: Release PowerPack
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag matches manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          grep -q "version: \"${version}\"" extensions/powerpack/extension.yml
+          grep -q "version: \"${version}\"" workflows/powerpack-delivery/workflow.yml
+          grep -q "version: \"${version}\"" steps/powerpack-control/step.yml
+
+      - name: Package extension and workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          rm -rf dist
+          mkdir -p dist/extension dist/workflow
+
+          cp -a extensions/powerpack/. dist/extension/
+          cp -a workflows/powerpack-delivery/. dist/workflow/
+
+          (cd dist/extension && zip -qr "../specify-powerpack-extension-${tag}.zip" .)
+          (cd dist/workflow && zip -qr "../specify-powerpack-workflow-${tag}.zip" .)
+
+          sha256sum             "dist/specify-powerpack-extension-${tag}.zip"             "dist/specify-powerpack-workflow-${tag}.zip"             > "dist/SHA256SUMS"
+
+      - name: Create GitHub release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag"               "dist/specify-powerpack-extension-${tag}.zip"               "dist/specify-powerpack-workflow-${tag}.zip"               "dist/SHA256SUMS"               --clobber
+          else
+            gh release create "$tag"               "dist/specify-powerpack-extension-${tag}.zip"               "dist/specify-powerpack-workflow-${tag}.zip"               "dist/SHA256SUMS"               --title "Specify PowerPack $tag"               --generate-notes
+          fi

@@ -79,7 +79,7 @@ def _request(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
             "ChatGPT-Account-ID": account,
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "specify-powerpack/0.3",
+            "User-Agent": "specify-powerpack/0.4",
         },
     )
     try:

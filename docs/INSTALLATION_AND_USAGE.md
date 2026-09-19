@@ -1,6 +1,6 @@
 # PowerPack installation and usage
 
-This document is the supported operator path for installing and using Specify PowerPack in an existing Spec Kit project.
+This is the supported operator path for installing and using Specify PowerPack in an existing Spec Kit project.
 
 ## Prerequisites
 
@@ -9,37 +9,39 @@ This document is the supported operator path for installing and using Specify Po
 - Git with a `github.com` `origin`.
 - Codex CLI authenticated with `codex login`.
 - Exactly one enabled and available GitHub App/connector for independent review.
-- A local checkout of this PowerPack repository for installation. The custom workflow step is installed through the PowerPack step catalog because current Spec Kit installs third-party steps through a step catalog.
 
 PowerPack supports the same script choice selected by `specify init`: `sh`, `ps` or `py`.
 
-## Install
+## Standard installation from a versioned release
 
-From the target Spec Kit project, set `POWERPACK_REPO` to the checkout of this repository.
+Use a vetted, immutable PowerPack release. The examples below use `v0.4.0`.
 
-### 1. Install the extension
+### 1. Install the PowerPack extension
 
 ```bash
-specify extension add --dev "$POWERPACK_REPO/extensions/powerpack"
+specify extension add powerpack --from \
+  https://github.com/ds1david/specify-powerpack/releases/download/v0.4.0/specify-powerpack-extension-v0.4.0.zip
 ```
 
-The extension registers the two public commands with the active integration:
+Spec Kit will show the normal **Untrusted Source** confirmation because a direct `--from` URL bypasses install-allowed extension catalogs. Review the repository/release, then confirm only if you trust the source.
+
+The extension registers:
 
 - `speckit.powerpack.deliver`
 - `speckit.powerpack.doctor`
 
-If the active integration is changed later, run the normal Spec Kit integration switch/use flow so enabled extension commands are re-registered for the new active integration.
+### 2. Register the versioned PowerPack step catalog
 
-### 2. Register the PowerPack step catalog
+Current Spec Kit installs third-party workflow steps through a step catalog. Register the catalog from the same immutable release tag:
 
 ```bash
 specify workflow step catalog add \
-  https://raw.githubusercontent.com/ds1david/specify-powerpack/main/catalogs/step-catalog.json \
+  https://raw.githubusercontent.com/ds1david/specify-powerpack/v0.4.0/catalogs/step-catalog.json \
   --name powerpack \
   --install-allowed
 ```
 
-This catalog is intentionally narrow: it publishes only the `powerpack-control` custom step and its package files.
+This is a PowerPack-owned curated catalog and contains only the `powerpack-control` step for this release.
 
 ### 3. Install the PowerPack control step
 
@@ -50,12 +52,13 @@ specify workflow step add powerpack-control
 ### 4. Install the delivery workflow
 
 ```bash
-specify workflow add --dev "$POWERPACK_REPO/workflows/powerpack-delivery"
+specify workflow add powerpack-delivery --from \
+  https://github.com/ds1david/specify-powerpack/releases/download/v0.4.0/specify-powerpack-workflow-v0.4.0.zip
 ```
 
 ### 5. Validate the installation
 
-Invoke the command through the active integration.
+Invoke the doctor through the active integration.
 
 Logical command:
 
@@ -63,65 +66,75 @@ Logical command:
 speckit.powerpack.doctor
 ```
 
-For Codex skills mode the materialized command normally uses the `$` skill prefix and a hyphenated skill name, for example:
+For Codex skills mode the materialized command normally uses the `$` skill prefix and a hyphenated skill name:
 
 ```text
 $speckit-powerpack-doctor
 ```
 
-Run the normal doctor with network validation. It checks the GitHub App because review cannot succeed without it. Use `--offline` only for an intentionally disconnected diagnostic.
-
 A healthy installation exits zero and ends with `HEALTHY`.
 
 ## Use the delivery workflow
 
-For a new feature, pass a feature description:
+For a new feature:
 
 ```text
 speckit.powerpack.deliver Implement ...
 ```
 
-For an existing feature, pass the SPEC id/name used by the project:
+For an existing feature:
 
 ```text
 speckit.powerpack.deliver spec-soak-003
 ```
 
-For Codex skills mode the corresponding materialized skill is normally:
+Codex skills mode normally materializes that as:
 
 ```text
 $speckit-powerpack-deliver spec-soak-003
 ```
 
-PowerPack may adopt work already completed manually. It preserves valid SPEC/plan/tasks artifacts, converges reviewer-owned checklists, re-runs analyze as a freshness pass, implements pending tasks, runs Spec Kit converge until `tasks.md` stabilizes, prepares the exact PR/HEAD and then enters independent review convergence.
+PowerPack preserves valid work already completed manually, converges reviewer-owned checklists, re-runs analyze as a freshness pass, validates `plan.md` + `tasks.md`, executes implementation through `speckit.implement`, runs `speckit.converge` until stable, prepares the exact PR/HEAD and enters independent review convergence.
+
+## Implementation phases and parallel execution
+
+`plan.md` and `tasks.md` are the implementation execution authority.
+
+PowerPack does not create a second task scheduler. Before implementation it validates phase ordering and then delegates execution to upstream `speckit.implement`, which:
+
+- completes phases in order;
+- respects task dependencies;
+- executes test tasks before corresponding implementation tasks when TDD is requested;
+- may run tasks explicitly marked `[P]` in parallel;
+- keeps same-file or dependency-related work sequential;
+- marks completed tasks `[X]`.
+
+PowerPack never invents parallelism beyond `[P]`.
 
 ## Mandatory review remediation
 
-Every review finding is current-delivery work. Severity or wording does not create an exception: errors, warnings, suggestions, nits, hardening observations and documentation findings are all mandatory once emitted by the independent review.
+Every valid review finding is current-delivery work regardless of severity or wording: errors, warnings, suggestions, nits, hardening observations and documentation findings are mandatory once emitted.
 
-For each finding the remediation cycle must:
-
-1. implement the required change in code/configuration/tests as applicable;
-2. update project documentation describing the affected behavior or operation;
-3. update the active SPEC artifacts when the finding changes, clarifies or closes a requirement, contract, acceptance criterion, task or operational invariant;
-4. re-run Spec Kit convergence;
-5. republish the exact PR HEAD;
-6. re-run independent review.
+The remediation planner first updates SPEC traceability and creates dependency-correct tasks covering implementation/configuration, tests/verification and project documentation. Those tasks are then executed by `speckit.implement` under the same phase/dependency/`[P]` rules.
 
 Findings cannot be deferred to backlog, TODO, technical debt or a future SPEC. Approval requires zero findings.
 
-## Update
+## Development installation
 
-For a local-development installation, refresh all three installed primitives after updating the PowerPack checkout:
+Use development mode only when actively modifying PowerPack itself.
 
 ```bash
-specify extension add --dev "$POWERPACK_REPO/extensions/powerpack" --force
-specify workflow step remove powerpack-control
-specify workflow step add powerpack-control
+specify extension add --dev "$POWERPACK_REPO/extensions/powerpack"
 specify workflow add --dev "$POWERPACK_REPO/workflows/powerpack-delivery"
 ```
 
-Then run `speckit.powerpack.doctor` again.
+The custom workflow step is still installed through the Spec Kit step-catalog mechanism. For local step development, serve a temporary maintainer-controlled catalog over HTTP/HTTPS or publish a development release; do not mix a local extension/workflow with an unrelated released step version.
+
+For normal consumers, prefer the immutable release installation above.
+
+## Update
+
+Install the new versioned extension/workflow assets and register the matching versioned step catalog. Keep all three components on the same PowerPack version, then run `speckit.powerpack.doctor`.
 
 ## Uninstall
 

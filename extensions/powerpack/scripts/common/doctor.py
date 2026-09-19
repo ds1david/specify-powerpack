@@ -13,7 +13,7 @@ from typing import Any
 import urllib.error
 import urllib.request
 
-POWERPACK_VERSION = "0.3.0"
+POWERPACK_VERSION = "0.4.0"
 MIN_SPECKIT = (1, 0, 0)
 BACKEND_API = "https://chatgpt.com/backend-api"
 
@@ -138,6 +138,104 @@ def _feature_dir(project: Path, target: str) -> tuple[Path | None, str]:
     if not resolved.is_dir():
         return None, f"{source} points to missing directory {resolved}"
     return resolved, source
+
+
+_TASK_PLAN_TASK_RE = re.compile(
+    r"^\\s*-\\s*\\[(?P<mark>[ xX])\\]\\s+(?P<id>T\\d{3,})\\s+(?P<rest>.+?)\\s*$"
+)
+_TASK_PLAN_PHASE_RE = re.compile(
+    r"^##\\s+Phase\\s+(?P<number>\\d+)\\s*:\\s*(?P<name>.+?)\\s*$",
+    re.IGNORECASE,
+)
+
+
+def _task_plan_summary(feature: Path) -> dict[str, Any]:
+    plan = feature / "plan.md"
+    tasks = feature / "tasks.md"
+    if not plan.is_file():
+        raise RuntimeError("tasks.md exists but plan.md is missing")
+    if not tasks.is_file():
+        raise RuntimeError("tasks.md is missing")
+
+    phases: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    phase_numbers: list[int] = []
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    outside: list[str] = []
+
+    for line in tasks.read_text(encoding="utf-8", errors="replace").splitlines():
+        phase = _TASK_PLAN_PHASE_RE.match(line)
+        if phase:
+            current = {
+                "number": int(phase.group("number")),
+                "name": phase.group("name").strip(),
+                "total": 0,
+                "completed": 0,
+                "pending": 0,
+                "parallel": 0,
+            }
+            phases.append(current)
+            phase_numbers.append(current["number"])
+            continue
+
+        task = _TASK_PLAN_TASK_RE.match(line)
+        if not task:
+            continue
+        task_id = task.group("id")
+        if task_id in seen:
+            duplicates.append(task_id)
+        seen.add(task_id)
+        if current is None:
+            outside.append(task_id)
+            continue
+
+        completed = task.group("mark").lower() == "x"
+        rest = task.group("rest").lstrip()
+        parallel = rest.startswith("[P]")
+
+        current["total"] += 1
+        current["completed"] += int(completed)
+        current["pending"] += int(not completed)
+        current["parallel"] += int((not completed) and parallel)
+
+    if not phases:
+        raise RuntimeError("tasks.md has no '## Phase N: ...' headings")
+    if phase_numbers != sorted(phase_numbers) or len(set(phase_numbers)) != len(phase_numbers):
+        raise RuntimeError("task phases are duplicated or out of order")
+    if duplicates:
+        raise RuntimeError("duplicate task IDs: " + ", ".join(sorted(set(duplicates))))
+    if outside:
+        raise RuntimeError("tasks outside a phase: " + ", ".join(outside))
+
+    total = sum(p["total"] for p in phases)
+    if not total:
+        raise RuntimeError("tasks.md has no executable task checklist items")
+
+    pending_phases = [p for p in phases if p["pending"]]
+    current_phase = pending_phases[0] if pending_phases else None
+    if current_phase:
+        later_started = [
+            p["number"]
+            for p in phases
+            if p["number"] > current_phase["number"] and p["completed"]
+        ]
+        if later_started:
+            raise RuntimeError(
+                f"later phase(s) {later_started} already contain completed work "
+                f"while phase {current_phase['number']} is still pending"
+            )
+
+    return {
+        "phase_count": len(phases),
+        "task_count": total,
+        "pending": sum(p["pending"] for p in phases),
+        "pending_parallel": sum(p["parallel"] for p in phases),
+        "current_phase_number": current_phase["number"] if current_phase else 0,
+        "current_phase_name": current_phase["name"] if current_phase else "",
+        "current_phase_pending": current_phase["pending"] if current_phase else 0,
+        "current_phase_parallel": current_phase["parallel"] if current_phase else 0,
+    }
 
 
 class Doctor:
@@ -278,15 +376,27 @@ class Doctor:
             body = workflow.read_text(encoding="utf-8", errors="replace")
             required = (
                 "id: checklist-convergence",
+                "id: implementation-plan",
+                "action: task-plan",
+                "command: speckit.implement",
+                "Mark a task [P] only",
                 "id: review-convergence",
                 "Every finding is mandatory",
-                "project documentation and active SPEC artifacts",
+                "active SPEC",
             )
             missing = [token for token in required if token not in body]
             if missing:
                 self.fail("delivery-workflow", f"workflow is stale; missing contract markers: {missing}", "Refresh the installed PowerPack workflow.")
             else:
-                self.add("delivery-workflow", "PASS", str(wf_item.get("version") or "installed"))
+                workflow_version = str(wf_item.get("version") or "")
+                if workflow_version != POWERPACK_VERSION:
+                    self.fail(
+                        "delivery-workflow",
+                        f"installed workflow version is {workflow_version or 'unknown'}, expected {POWERPACK_VERSION}",
+                        "Install the matching versioned PowerPack workflow release asset.",
+                    )
+                else:
+                    self.add("delivery-workflow", "PASS", workflow_version)
 
         step_dir = self.project / ".specify" / "workflows" / "steps" / "powerpack-control"
         step_registry = self.project / ".specify" / "workflows" / "steps" / "step-registry.json"
@@ -301,7 +411,15 @@ class Doctor:
         if not isinstance(step_item, dict) or missing_step:
             self.fail("powerpack-control-step", f"custom step incomplete; missing={missing_step}", "Install/refresh powerpack-control from the PowerPack step catalog.")
         else:
-            self.add("powerpack-control-step", "PASS", str(step_item.get("version") or "installed"))
+            step_version = str(step_item.get("version") or "")
+            if step_version != POWERPACK_VERSION:
+                self.fail(
+                    "powerpack-control-step",
+                    f"installed step version is {step_version or 'unknown'}, expected {POWERPACK_VERSION}",
+                    "Install the matching versioned powerpack-control step catalog entry.",
+                )
+            else:
+                self.add("powerpack-control-step", "PASS", step_version)
 
     def _git(self) -> None:
         assert self.project is not None
@@ -335,7 +453,55 @@ class Doctor:
         self.add("active-feature", "PASS", f"{feature.relative_to(self.project)} via {source}")
         for name in ("spec.md", "plan.md", "tasks.md"):
             path = feature / name
-            self.add(f"feature:{name}", "PASS" if path.is_file() else "WARN", "present" if path.is_file() else "not created yet")
+            self.add(
+                f"feature:{name}",
+                "PASS" if path.is_file() else "WARN",
+                "present" if path.is_file() else "not created yet",
+            )
+
+        tasks_file = feature / "tasks.md"
+        plan_file = feature / "plan.md"
+        if tasks_file.is_file():
+            if not plan_file.is_file():
+                self.fail(
+                    "implementation-task-plan",
+                    "tasks.md exists without plan.md",
+                    "Restore/generate plan.md before continuing implementation.",
+                )
+            else:
+                try:
+                    summary = _task_plan_summary(feature)
+                except Exception as exc:
+                    self.fail(
+                        "implementation-task-plan",
+                        str(exc),
+                        "Repair tasks.md phase ordering/IDs before PowerPack delivery.",
+                    )
+                else:
+                    phase = (
+                        f"Phase {summary['current_phase_number']}: "
+                        f"{summary['current_phase_name']}"
+                        if summary["current_phase_number"]
+                        else "all phases complete"
+                    )
+                    self.add(
+                        "implementation-task-plan",
+                        "PASS",
+                        (
+                            f"{summary['phase_count']} phases, "
+                            f"{summary['task_count']} tasks, "
+                            f"{summary['pending']} pending, "
+                            f"{summary['pending_parallel']} pending [P]; "
+                            f"current={phase}"
+                        ),
+                    )
+        else:
+            self.add(
+                "implementation-task-plan",
+                "SKIP",
+                "tasks.md not created yet",
+            )
+
         checklists = feature / "checklists"
         total = checked = 0
         if checklists.is_dir():

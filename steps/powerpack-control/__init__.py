@@ -7,7 +7,7 @@ from specify_cli.workflows.base import StepBase, StepContext, StepResult, StepSt
 from specify_cli.workflows.expressions import evaluate_expression
 
 from .review import run_review
-from .state import checklist_status, fingerprint_tasks, inspect_delivery, resolve_feature_dir
+from .state import checklist_status, fingerprint_tasks, inspect_delivery, resolve_feature_dir, task_execution_plan
 
 class PowerPackControlStep(StepBase):
     type_key = "powerpack-control"
@@ -36,6 +36,10 @@ class PowerPackControlStep(StepBase):
                 target = str(self._value(config, "target", context, "") or "").strip()
                 feature = resolve_feature_dir(project, target, require=True)
                 return StepResult(output={"spec_id": feature.name, "sha256": fingerprint_tasks(feature)})
+            if action == "task-plan":
+                target = str(self._value(config, "target", context, "") or "").strip()
+                feature = resolve_feature_dir(project, target, require=True)
+                return StepResult(output=task_execution_plan(feature))
             if action == "review":
                 target = str(self._value(config, "target", context, "") or "").strip()
                 model = str(self._value(config, "model", context, "") or "").strip()
@@ -50,7 +54,7 @@ class PowerPackControlStep(StepBase):
 
     def validate(self, config: dict[str, Any]) -> list[str]:
         errors = super().validate(config)
-        allowed = {"inspect", "checklist", "fingerprint", "review", "fail"}
+        allowed = {"inspect", "checklist", "fingerprint", "task-plan", "review", "fail"}
         if config.get("action") not in allowed:
             errors.append(f"PowerPack step {config.get('id', '?')!r}: invalid action.")
         return errors

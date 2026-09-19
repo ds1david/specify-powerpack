@@ -8,17 +8,18 @@ Review outputs are stored under `.specify/powerpack/delivery/reviews/`.
 
 ## Zero-finding merge contract
 
-PowerPack does not distinguish “blocking” findings from “optional suggestions” after the independent reviewer emits them. Every emitted finding is mandatory current-delivery work regardless of severity, category or wording, including suggestions, nits, warnings, hardening and documentation findings.
+Every emitted valid finding is mandatory current-delivery work regardless of severity, category or wording, including suggestions, nits, warnings, hardening and documentation findings.
 
-This does not authorize speculative backlog generation: a finding still needs current evidence and an authority reference. But once the reviewer emits a valid finding, it cannot be ignored, downgraded to advisory work, deferred to technical debt, converted into a TODO or moved to a future SPEC.
+A finding still needs current evidence and an authority reference. PowerPack does not authorize speculative backlog generation.
 
-For every finding, remediation must synchronize all affected surfaces:
+## Remediation execution
 
-1. implementation/configuration;
-2. tests and verification evidence;
-3. project documentation describing the affected behavior, architecture or operation;
-4. active SPEC artifacts when the finding changes or clarifies a requirement, contract, acceptance criterion, invariant, task or documented delivery decision.
+The remediation agent does not directly patch product code as an ad-hoc shortcut. It first updates active SPEC traceability as required and materializes each finding as explicit tasks in `tasks.md`.
+
+Those tasks must respect `plan.md`, existing phase order and dependency edges. `[P]` may be added only for independent, different-file work with no incomplete dependency.
+
+The resulting remediation is executed by `speckit.implement`, exactly like initial implementation and convergence tasks. Therefore phase ordering, TDD ordering, same-file serialization, task completion markers and declared parallel opportunities use one common executor.
 
 After remediation, Spec Kit `converge` runs again, the exact PR HEAD is republished and independent review runs again.
 
-`CHANGES_REQUIRED` is mandatory work. `BLOCKED` never becomes approval. `APPROVED` requires zero findings.
+`BLOCKED` never becomes approval. `APPROVED` requires zero findings.

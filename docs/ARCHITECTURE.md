@@ -1,42 +1,42 @@
 # PowerPack architecture
 
-PowerPack is composed from Spec Kit primitives and keeps the public surface intentionally small.
+PowerPack composes Spec Kit rather than replacing its SDD semantics.
 
-## Public commands
+## Public surface
 
-- `speckit.powerpack.deliver` launches the resumable delivery workflow.
-- `speckit.powerpack.doctor` diagnoses installation/runtime/review readiness without entering the workflow.
+- `speckit.powerpack.deliver`: resumable feature delivery.
+- `speckit.powerpack.doctor`: read-only installation/runtime/task-plan/review diagnostics.
 
-Both commands use Spec Kit command frontmatter with `sh`, `ps` and `py` script variants. The selected runtime comes from the initialized Spec Kit project.
-
-## Installed components
+## Runtime components
 
 ```text
-powerpack extension
-├── deliver command
-├── doctor command
-└── runtime launchers
+PowerPack extension
+├── deliver command (sh / ps / py launcher)
+└── doctor command  (sh / ps / py launcher)
 
 powerpack-delivery workflow
 └── powerpack-control custom step
     ├── adoption/state inspection
-    ├── checklist status
+    ├── checklist inspection
+    ├── plan/tasks execution validation
     ├── tasks fingerprinting
     └── independent review
 ```
 
-The custom workflow step is distributed through `catalogs/step-catalog.json` because current Spec Kit installs third-party workflow steps through step catalogs.
+Workflow orchestration remains in `workflow.yml`; the custom step provides deterministic machine-readable facts. The doctor lives in the extension so it remains usable even when the workflow/step installation is damaged.
 
-## Doctor isolation
+## Implementation authority
 
-Doctor is deliberately implemented inside the extension rather than the `powerpack-control` step. It must remain usable when the workflow or custom step is missing, stale, or corrupted. It is read-only and may inspect installation metadata, Git, Codex authentication, GitHub App availability and active feature artifacts.
+`plan.md`, `tasks.md` and upstream `speckit.implement` are the implementation execution authority.
 
-## Delivery and review convergence
+PowerPack validates phase structure and pending work but deliberately does not implement another scheduler. `speckit.implement` owns phase-by-phase execution, task dependency ordering, TDD ordering, explicit `[P]` opportunities, same-file serialization, validation checkpoints and `[X]` progress markers.
 
-Delivery composes upstream Spec Kit phases rather than replacing them. Checklist convergence precedes implementation; implementation convergence uses `speckit.converge` and task fingerprints; independent review is bound to an exact pushed PR HEAD.
+Initial implementation, mid-flight continuation, convergence work and review remediation all use this same executor.
 
-Every valid review finding is mandatory current-delivery work, including low-severity suggestions and documentation findings. Remediation keeps implementation/tests, project documentation and active SPEC artifacts synchronized before re-convergence and re-review.
+## Distribution
+
+Normal consumers use immutable versioned release assets: an extension ZIP with `extension.yml` at archive root, a workflow ZIP with `workflow.yml` at archive root, and a versioned PowerPack-owned step catalog pinned to the same Git tag. Local `--dev` installation is reserved for PowerPack development.
 
 ## Archive boundary
 
-The active runtime under `extensions/`, `workflows/` and `steps/` must not reference `backup/`. The archive exists only as historical source material.
+The complete pre-rewrite repository is preserved under `backup/`. Active extension, workflow and step code never imports, loads, executes or resolves templates/state from that archive.

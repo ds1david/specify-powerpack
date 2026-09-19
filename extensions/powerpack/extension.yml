@@ -3,8 +3,8 @@ schema_version: "1.0"
 extension:
   id: "powerpack"
   name: "Specify PowerPack"
-  version: "0.3.0"
-  description: "Mid-flight-capable feature delivery with checklist, implementation, independent review convergence, and installation diagnostics."
+  version: "0.4.0"
+  description: "Mid-flight-capable feature delivery with phase-aware implementation, checklist/review convergence, and diagnostics."
   author: "David Oliveira"
   repository: "https://github.com/ds1david/specify-powerpack"
   license: "MIT"
@@ -19,7 +19,7 @@ provides:
       description: "Start or adopt a Spec Kit feature and automate the remaining delivery lifecycle."
     - name: "speckit.powerpack.doctor"
       file: "commands/doctor.md"
-      description: "Diagnose PowerPack installation, runtime, review prerequisites and active feature state."
+      description: "Diagnose PowerPack installation, runtime, task-plan, review prerequisites and active feature state."
   scripts:
     - name: "powerpack-deliver-bash"
       file: "scripts/bash/deliver.sh"
@@ -40,4 +40,4 @@ provides:
       file: "scripts/python/doctor.py"
       runtimes: ["python"]
 
-tags: ["workflow", "delivery", "sdd", "review", "convergence", "adoption", "doctor"]
+tags: ["workflow", "delivery", "sdd", "review", "convergence", "adoption", "doctor", "parallel"]

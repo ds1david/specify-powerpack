@@ -2,7 +2,7 @@ schema_version: "1.0"
 workflow:
   id: "powerpack-delivery"
   name: "Specify PowerPack Delivery"
-  version: "0.3.0"
+  version: "0.4.0"
   author: "David Oliveira"
   description: "Start or adopt a Spec Kit feature and automate the remaining delivery lifecycle through independent review."
 
@@ -160,34 +160,70 @@ steps:
         command: speckit.analyze
         integration: "{{ inputs.integration }}"
 
-      - id: remediate-adopted-review
+      - id: materialize-adopted-review
         type: if
         condition: "{{ steps.refresh.output.review_fresh == true and steps.refresh.output.review_verdict == 'CHANGES_REQUIRED' }}"
         then:
-          - id: remediate-existing-review
+          - id: plan-existing-review-remediation
             type: prompt
             integration: "{{ inputs.integration }}"
             timeout: 1800
             prompt: |
-              Read .specify/powerpack/delivery/reviews/current.json and remediate
-              every current finding. Every finding is mandatory current-delivery
-              work regardless of severity, category, or wording, including
-              suggestions, nits, warnings, hardening, and documentation findings.
-              Do not defer any finding to backlog, TODOs, technical debt, or a
-              future SPEC. Implement the required code/configuration/test change as
-              applicable, update project documentation and active SPEC artifacts
-              for the affected behavior/contracts/requirements/acceptance criteria,
-              and keep them synchronized with the implemented result.
-              Preserve active SPEC intent unless the finding proves the SPEC itself
-              needs correction or clarification. Do not edit the review result file.
+              Read .specify/powerpack/delivery/reviews/current.json, plan.md, and
+              tasks.md. Every finding is mandatory current-delivery work regardless
+              of severity, category, or wording, including suggestions, nits,
+              warnings, hardening, and documentation findings.
+
+              This is a remediation PLANNING step. Do not implement product code,
+              tests, configuration, or project documentation directly here.
+
+              For every finding:
+              1. Update the active SPEC artifacts when the finding clarifies or
+                 changes a requirement, contract, acceptance criterion, invariant,
+                 task intent, or documented delivery decision.
+              2. Record the finding and its required resolution in the active SPEC
+                 documentation so review traceability is durable.
+              3. Add explicit pending tasks to tasks.md for all required
+                 implementation/configuration, tests/verification, and project
+                 documentation changes.
+              4. Place tasks in the phase required by plan.md and the existing
+                 dependency graph. Preserve phase ordering and completed task IDs.
+              5. Add [P] only when the task touches different files and has no
+                 dependency on an incomplete task. Tasks that share files or have
+                 dependencies must remain sequential.
+              6. Never move work to an earlier completed phase without making the
+                 dependency impact explicit in tasks.md. Never bypass the phase
+                 model to implement a finding immediately.
+
+              Do not defer findings to backlog, TODOs, technical debt, or a future
+              SPEC. Do not edit the review result file.
+
+      - id: implementation-plan
+        type: powerpack-control
+        action: task-plan
+        target: "{{ steps.refresh.output.spec_id }}"
 
       - id: implement-pending
         type: if
-        condition: "{{ steps.refresh.output.pending_tasks > 0 }}"
+        condition: "{{ steps.implementation-plan.output.pending_tasks > 0 }}"
         then:
           - id: implement
             command: speckit.implement
             integration: "{{ inputs.integration }}"
+
+      - id: implementation-plan-after
+        type: powerpack-control
+        action: task-plan
+        target: "{{ steps.refresh.output.spec_id }}"
+
+      - id: require-implementation-complete
+        type: if
+        condition: "{{ steps.implementation-plan-after.output.pending_tasks > 0 }}"
+        then:
+          - id: implementation-incomplete-failure
+            type: powerpack-control
+            action: fail
+            message: "speckit.implement returned with pending tasks; phase/dependency execution is incomplete."
 
       - id: convergence
         type: do-while
@@ -205,13 +241,29 @@ steps:
             type: powerpack-control
             action: fingerprint
             target: "{{ steps.refresh.output.spec_id }}"
+          - id: convergence-task-plan
+            type: powerpack-control
+            action: task-plan
+            target: "{{ steps.refresh.output.spec_id }}"
           - id: implement-convergence-if-needed
             type: if
-            condition: "{{ steps.tasks-after-converge.output.sha256 != steps.tasks-before-converge.output.sha256 }}"
+            condition: "{{ steps.convergence-task-plan.output.pending_tasks > 0 }}"
             then:
               - id: implement-convergence
                 command: speckit.implement
                 integration: "{{ inputs.integration }}"
+              - id: convergence-task-plan-after
+                type: powerpack-control
+                action: task-plan
+                target: "{{ steps.refresh.output.spec_id }}"
+              - id: require-convergence-implementation-complete
+                type: if
+                condition: "{{ steps.convergence-task-plan-after.output.pending_tasks > 0 }}"
+                then:
+                  - id: convergence-implementation-incomplete
+                    type: powerpack-control
+                    action: fail
+                    message: "Convergence implementation left pending tasks; phase/dependency execution is incomplete."
 
       - id: prepare-review-target
         type: prompt
@@ -239,21 +291,59 @@ steps:
             type: if
             condition: "{{ steps.deep-review.output.verdict == 'CHANGES_REQUIRED' }}"
             then:
-              - id: remediate-review
+              - id: plan-review-remediation
                 type: prompt
                 integration: "{{ inputs.integration }}"
                 timeout: 1800
                 prompt: |
-                  Read .specify/powerpack/delivery/reviews/current.json.
-                  Fix every finding as mandatory work. Every finding is mandatory
-                  regardless of severity, category, or wording, including
-                  suggestions, nits, warnings, hardening, and documentation
-                  findings. Do not defer findings to backlog, TODOs, technical
-                  debt, or later SPECs. Implement the required code/configuration
-                  and tests as applicable. Update project documentation and active
-                  SPEC artifacts for every affected behavior, contract,
-                  requirement, acceptance criterion, invariant, or task before
-                  re-convergence. Do not edit the review result file.
+                  Read .specify/powerpack/delivery/reviews/current.json, plan.md,
+                  and tasks.md. Every finding is mandatory current-delivery work,
+                  including suggestions, nits, warnings, hardening, and
+                  documentation findings.
+
+                  Do not implement product code, tests, configuration, or project
+                  documentation directly in this planning step.
+
+                  For every finding, update the active SPEC documentation for
+                  durable traceability and add all required remediation tasks to
+                  tasks.md. Tasks must cover implementation/configuration,
+                  tests/verification, and project documentation as applicable.
+
+                  Preserve the implementation strategy in plan.md and the phase
+                  order/dependency graph in tasks.md. Insert each remediation task
+                  into the correct phase or a new dependency-correct remediation
+                  phase. Preserve completed task IDs. Mark a task [P] only when it
+                  can execute independently, touches different files, and has no
+                  dependency on incomplete tasks. Same-file or dependency-related
+                  work must be sequential.
+
+                  Do not defer findings and do not edit the review result file.
+
+              - id: review-remediation-task-plan
+                type: powerpack-control
+                action: task-plan
+                target: "{{ steps.refresh.output.spec_id }}"
+
+              - id: implement-review-remediation
+                type: if
+                condition: "{{ steps.review-remediation-task-plan.output.pending_tasks > 0 }}"
+                then:
+                  - id: implement-review-findings
+                    command: speckit.implement
+                    integration: "{{ inputs.integration }}"
+                  - id: review-remediation-task-plan-after
+                    type: powerpack-control
+                    action: task-plan
+                    target: "{{ steps.refresh.output.spec_id }}"
+                  - id: require-review-remediation-complete
+                    type: if
+                    condition: "{{ steps.review-remediation-task-plan-after.output.pending_tasks > 0 }}"
+                    then:
+                      - id: review-remediation-incomplete
+                        type: powerpack-control
+                        action: fail
+                        message: "Review remediation left pending tasks; phase/dependency execution is incomplete."
+
               - id: review-reconvergence
                 type: do-while
                 condition: "{{ steps.review-tasks-after.output.sha256 != steps.review-tasks-before.output.sha256 }}"
@@ -270,13 +360,29 @@ steps:
                     type: powerpack-control
                     action: fingerprint
                     target: "{{ steps.refresh.output.spec_id }}"
+                  - id: review-convergence-task-plan
+                    type: powerpack-control
+                    action: task-plan
+                    target: "{{ steps.refresh.output.spec_id }}"
                   - id: review-implement-convergence-if-needed
                     type: if
-                    condition: "{{ steps.review-tasks-after.output.sha256 != steps.review-tasks-before.output.sha256 }}"
+                    condition: "{{ steps.review-convergence-task-plan.output.pending_tasks > 0 }}"
                     then:
                       - id: review-implement-convergence
                         command: speckit.implement
                         integration: "{{ inputs.integration }}"
+                      - id: review-convergence-task-plan-after
+                        type: powerpack-control
+                        action: task-plan
+                        target: "{{ steps.refresh.output.spec_id }}"
+                      - id: require-review-convergence-complete
+                        type: if
+                        condition: "{{ steps.review-convergence-task-plan-after.output.pending_tasks > 0 }}"
+                        then:
+                          - id: review-convergence-incomplete
+                            type: powerpack-control
+                            action: fail
+                            message: "Review convergence implementation left pending tasks; phase/dependency execution is incomplete."
               - id: republish-review-target
                 type: prompt
                 integration: "{{ inputs.integration }}"

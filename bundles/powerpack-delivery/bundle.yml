@@ -2,9 +2,9 @@ schema_version: "1.0"
 bundle:
   id: "powerpack-delivery"
   name: "Specify PowerPack Delivery"
-  version: "0.3.0"
+  version: "0.4.0"
   role: "feature-delivery"
-  description: "PowerPack extension, control step, delivery workflow and diagnostics."
+  description: "PowerPack extension, phase-aware control step, delivery workflow and diagnostics."
   author: "David Oliveira"
   license: "MIT"
 requires:
@@ -14,10 +14,10 @@ requires:
 provides:
   extensions:
     - id: "powerpack"
-      version: "0.3.0"
+      version: "0.4.0"
   steps:
     - id: "powerpack-control"
   workflows:
     - id: "powerpack-delivery"
-      version: "0.3.0"
-tags: ["powerpack", "delivery", "sdd", "review", "adoption", "doctor"]
+      version: "0.4.0"
+tags: ["powerpack", "delivery", "sdd", "review", "adoption", "doctor", "parallel"]
